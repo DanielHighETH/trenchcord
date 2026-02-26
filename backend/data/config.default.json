@@ -1,0 +1,35 @@
+{
+  "rooms": [
+    {
+      "id": "00000000-0000-0000-0000-000000000000",
+      "name": "main",
+      "channels": [],
+      "highlightedUsers": [],
+      "color": null,
+      "filteredUsers": [],
+      "filterEnabled": false
+    }
+  ],
+  "globalHighlightedUsers": [],
+  "contractDetection": true,
+  "guildColors": {},
+  "enabledGuilds": [],
+  "evmAddressColor": "#fee75c",
+  "solAddressColor": "#14f195",
+  "openInDiscordApp": true,
+  "hiddenUsers": {},
+  "messageSounds": true,
+  "pushover": {
+    "enabled": false,
+    "appToken": "",
+    "userKey": ""
+  },
+  "contractLinkTemplates": {
+    "evm": "https://gmgn.ai/base/token/{address}",
+    "sol": "https://axiom.trade/t/{address}?chain=sol",
+    "solPlatform": "axiom",
+    "evmPlatform": "gmgn"
+  },
+  "contractClickAction": "copy_open",
+  "autoOpenHighlightedContracts": true
+}
