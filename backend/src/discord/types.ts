@@ -125,6 +125,7 @@ export interface ContractLinkTemplates {
 }
 
 export interface AppConfig {
+  discordTokens: string[];
   rooms: Room[];
   globalHighlightedUsers: string[];
   contractDetection: boolean;

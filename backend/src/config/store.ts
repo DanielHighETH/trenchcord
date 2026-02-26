@@ -10,6 +10,7 @@ const CONFIG_PATH = join(DATA_DIR, 'config.json');
 const DEFAULT_CONFIG_PATH = join(DATA_DIR, 'config.default.json');
 
 const DEFAULT_CONFIG: AppConfig = {
+  discordTokens: [],
   rooms: [],
   globalHighlightedUsers: [],
   contractDetection: true,
@@ -169,6 +170,15 @@ class ConfigStore {
       return room?.highlightedUsers.includes(userId) ?? false;
     }
     return this.config.rooms.some((r) => r.highlightedUsers.includes(userId));
+  }
+
+  getTokens(): string[] {
+    return this.config.discordTokens ?? [];
+  }
+
+  setTokens(tokens: string[]): void {
+    this.config.discordTokens = tokens;
+    this.save();
   }
 }
 

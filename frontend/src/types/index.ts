@@ -41,6 +41,7 @@ export interface ContractLinkTemplates {
 }
 
 export interface AppConfig {
+  discordTokens: string[];
   rooms: Room[];
   globalHighlightedUsers: string[];
   contractDetection: boolean;
@@ -58,6 +59,11 @@ export interface AppConfig {
   globalKeywordPatterns: KeywordPattern[];
   keywordAlertsEnabled: boolean;
   desktopNotifications: boolean;
+}
+
+export interface AuthStatus {
+  configured: boolean;
+  connected: boolean;
 }
 
 export interface GuildInfo {

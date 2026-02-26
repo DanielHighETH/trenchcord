@@ -1,16 +1,69 @@
 import { Router } from 'express';
 import { configStore } from '../config/store.js';
 import type { GatewayManager } from '../discord/gatewayManager.js';
+import type { WsServer } from '../ws/server.js';
+import { getGateway } from '../gateway/state.js';
 import { processDiscordMessage } from '../utils/messageProcessor.js';
 import { contractLog } from '../utils/contractLog.js';
 import type { FrontendMessage } from '../discord/types.js';
 
-export function createRouter(gateway: GatewayManager): Router {
+export function createRouter(wsServer: WsServer): Router {
   const router = Router();
+
+  function requireGateway(res: any): GatewayManager | null {
+    const gw = getGateway();
+    if (!gw) {
+      res.status(503).json({ error: 'Discord not connected. Please configure your token first.' });
+      return null;
+    }
+    return gw;
+  }
+
+  // --- Auth / Token Management ---
+
+  router.get('/auth/status', (_req, res) => {
+    const tokens = configStore.getTokens();
+    const gw = getGateway();
+    res.json({
+      configured: tokens.length > 0,
+      connected: gw !== null,
+    });
+  });
+
+  router.post('/auth/token', async (_req, res) => {
+    const { token } = _req.body;
+    if (!token || typeof token !== 'string' || token.trim().length === 0) {
+      return res.status(400).json({ error: 'A valid Discord token is required.' });
+    }
+
+    const tokens = token.includes(',')
+      ? token.split(',').map((t: string) => t.trim()).filter(Boolean)
+      : [token.trim()];
+
+    configStore.setTokens(tokens);
+
+    try {
+      const { connectGateway } = await import('../index.js');
+      connectGateway(tokens, wsServer);
+      res.json({ success: true, tokenCount: tokens.length });
+    } catch (err: any) {
+      res.status(500).json({ error: `Failed to connect: ${err.message}` });
+    }
+  });
+
+  router.post('/auth/disconnect', (_req, res) => {
+    configStore.setTokens([]);
+    const gw = getGateway();
+    if (gw) gw.disconnect();
+    res.json({ success: true });
+  });
 
   // --- Channel History ---
 
   router.get('/history', async (_req, res) => {
+    const gateway = requireGateway(res);
+    if (!gateway) return;
+
     const rooms = configStore.getRooms();
     const result: Record<string, FrontendMessage[]> = {};
 
@@ -58,11 +111,15 @@ export function createRouter(gateway: GatewayManager): Router {
   // --- Guilds & Channels ---
 
   router.get('/guilds', (_req, res) => {
+    const gateway = requireGateway(res);
+    if (!gateway) return;
     const guilds = gateway.getGuilds();
     res.json(guilds);
   });
 
   router.get('/dm-channels', (_req, res) => {
+    const gateway = requireGateway(res);
+    if (!gateway) return;
     const dms = gateway.getDMChannels();
     res.json(dms);
   });
@@ -118,7 +175,8 @@ export function createRouter(gateway: GatewayManager): Router {
   // --- Global Config ---
 
   router.get('/config', (_req, res) => {
-    res.json(configStore.getConfig());
+    const { discordTokens, ...safeConfig } = configStore.getConfig();
+    res.json(safeConfig);
   });
 
   router.put('/config', (req, res) => {

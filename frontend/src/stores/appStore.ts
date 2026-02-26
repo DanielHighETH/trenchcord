@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Room, FrontendMessage, Alert, AppConfig, GuildInfo, DMChannel, ContractEntry, FrontendReaction } from '../types';
+import type { Room, FrontendMessage, Alert, AppConfig, GuildInfo, DMChannel, ContractEntry, FrontendReaction, AuthStatus } from '../types';
 
 const API_BASE = '/api';
 const MAX_MESSAGES_PER_ROOM = 500;
@@ -7,6 +7,8 @@ const MAX_ALERTS = 50;
 const MAX_CONTRACTS = 2000;
 
 interface AppState {
+  authStatus: AuthStatus | null;
+  authLoading: boolean;
   rooms: Room[];
   activeRoomId: string | null;
   activeView: 'chat' | 'contracts';
@@ -33,6 +35,9 @@ interface AppState {
   updateReaction: (channelId: string, messageId: string, emoji: FrontendReaction['emoji'], delta: number) => void;
   addContract: (entry: ContractEntry) => void;
 
+  checkAuth: () => Promise<void>;
+  submitToken: (token: string) => Promise<{ success: boolean; error?: string }>;
+
   fetchRooms: () => Promise<void>;
   fetchHistory: () => Promise<void>;
   fetchGuilds: () => Promise<void>;
@@ -52,6 +57,8 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
+  authStatus: null,
+  authLoading: true,
   rooms: [],
   activeRoomId: null,
   activeView: 'chat',
@@ -70,6 +77,33 @@ export const useAppStore = create<AppState>((set, get) => ({
   setConnected: (connected) => set({ connected }),
   setFocusFilter: (filter) => set({ focusFilter: filter }),
   clearFocusFilter: () => set({ focusFilter: null }),
+
+  checkAuth: async () => {
+    try {
+      set({ authLoading: true });
+      const res = await fetch(`${API_BASE}/auth/status`);
+      const status: AuthStatus = await res.json();
+      set({ authStatus: status, authLoading: false });
+    } catch {
+      set({ authStatus: null, authLoading: false });
+    }
+  },
+
+  submitToken: async (token: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error };
+      set({ authStatus: { configured: true, connected: true } });
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
 
   setActiveRoom: (roomId) => set({ activeRoomId: roomId, activeView: 'chat' }),
   setActiveView: (view) => set({ activeView: view }),
