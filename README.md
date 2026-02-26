@@ -36,16 +36,7 @@ npm install
 
 This installs dependencies for both `backend` and `frontend` via npm workspaces.
 
-### 2. Configure your Discord token
-
-Edit `backend/.env`:
-
-```
-DISCORD_TOKEN=your_actual_discord_token
-PORT=3001
-```
-
-### 3. Run both at once
+### 2. Run both at once
 
 ```bash
 npm run dev
@@ -70,11 +61,12 @@ npm run start          # Start the built backend (production)
 
 ## Usage
 
-1. **Create a Room** - Click the + button in the sidebar or "Create one" link
-2. **Add Channels** - In the room config modal, browse your guilds and DMs, click to toggle channels
-3. **Highlight Users** - Go to the "Highlighted Users" tab and add Discord user IDs
-4. **Global Settings** - Configure global highlighted users and contract detection in the "Global Settings" tab
-5. **Monitor** - Messages from your selected channels will appear in real-time in your rooms
+1. **Enter your Discord token** - On first launch you'll be prompted to paste your token. It's stored locally in `backend/data/config.json` and never leaves your machine
+2. **Create a Room** - Click the + button in the sidebar or "Create one" link
+3. **Add Channels** - In the room config modal, browse your guilds and DMs, click to toggle channels
+4. **Highlight Users** - Go to the "Highlighted Users" tab and add Discord user IDs
+5. **Global Settings** - Configure global highlighted users and contract detection in the "Global Settings" tab
+6. **Monitor** - Messages from your selected channels will appear in real-time in your rooms
 
 ## Security Warning
 

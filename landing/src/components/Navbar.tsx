@@ -18,6 +18,14 @@ export function Navbar() {
       setScrolled(window.scrollY > 20);
 
       const sections = navLinks.map((l) => l.href.slice(1));
+
+      const nearBottom =
+        window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 100;
+      if (nearBottom) {
+        setActiveSection(sections[sections.length - 1]);
+        return;
+      }
+
       for (let i = sections.length - 1; i >= 0; i--) {
         const el = document.getElementById(sections[i]);
         if (el) {
@@ -47,10 +55,10 @@ export function Navbar() {
       initial={{ y: -80 }}
       animate={{ y: 0 }}
       transition={{ duration: 0.5, ease: [0.25, 0.4, 0.25, 1] }}
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+      className={`fixed top-0 left-0 right-0 z-50 border-b transition-all duration-300 ${
         scrolled || mobileOpen
-          ? 'bg-bg-deep/80 backdrop-blur-xl border-b border-white/5 shadow-lg shadow-black/20'
-          : 'bg-transparent'
+          ? 'bg-bg-deep/80 backdrop-blur-xl border-white/5 shadow-lg shadow-black/20'
+          : 'bg-transparent border-transparent'
       }`}
     >
       <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between">

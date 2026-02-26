@@ -46,35 +46,49 @@ function RequirementsContent() {
 
 function InstallationContent() {
   return (
-    <div className="space-y-4">
-      <p className="text-white/60 text-sm">Clone the repository and install dependencies:</p>
-      <div className="space-y-3">
+    <div className="space-y-5">
+      <p className="text-white/60 text-sm">Get the source code and install dependencies:</p>
+
+      <div className="space-y-4">
         <div>
           <span className="text-[10px] font-bold tracking-widest text-accent-blurple/60 uppercase">
-            Clone the repo
+            Option A &mdash; Download ZIP
+          </span>
+          <div className="glass-card rounded-lg p-4 mt-1.5 flex items-center justify-between">
+            <p className="text-sm text-white/70">
+              Download the latest release from GitHub and extract it.
+            </p>
+            <a
+              href="https://github.com/DanielHighETH/trenchcord/archive/refs/heads/main.zip"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 ml-4 text-xs font-medium text-accent-blurple hover:underline"
+            >
+              Download ZIP
+            </a>
+          </div>
+        </div>
+
+        <div>
+          <span className="text-[10px] font-bold tracking-widest text-accent-blurple/60 uppercase">
+            Option B &mdash; Clone with Git
           </span>
           <div className="code-block mt-1.5 text-white/70">
             git clone https://github.com/DanielHighETH/trenchcord.git
           </div>
+          <p className="text-xs text-white/40 mt-1.5">Clones the full repository so you can pull updates later with <span className="font-mono text-white/50">git pull</span>.</p>
         </div>
-        <div>
-          <span className="text-[10px] font-bold tracking-widest text-accent-blurple/60 uppercase">
-            Install dependencies
-          </span>
-          <div className="code-block mt-1.5 text-white/70">
-            cd trenchcord<br />
-            npm install
-          </div>
+      </div>
+
+      <div>
+        <span className="text-[10px] font-bold tracking-widest text-accent-blurple/60 uppercase">
+          Install dependencies
+        </span>
+        <div className="code-block mt-1.5 text-white/70">
+          cd trenchcord<br />
+          npm install
         </div>
-        <div>
-          <span className="text-[10px] font-bold tracking-widest text-accent-blurple/60 uppercase">
-            Configure environment
-          </span>
-          <div className="code-block mt-1.5 text-white/70">
-            cp .env.example .env<br />
-            <span className="text-white/40"># Edit .env and add your Discord token</span>
-          </div>
-        </div>
+        <p className="text-xs text-white/40 mt-1.5">Navigate into the project folder and install all required packages. That's it — no config files needed.</p>
       </div>
     </div>
   );
@@ -116,6 +130,15 @@ function TokenContent() {
           </div>
         ))}
       </div>
+
+      <div className="space-y-2">
+        <p className="text-xs text-white/40">Once you have your token, paste it into the setup screen on first launch:</p>
+        <img
+          src="/discord_token.png"
+          alt="Trenchcord token setup screen"
+          className="rounded-xl border border-white/10 shadow-lg shadow-black/30"
+        />
+      </div>
     </div>
   );
 }
@@ -133,7 +156,7 @@ function RunningContent() {
       <p className="text-white/50 text-sm">
         This builds the frontend and backend, then starts the server. Open{' '}
         <span className="text-accent-blurple font-mono text-xs">http://localhost:3001</span>{' '}
-        in your browser once it's running.
+        in your browser — you'll be prompted to paste your Discord token on first launch.
       </p>
       <div className="glass-card rounded-lg p-3 mt-2">
         <p className="text-xs text-white/40">
@@ -159,7 +182,7 @@ export function Tutorial() {
   const Content = tabContent[activeTab];
 
   return (
-    <section id="tutorial" className="relative py-28 px-6">
+    <section id="tutorial" className="relative py-28 px-6 scroll-mt-20 pb-40">
       <div className="mx-auto max-w-3xl">
         <AnimatedSection className="text-center mb-12">
           <h2 className="text-3xl sm:text-5xl font-bold gradient-text inline-block pb-1">
