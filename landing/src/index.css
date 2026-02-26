@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background-color: rgba(88, 101, 242, 0.4);
+    color: #fff;
+  }
+}
+
+@layer components {
+  .gradient-text {
+    background: linear-gradient(135deg, #5865f2 0%, #7c3aed 50%, #5865f2 100%);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: gradient-shift 4s ease-in-out infinite;
+  }
+
+  .glass-card {
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    transition: all 0.3s ease;
+  }
+
+  .glass-card:hover {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(88, 101, 242, 0.3);
+    box-shadow: 0 0 30px rgba(88, 101, 242, 0.1);
+  }
+
+  .particle-grid {
+    background-image: radial-gradient(
+      circle,
+      rgba(88, 101, 242, 0.15) 1px,
+      transparent 1px
+    );
+    background-size: 40px 40px;
+    animation: particle-drift 20s linear infinite;
+  }
+
+  .glow-purple {
+    box-shadow: 0 0 40px rgba(88, 101, 242, 0.2),
+      0 0 80px rgba(124, 58, 237, 0.1);
+  }
+
+  .code-block {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.875rem;
+    overflow-x: auto;
+  }
+}
+
+@keyframes gradient-shift {
+  0%,
+  100% {
+    background-position: 0% center;
+  }
+  50% {
+    background-position: 200% center;
+  }
+}
+
+@keyframes particle-drift {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 40px 40px;
+  }
+}

@@ -1,4 +1,10 @@
-import 'dotenv/config';
+import { config } from 'dotenv';
+import { existsSync } from 'fs';
+import { resolve } from 'path';
+
+const rootEnv = resolve(process.cwd(), '../.env');
+if (existsSync(rootEnv)) config({ path: rootEnv });
+config(); // loads backend/.env if present, won't override existing vars
 import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
@@ -22,7 +28,7 @@ if (process.env.DISCORD_TOKENS) {
 }
 
 if (tokens.length === 0) {
-  console.error('ERROR: Set DISCORD_TOKEN or DISCORD_TOKENS (comma-separated) in backend/.env');
+  console.error('ERROR: Set DISCORD_TOKEN or DISCORD_TOKENS (comma-separated) in .env');
   process.exit(1);
 }
 

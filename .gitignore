@@ -136,3 +136,4 @@ dist
 .pnp.*
 
 backend/data/config.json
+backend/data/contracts.json
