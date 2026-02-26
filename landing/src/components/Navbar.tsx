@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Github } from 'lucide-react';
 
 const navLinks = [
   { label: 'Features', href: '#features' },
@@ -96,6 +96,14 @@ export function Navbar() {
               )}
             </a>
           ))}
+          <a
+            href="https://github.com/DanielHighETH/trenchcord"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-white/50 hover:text-white transition-colors"
+          >
+            <Github size={20} />
+          </a>
         </div>
 
         {/* Mobile toggle */}
@@ -132,6 +140,15 @@ export function Navbar() {
                   {link.label}
                 </a>
               ))}
+              <a
+                href="https://github.com/DanielHighETH/trenchcord"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-medium text-white/50 hover:text-white transition-colors flex items-center gap-2"
+              >
+                <Github size={16} />
+                GitHub
+              </a>
             </div>
           </motion.div>
         )}

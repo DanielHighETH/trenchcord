@@ -1,3 +1,5 @@
+import { Github } from 'lucide-react';
+
 export function Footer() {
   return (
     <footer className="border-t border-white/5 py-12 px-6">
@@ -8,6 +10,14 @@ export function Footer() {
           self-bots is against Discord's Terms of Service. This tool is for personal and
           educational use only. Use at your own risk.
         </p>
+        <a
+          href="https://github.com/DanielHighETH/trenchcord"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-white/30 hover:text-white/60 transition-colors"
+        >
+          <Github size={18} />
+        </a>
       </div>
     </footer>
   );
