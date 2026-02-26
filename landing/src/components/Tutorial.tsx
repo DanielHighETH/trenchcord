@@ -177,7 +177,7 @@ const tabContent: Record<TabId, React.FC> = {
 };
 
 export function Tutorial() {
-  const [activeTab, setActiveTab] = useState<TabId>('token');
+  const [activeTab, setActiveTab] = useState<TabId>('requirements');
 
   const Content = tabContent[activeTab];
 
