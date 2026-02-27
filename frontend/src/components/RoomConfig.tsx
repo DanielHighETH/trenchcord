@@ -139,7 +139,7 @@ export default function RoomConfig() {
     }
   };
 
-  const activeEnabledGuilds = config?.enabledGuilds ?? enabledGuilds;
+  const activeEnabledGuilds = config?.enabledGuilds ?? [];
 
   const filteredGuilds = guilds
     .filter((g) => activeEnabledGuilds.includes(g.id))
