@@ -51,6 +51,9 @@ export function processDiscordMessage(
   const guildId = rawMsg.guild_id ?? null;
   const resolvedGuildName = guildName !== undefined ? guildName : (guildId ? gateway.getGuildName(guildId) : null);
 
+  const displayName = rawMsg.author.global_name ?? rawMsg.author.username;
+  configStore.cacheUserName(rawMsg.author.id, displayName);
+
   return {
     id: rawMsg.id,
     channelId: rawMsg.channel_id,

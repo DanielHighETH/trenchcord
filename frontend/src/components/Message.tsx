@@ -1,6 +1,6 @@
 import { type ReactNode, Fragment, useState } from 'react';
 import { Eye } from 'lucide-react';
-import type { FrontendMessage, ContractLinkTemplates, ContractClickAction, BadgeClickAction } from '../types';
+import type { FrontendMessage, ContractLinkTemplates, ContractClickAction, BadgeClickAction, HighlightMode } from '../types';
 import ImageLightbox from './ImageLightbox';
 import UserContextMenu from './UserContextMenu';
 import { buildContractUrl, DEFAULT_LINK_TEMPLATES } from '../utils/contractUrl';
@@ -14,6 +14,7 @@ interface MessageProps {
   message: FrontendMessage;
   isCompact: boolean;
   guildColor?: string;
+  highlightMode?: HighlightMode;
   disableEmbeds?: boolean;
   evmAddressColor?: string;
   solAddressColor?: string;
@@ -176,7 +177,7 @@ function applyInlineFormatting(
     return (
       <span
         key={`ts-${i}`}
-        className="bg-discord-dark/60 px-1 py-0.5 rounded text-discord-text cursor-default"
+        className="bg-discord-embed-bg px-1 py-0.5 rounded text-discord-text cursor-default"
         title={fullDate}
       >
         {formatted}
@@ -280,7 +281,7 @@ function renderInlineMarkdown(content: string, contractAddresses: string[], ment
       );
     }
     return (
-      <code key={`code-${i}`} className="bg-discord-dark px-1 py-0.5 rounded text-[13px] font-mono">
+      <code key={`code-${i}`} className="bg-discord-embed-bg px-1 py-0.5 rounded text-[0.85em] font-mono">
         {codeText}
       </code>
     );
@@ -308,7 +309,7 @@ function renderContent(content: string, contractAddresses: string[], mentions: R
   const withoutCodeBlocks = content.replace(CODE_BLOCK_REGEX, (_match, code) => {
     const idx = codeBlocks.length;
     codeBlocks.push(
-      <pre key={`codeblock-${idx}`} className="bg-discord-dark rounded p-2 my-1 text-sm font-mono overflow-x-auto whitespace-pre-wrap">
+      <pre key={`codeblock-${idx}`} className="bg-discord-embed-bg border border-discord-dark/50 rounded p-2 my-1 text-sm font-mono overflow-x-auto whitespace-pre-wrap">
         <code>{code}</code>
       </pre>
     );
@@ -437,7 +438,7 @@ function ReactionPills({ reactions }: { reactions: FrontendMessage['reactions'] 
         return (
           <span
             key={`${r.emoji.id ?? r.emoji.name}-${i}`}
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-discord-dark/60 text-discord-text-muted text-xs border border-transparent hover:border-discord-text-muted/30 transition-colors"
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-discord-embed-bg text-discord-text-muted text-xs border border-transparent hover:border-discord-text-muted/30 transition-colors"
             title={r.emoji.name}
           >
             {emojiContent}
@@ -449,7 +450,7 @@ function ReactionPills({ reactions }: { reactions: FrontendMessage['reactions'] 
   );
 }
 
-export default function Message({ message, isCompact, guildColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, openInDiscordApp, badgeClickAction, onHideUser, onFocus, isFocused }: MessageProps) {
+export default function Message({ message, isCompact, guildColor, highlightMode = 'background', disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, openInDiscordApp, badgeClickAction, onHideUser, onFocus, isFocused }: MessageProps) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const addrColors: AddressColors = { evm: evmAddressColor ?? '#fee75c', sol: solAddressColor ?? '#14f195' };
   const templates: ContractLinkTemplates = contractLinkTemplates ?? DEFAULT_LINK_TEMPLATES;
@@ -469,12 +470,13 @@ export default function Message({ message, isCompact, guildColor, disableEmbeds,
     setContextMenu({ x: rect.left, y: rect.bottom + 4 });
   };
 
+  const useUsernameHighlight = highlightMode === 'username';
   const hasKeywordMatch = (message.matchedKeywords?.length ?? 0) > 0;
-  const highlightClass = message.isHighlighted
-    ? 'border-l-2 border-discord-blurple bg-discord-highlight pl-3'
+  const highlightClass = message.isHighlighted && !useUsernameHighlight
+    ? 'border-l-2 border-discord-blurple bg-discord-highlight'
     : hasKeywordMatch
-      ? 'border-l-2 border-orange-400 bg-orange-400/5 pl-3'
-      : 'pl-[18px]';
+      ? 'border-l-2 border-orange-400 bg-orange-400/5'
+      : '';
 
   const bgStyle = guildColor ? { backgroundColor: guildColor } : undefined;
 
@@ -517,7 +519,7 @@ export default function Message({ message, isCompact, guildColor, disableEmbeds,
   const channelBadge = openInDiscordApp ? (
     <span
       onClick={() => { window.location.href = discordUrl; }}
-      className="text-[11px] px-1.5 py-0.5 rounded bg-discord-dark/50 text-discord-text-muted font-medium shrink-0 hover:text-discord-text hover:bg-discord-dark/80 transition-colors cursor-pointer"
+      className="text-[0.6875rem] px-1.5 py-0.5 rounded bg-discord-embed-bg text-discord-text-muted font-medium shrink-0 hover:text-discord-text hover:bg-discord-dark transition-colors cursor-pointer"
       title="Open in Discord app"
     >
       {message.guildName ? `${message.guildName}` : ''}{message.guildName ? ' / ' : ''}#{message.channelName}
@@ -527,7 +529,7 @@ export default function Message({ message, isCompact, guildColor, disableEmbeds,
       href={discordUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-[11px] px-1.5 py-0.5 rounded bg-discord-dark/50 text-discord-text-muted font-medium shrink-0 hover:text-discord-text hover:bg-discord-dark/80 transition-colors cursor-pointer"
+      className="text-[0.6875rem] px-1.5 py-0.5 rounded bg-discord-embed-bg text-discord-text-muted font-medium shrink-0 hover:text-discord-text hover:bg-discord-dark transition-colors cursor-pointer"
       title="Open in Discord"
     >
       {message.guildName ? `${message.guildName}` : ''}{message.guildName ? ' / ' : ''}#{message.channelName}
@@ -536,11 +538,11 @@ export default function Message({ message, isCompact, guildColor, disableEmbeds,
 
   if (isCompact) {
     return (
-      <div className={`group/compact flex items-start pr-4 hover:bg-discord-hover/30 ${highlightClass} min-h-[1.375rem]`} style={bgStyle}>
-        <span className="w-[56px] shrink-0 text-[11px] text-discord-text-muted text-right pr-2 pt-[2px] opacity-0 group-hover/compact:opacity-100 select-none">
+      <div className={`group/compact relative hover:bg-discord-hover py-[2px] pr-[48px] pl-[72px] ${highlightClass} min-h-[1.375rem]`} style={bgStyle}>
+        <span className="absolute left-0 w-[72px] text-[0.6875rem] text-discord-text-muted text-right pr-4 pt-[2px] opacity-0 group-hover/compact:opacity-100 select-none leading-[1.375rem]">
           {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
-        <div className="text-[15px] text-discord-text leading-snug break-words min-w-0 flex-1">
+        <div className="text-base text-discord-text-normal leading-[1.375rem] break-words min-w-0">
           {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct)}
           <ReactionPills reactions={message.reactions} />
         </div>
@@ -549,18 +551,16 @@ export default function Message({ message, isCompact, guildColor, disableEmbeds,
   }
 
   return (
-    <div className={`flex pr-4 pt-3 pb-0.5 hover:bg-discord-hover/30 ${highlightClass} group`} style={bgStyle}>
-      <div className="w-[56px] flex justify-center shrink-0">
-        <img
-          src={getAvatarUrl(message.author.id, message.author.avatar)}
-          alt=""
-          className="w-10 h-10 rounded-full mt-0.5"
-        />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-baseline gap-2 flex-wrap">
+    <div className={`relative hover:bg-discord-hover mt-[1.0625rem] py-[2px] pr-[48px] pl-[72px] ${highlightClass} group`} style={bgStyle}>
+      <img
+        src={getAvatarUrl(message.author.id, message.author.avatar)}
+        alt=""
+        className="absolute left-4 w-10 h-10 rounded-full mt-[2px] cursor-pointer"
+      />
+      <div className="min-w-0">
+        <div className="flex items-baseline gap-1 flex-wrap leading-[1.375rem]">
           <span
-            className="font-medium text-[15px] hover:underline cursor-pointer leading-snug relative"
+            className="font-medium text-base hover:underline cursor-pointer relative mr-1"
             style={{ color: message.isHighlighted ? '#5865f2' : '#f2f3f5' }}
             onClick={handleNameClick}
             title={`${message.author.username} (${message.author.id})`}
@@ -572,7 +572,7 @@ export default function Message({ message, isCompact, guildColor, disableEmbeds,
               </span>
             )}
           </span>
-          <span className="text-[11px] text-discord-text-muted leading-snug">
+          <span className="text-xs text-discord-text-muted leading-[1.375rem] ml-1">
             {formatTimestamp(message.timestamp)}
           </span>
           {channelBadge}
@@ -609,7 +609,7 @@ export default function Message({ message, isCompact, guildColor, disableEmbeds,
 
         {message.referencedMessage && (
           <div
-            className="flex items-center gap-1.5 text-[13px] text-discord-text-muted mt-0.5 mb-0.5 cursor-pointer hover:text-discord-text transition-colors"
+            className="flex items-center gap-1.5 text-sm text-discord-text-muted mt-0.5 mb-0.5 cursor-pointer hover:text-discord-text transition-colors"
             onClick={() => {
               const el = document.getElementById(`msg-${message.referencedMessage!.id}`);
               if (el) {
@@ -627,7 +627,7 @@ export default function Message({ message, isCompact, guildColor, disableEmbeds,
           </div>
         )}
 
-        <div className="text-[15px] text-discord-text leading-[1.375rem] break-words whitespace-pre-wrap">
+        <div className="text-base text-discord-text-normal leading-[1.375rem] break-words whitespace-pre-wrap">
           {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct)}
         </div>
 
@@ -662,8 +662,8 @@ export default function Message({ message, isCompact, guildColor, disableEmbeds,
             {message.embeds.map((embed, i) => (
               <div
                 key={i}
-                className="border-l-4 rounded bg-discord-dark/60 p-3 max-w-[520px]"
-                style={{ borderColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : '#202225' }}
+                className="border-l-4 rounded bg-discord-embed-bg p-3 max-w-[520px]"
+                style={{ borderColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : '#1e1f22' }}
               >
                 {embed.author?.name && (
                   <div className="flex items-center gap-2 mb-1">

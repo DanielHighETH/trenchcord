@@ -41,10 +41,13 @@ const DEFAULT_CONFIG: AppConfig = {
   keywordAlertsEnabled: true,
   desktopNotifications: false,
   badgeClickAction: 'discord',
+  userNameCache: {},
 };
 
 class ConfigStore {
   private config: AppConfig;
+  private nameCacheDirty = false;
+  private nameCacheTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.config = this.load();
@@ -194,6 +197,22 @@ class ConfigStore {
   setTokens(tokens: string[]): void {
     this.config.discordTokens = tokens;
     this.save();
+  }
+
+  cacheUserName(userId: string, displayName: string): void {
+    if (!this.config.userNameCache) this.config.userNameCache = {};
+    if (this.config.userNameCache[userId] === displayName) return;
+    this.config.userNameCache[userId] = displayName;
+    this.nameCacheDirty = true;
+    if (!this.nameCacheTimer) {
+      this.nameCacheTimer = setTimeout(() => {
+        this.nameCacheTimer = null;
+        if (this.nameCacheDirty) {
+          this.nameCacheDirty = false;
+          this.save();
+        }
+      }, 5000);
+    }
   }
 }
 

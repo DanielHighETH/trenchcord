@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig } from '../types';
 import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle } from 'lucide-react';
@@ -34,15 +34,18 @@ export default function GlobalSettings() {
 
   const userNameMap = useMemo(() => {
     const map = new Map<string, string>();
+    if (config?.userNameCache) {
+      for (const [id, name] of Object.entries(config.userNameCache)) {
+        map.set(id, name);
+      }
+    }
     for (const msgs of Object.values(allMessages)) {
       for (const msg of msgs) {
-        if (!map.has(msg.author.id)) {
-          map.set(msg.author.id, msg.author.displayName);
-        }
+        map.set(msg.author.id, msg.author.displayName);
       }
     }
     return map;
-  }, [allMessages]);
+  }, [allMessages, config?.userNameCache]);
 
   const [section, setSection] = useState<Section>((settingsSection as Section) || 'tokens');
   const [globalUsers, setGlobalUsers] = useState<string[]>([]);
@@ -124,6 +127,66 @@ export default function GlobalSettings() {
     }
   }, [config]);
 
+  const hasUnsavedChanges = useMemo(() => {
+    if (!config) return false;
+    const arraysEqual = (a: string[], b: string[]) => a.length === b.length && a.every((v, i) => v === b[i]);
+    const kpEqual = (a: KeywordPattern[], b: KeywordPattern[]) =>
+      a.length === b.length && a.every((v, i) => v.pattern === b[i].pattern && v.matchMode === b[i].matchMode && v.label === b[i].label);
+    const objEqual = (a: Record<string, string>, b: Record<string, string>) => {
+      const aKeys = Object.keys(a), bKeys = Object.keys(b);
+      return aKeys.length === bKeys.length && aKeys.every((k) => a[k] === b[k]);
+    };
+
+    return (
+      !arraysEqual(globalUsers, config.globalHighlightedUsers) ||
+      contractDetection !== config.contractDetection ||
+      !objEqual(guildColors, config.guildColors ?? {}) ||
+      !arraysEqual(enabledGuilds, config.enabledGuilds ?? []) ||
+      evmAddressColor !== (config.evmAddressColor ?? '#fee75c') ||
+      solAddressColor !== (config.solAddressColor ?? '#14f195') ||
+      openInDiscordApp !== (config.openInDiscordApp ?? false) ||
+      messageSounds !== (config.messageSounds ?? false) ||
+      JSON.stringify(soundSettings) !== JSON.stringify(config.soundSettings ? {
+        highlight: { ...defaultSoundConfig, ...config.soundSettings.highlight },
+        contractAlert: { ...defaultSoundConfig, ...config.soundSettings.contractAlert },
+        keywordAlert: { ...defaultSoundConfig, ...config.soundSettings.keywordAlert },
+      } : { highlight: defaultSoundConfig, contractAlert: defaultSoundConfig, keywordAlert: defaultSoundConfig }) ||
+      pushoverEnabled !== (config.pushover?.enabled ?? false) ||
+      pushoverAppToken !== (config.pushover?.appToken ?? '') ||
+      pushoverUserKey !== (config.pushover?.userKey ?? '') ||
+      solPlatform !== (config.contractLinkTemplates?.solPlatform ?? 'axiom') ||
+      evmPlatform !== (config.contractLinkTemplates?.evmPlatform ?? 'gmgn') ||
+      customSolUrl !== (config.contractLinkTemplates?.sol ?? '') ||
+      customEvmUrl !== (config.contractLinkTemplates?.evm ?? '') ||
+      contractClickAction !== (config.contractClickAction ?? 'copy_open') ||
+      autoOpenHighlightedContracts !== (config.autoOpenHighlightedContracts ?? false) ||
+      !kpEqual(globalKeywordPatterns, config.globalKeywordPatterns ?? []) ||
+      keywordAlertsEnabled !== (config.keywordAlertsEnabled ?? true) ||
+      desktopNotifications !== (config.desktopNotifications ?? false) ||
+      badgeClickAction !== (config.badgeClickAction ?? 'discord')
+    );
+  }, [config, globalUsers, contractDetection, guildColors, enabledGuilds, evmAddressColor, solAddressColor,
+    openInDiscordApp, messageSounds, soundSettings, pushoverEnabled, pushoverAppToken, pushoverUserKey,
+    solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, autoOpenHighlightedContracts,
+    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasUnsavedChanges]);
+
+  const guardNavigation = useCallback((action: () => void) => {
+    if (hasUnsavedChanges) {
+      if (window.confirm('You have unsaved changes. Are you sure you want to leave without saving?')) {
+        action();
+      }
+    } else {
+      action();
+    }
+  }, [hasUnsavedChanges]);
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -191,7 +254,7 @@ export default function GlobalSettings() {
       <div className="w-60 bg-discord-sidebar/50 border-r border-discord-divider flex flex-col shrink-0">
         <div className="px-4 pt-5 pb-3 flex items-center gap-2">
           <button
-            onClick={() => setActiveView('chat')}
+            onClick={() => guardNavigation(() => setActiveView('chat'))}
             className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-white transition-colors"
             title="Back to chat"
           >
@@ -203,7 +266,7 @@ export default function GlobalSettings() {
           {SECTIONS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => setSection(id)}
+              onClick={() => { if (id !== section) guardNavigation(() => setSection(id)); }}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded text-sm text-left transition-colors ${
                 section === id
                   ? 'bg-discord-hover text-white'
@@ -336,24 +399,6 @@ export default function GlobalSettings() {
                         value={openInDiscordApp}
                         onChange={setOpenInDiscordApp}
                         label="Clicking a channel badge opens the message directly in the Discord app"
-                      />
-                    </div>
-
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Desktop Notifications</h4>
-                      <Toggle
-                        value={desktopNotifications}
-                        onChange={async (v) => {
-                          if (v) {
-                            const perm = await requestNotificationPermission();
-                            if (perm === 'denied') {
-                              alert('Notification permission was denied. Please allow notifications for this site in your browser settings, then try again.');
-                              return;
-                            }
-                          }
-                          setDesktopNotifications(v);
-                        }}
-                        label="Show browser notifications for highlighted users and keyword matches (when tab is not focused)"
                       />
                     </div>
 
@@ -551,6 +596,24 @@ export default function GlobalSettings() {
                   <h3 className="text-lg font-semibold text-white mb-4">Sounds & Notifications</h3>
 
                   <div className="space-y-5">
+                    <div className="p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-sm font-semibold text-white mb-2">Desktop Notifications</h4>
+                      <Toggle
+                        value={desktopNotifications}
+                        onChange={async (v) => {
+                          if (v) {
+                            const perm = await requestNotificationPermission();
+                            if (perm === 'denied') {
+                              alert('Notification permission was denied. Please allow notifications for this site in your browser settings, then try again.');
+                              return;
+                            }
+                          }
+                          setDesktopNotifications(v);
+                        }}
+                        label="Show browser notifications for highlighted users and keyword matches (when tab is not focused)"
+                      />
+                    </div>
+
                     <div className="p-4 bg-discord-sidebar rounded-lg">
                       <h4 className="text-sm font-semibold text-white mb-3">Sound Settings</h4>
                       <Toggle
@@ -1114,7 +1177,7 @@ export default function GlobalSettings() {
                         </div>
                         <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
                           <p className="font-medium text-white text-xs mb-1">Desktop Notifications</p>
-                          <p className="text-xs text-discord-text-muted">Enable in Settings &gt; General. Browser notifications appear when the tab is not focused and a highlighted user or keyword match is detected.</p>
+                          <p className="text-xs text-discord-text-muted">Enable in Settings &gt; Sounds &amp; Notifications. Browser notifications appear when the tab is not focused and a highlighted user or keyword match is detected.</p>
                         </div>
                         <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
                           <p className="font-medium text-white text-xs mb-1">Pushover</p>
@@ -1295,14 +1358,33 @@ export default function GlobalSettings() {
         </div>
 
         {/* Save bar */}
-        <div className="border-t border-discord-divider px-8 py-3 flex items-center justify-end gap-3 shrink-0 bg-discord-dark">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-5 py-2 bg-discord-blurple hover:bg-discord-blurple-hover disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm text-white font-medium transition-colors"
-          >
-            {saving ? 'Saving...' : 'Save Settings'}
-          </button>
+        <div className={`border-t px-8 py-3 flex items-center justify-between gap-3 shrink-0 transition-colors ${
+          hasUnsavedChanges ? 'border-discord-yellow/30 bg-discord-yellow/5' : 'border-discord-divider bg-discord-dark'
+        }`}>
+          <span className={`text-sm transition-opacity ${hasUnsavedChanges ? 'opacity-100 text-discord-yellow' : 'opacity-0'}`}>
+            You have unsaved changes
+          </span>
+          <div className="flex items-center gap-3">
+            {hasUnsavedChanges && (
+              <button
+                onClick={() => { if (config) fetchConfig(); }}
+                className="px-4 py-2 rounded text-sm text-discord-text-muted hover:text-white font-medium transition-colors"
+              >
+                Reset
+              </button>
+            )}
+            <button
+              onClick={handleSave}
+              disabled={saving || !hasUnsavedChanges}
+              className={`px-5 py-2 rounded text-sm text-white font-medium transition-colors ${
+                hasUnsavedChanges
+                  ? 'bg-discord-green hover:bg-discord-green/80'
+                  : 'bg-discord-blurple hover:bg-discord-blurple-hover disabled:opacity-50 disabled:cursor-not-allowed'
+              }`}
+            >
+              {saving ? 'Saving...' : 'Save Settings'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

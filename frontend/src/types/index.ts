@@ -6,6 +6,8 @@ export interface ChannelRef {
   disableEmbeds?: boolean;
 }
 
+export type HighlightMode = 'background' | 'username';
+
 export type KeywordMatchMode = 'includes' | 'exact' | 'regex';
 
 export interface KeywordPattern {
@@ -24,6 +26,7 @@ export interface Room {
   filterEnabled: boolean;
   color?: string | null;
   keywordPatterns?: KeywordPattern[];
+  highlightMode?: HighlightMode;
 }
 
 export interface PushoverConfig {
@@ -76,6 +79,7 @@ export interface AppConfig {
   keywordAlertsEnabled: boolean;
   desktopNotifications: boolean;
   badgeClickAction: BadgeClickAction;
+  userNameCache: Record<string, string>;
 }
 
 export interface AuthStatus {

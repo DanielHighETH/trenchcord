@@ -20,8 +20,8 @@ export default function Sidebar() {
   return (
     <div className="w-60 bg-discord-sidebar flex flex-col h-full">
       {/* Header */}
-      <div className="h-12 px-4 flex items-center shadow-md border-b border-discord-darker/50 shrink-0">
-        <h1 className="text-[15px] font-semibold text-white truncate">Trenchcord</h1>
+      <div className="h-12 px-4 flex items-center shadow-[0_1px_0_rgba(0,0,0,0.2),0_1.5px_0_rgba(0,0,0,0.05),0_2px_0_rgba(0,0,0,0.05)] border-b border-discord-darker/50 shrink-0">
+        <h1 className="text-base font-semibold text-discord-header-primary truncate">Trenchcord</h1>
         <div className="ml-auto flex items-center gap-1">
           <div
             className={`w-2 h-2 rounded-full ${connected ? 'bg-discord-green' : 'bg-discord-red'}`}
@@ -34,22 +34,22 @@ export default function Sidebar() {
       <div className="flex-1 overflow-y-auto pt-4 px-2">
         {/* Contract Dashboard link */}
         <div
-          className={`flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer mb-2 ${
+          className={`flex items-center gap-1.5 px-2 py-[6px] rounded cursor-pointer mb-2 ${
             activeView === 'contracts'
-              ? 'bg-discord-hover text-white'
-              : 'text-discord-channel-icon hover:bg-discord-hover/50 hover:text-discord-text'
+              ? 'bg-discord-hover-light text-discord-header-primary font-medium'
+              : 'text-discord-channel-icon hover:bg-discord-hover hover:text-discord-header-secondary'
           }`}
           onClick={() => setActiveView('contracts')}
         >
-          <FileText size={18} className="shrink-0 opacity-60" />
-          <span className="text-[15px] truncate flex-1">Contracts</span>
+          <FileText size={20} className="shrink-0 opacity-70" />
+          <span className="text-base leading-5 truncate flex-1">Contracts</span>
           {contracts.length > 0 && (
             <span className="text-[10px] text-discord-text-muted">{contracts.length}</span>
           )}
         </div>
 
         <div className="flex items-center justify-between px-2 mb-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted">
+          <span className="text-xs font-bold uppercase tracking-[0.02em] text-discord-channel-icon">
             Rooms
           </span>
           <button
@@ -81,15 +81,15 @@ export default function Sidebar() {
           return (
             <div
               key={room.id}
-              className={`group flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer mb-0.5 ${
+              className={`group flex items-center gap-1.5 px-2 py-[6px] rounded cursor-pointer mb-[1px] ${
                 isActive
-                  ? 'bg-discord-hover text-white'
-                  : 'text-discord-channel-icon hover:bg-discord-hover/50 hover:text-discord-text'
+                  ? 'bg-discord-hover-light text-discord-header-primary font-medium'
+                  : 'text-discord-channel-icon hover:bg-discord-hover hover:text-discord-header-secondary'
               }`}
               onClick={() => setActiveRoom(room.id)}
             >
-              <Hash size={18} className="shrink-0 opacity-60" />
-              <span className="text-[15px] truncate flex-1">{room.name}</span>
+              <Hash size={20} className="shrink-0 opacity-70" />
+              <span className="text-base leading-5 truncate flex-1">{room.name}</span>
               {msgCount > 0 && (
                 <span className="text-[10px] text-discord-text-muted">{msgCount}</span>
               )}
@@ -138,7 +138,7 @@ export default function Sidebar() {
           return (
             <>
               <div className="flex items-center px-2 mb-1 mt-4">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted">
+                <span className="text-xs font-bold uppercase tracking-[0.02em] text-discord-channel-icon">
                   Direct Messages
                 </span>
               </div>
@@ -152,15 +152,15 @@ export default function Sidebar() {
                 return (
                   <div
                     key={channelId}
-                    className={`group flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer mb-0.5 ${
+                    className={`group flex items-center gap-1.5 px-2 py-[6px] rounded cursor-pointer mb-[1px] ${
                       isActive
-                        ? 'bg-discord-hover text-white'
-                        : 'text-discord-channel-icon hover:bg-discord-hover/50 hover:text-discord-text'
+                        ? 'bg-discord-hover-light text-discord-header-primary font-medium'
+                        : 'text-discord-channel-icon hover:bg-discord-hover hover:text-discord-header-secondary'
                     }`}
                     onClick={() => setActiveRoom(dmRoomId)}
                   >
-                    <MessageCircle size={18} className="shrink-0 opacity-60" />
-                    <span className="text-[15px] truncate flex-1">{recipientNames}</span>
+                    <MessageCircle size={20} className="shrink-0 opacity-70" />
+                    <span className="text-base leading-5 truncate flex-1">{recipientNames}</span>
                     {msgCount > 0 && (
                       <span className="text-[10px] text-discord-text-muted">{msgCount}</span>
                     )}
@@ -173,21 +173,21 @@ export default function Sidebar() {
       </div>
 
       {/* Footer */}
-      <div className="h-[52px] px-2 flex items-center gap-1 shrink-0 border-t border-discord-darker/50">
+      <div className="h-[52px] px-2 flex items-center gap-1 shrink-0 bg-discord-sidebar border-t border-discord-darker/30">
         <button
           onClick={() => setActiveView('settings')}
           className={`flex items-center gap-2 text-sm transition-colors flex-1 px-2 py-1.5 rounded ${
             activeView === 'settings'
-              ? 'text-white'
-              : 'text-discord-text-muted hover:text-white hover:bg-discord-hover/50'
+              ? 'text-discord-header-primary bg-discord-hover-light'
+              : 'text-discord-header-secondary hover:text-discord-header-primary hover:bg-discord-hover'
           }`}
         >
-          <Settings size={16} className={activeView === 'settings' ? 'text-discord-text' : ''} />
+          <Settings size={18} className={activeView === 'settings' ? 'text-discord-text' : ''} />
           <span>Settings</span>
         </button>
         <button
           onClick={() => setActiveView('settings', 'help')}
-          className="p-1.5 rounded text-discord-text-muted hover:text-white hover:bg-discord-hover/50 transition-colors"
+          className="p-1.5 rounded text-discord-header-secondary hover:text-discord-header-primary hover:bg-discord-hover transition-colors"
           title="Help & Features"
         >
           <HelpCircle size={16} />

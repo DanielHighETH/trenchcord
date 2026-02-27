@@ -62,18 +62,18 @@ export default function UserContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-[100] bg-discord-dark border border-discord-divider rounded-lg shadow-2xl py-1.5 min-w-[220px] animate-in fade-in zoom-in-95 duration-100"
+      className="fixed z-[100] bg-discord-darker rounded-md shadow-[0_8px_16px_rgba(0,0,0,0.24)] py-[6px] px-[6px] min-w-[220px]"
       style={{ left: position.x, top: position.y }}
     >
-      <div className="px-3 py-1.5 text-[11px] text-discord-text-muted truncate border-b border-discord-divider mb-1">
+      <div className="px-2 py-1.5 text-xs text-discord-text-muted truncate border-b border-white/[0.06] mb-1">
         {displayName}
       </div>
 
       <button
         onClick={() => { onHide(); onClose(); }}
-        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-discord-text hover:bg-discord-blurple hover:text-white transition-colors text-left"
+        className="w-full flex items-center gap-2 px-2 py-[6px] text-sm text-discord-header-secondary hover:bg-discord-blurple hover:text-white rounded-sm transition-colors text-left"
       >
-        <EyeOff size={14} className="shrink-0" />
+        <EyeOff size={16} className="shrink-0" />
         <div className="min-w-0">
           <div>Hide User From Channel</div>
           <div className="text-[10px] text-discord-text-muted truncate">{channelLabel}</div>
@@ -82,13 +82,13 @@ export default function UserContextMenu({
 
       <button
         onClick={() => { onCopyId(); onClose(); }}
-        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-discord-text hover:bg-discord-blurple hover:text-white transition-colors text-left"
+        className="w-full flex items-center gap-2 px-2 py-[6px] text-sm text-discord-header-secondary hover:bg-discord-blurple hover:text-white rounded-sm transition-colors text-left"
       >
-        <Copy size={14} className="shrink-0" />
+        <Copy size={16} className="shrink-0" />
         <span>Copy User ID</span>
       </button>
 
-      <div className="border-t border-discord-divider my-1" />
+      <div className="border-t border-white/[0.06] my-1 mx-[-2px]" />
 
       <button
         onClick={() => {
@@ -101,9 +101,9 @@ export default function UserContextMenu({
           }
           onClose();
         }}
-        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-discord-text hover:bg-discord-blurple hover:text-white transition-colors text-left"
+        className="w-full flex items-center gap-2 px-2 py-[6px] text-sm text-discord-header-secondary hover:bg-discord-blurple hover:text-white rounded-sm transition-colors text-left"
       >
-        <MessageSquare size={14} className="shrink-0" />
+        <MessageSquare size={16} className="shrink-0" />
         <span>DM User</span>
       </button>
     </div>

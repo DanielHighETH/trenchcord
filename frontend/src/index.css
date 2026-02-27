@@ -19,26 +19,37 @@ body,
 body {
   font-family: 'gg sans', 'Noto Sans', 'Helvetica Neue', Helvetica, Arial,
     sans-serif;
+  font-size: 16px;
+  line-height: 1.375;
   color: #dbdee1;
   background-color: #313338;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 ::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: #2b2d31;
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1e1f22;
+  background: #1a1b1e;
   border-radius: 4px;
+  min-height: 40px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: #111214;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 @keyframes slideIn {

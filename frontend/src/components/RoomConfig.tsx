@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
-import type { ChannelRef, KeywordPattern, KeywordMatchMode } from '../types';
-import { X, Search, Plus, Trash2, Hash, MessageCircle, Users, Filter } from 'lucide-react';
+import type { ChannelRef, KeywordPattern, KeywordMatchMode, HighlightMode } from '../types';
+import { X, Search, Plus, Trash2, Hash, MessageCircle, Users, Filter, AlertTriangle, Palette } from 'lucide-react';
 
 export default function RoomConfig() {
   const configModalOpen = useAppStore((s) => s.configModalOpen);
@@ -16,19 +16,23 @@ export default function RoomConfig() {
   const fetchGuilds = useAppStore((s) => s.fetchGuilds);
   const fetchDMChannels = useAppStore((s) => s.fetchDMChannels);
   const fetchConfig = useAppStore((s) => s.fetchConfig);
+  const updateConfig = useAppStore((s) => s.updateConfig);
   const allMessages = useAppStore((s) => s.messages);
 
   const userNameMap = useMemo(() => {
     const map = new Map<string, string>();
+    if (config?.userNameCache) {
+      for (const [id, name] of Object.entries(config.userNameCache)) {
+        map.set(id, name);
+      }
+    }
     for (const msgs of Object.values(allMessages)) {
       for (const msg of msgs) {
-        if (!map.has(msg.author.id)) {
-          map.set(msg.author.id, msg.author.displayName);
-        }
+        map.set(msg.author.id, msg.author.displayName);
       }
     }
     return map;
-  }, [allMessages]);
+  }, [allMessages, config?.userNameCache]);
 
   const [name, setName] = useState('');
   const [selectedChannels, setSelectedChannels] = useState<ChannelRef[]>([]);
@@ -41,6 +45,7 @@ export default function RoomConfig() {
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<'channels' | 'users' | 'filter' | 'keywords'>('channels');
   const [roomKeywordPatterns, setRoomKeywordPatterns] = useState<KeywordPattern[]>([]);
+  const [highlightMode, setHighlightMode] = useState<HighlightMode>('background');
   const [newKeywordPattern, setNewKeywordPattern] = useState('');
   const [newKeywordMatchMode, setNewKeywordMatchMode] = useState<KeywordMatchMode>('includes');
   const [newKeywordLabel, setNewKeywordLabel] = useState('');
@@ -63,6 +68,7 @@ export default function RoomConfig() {
       setFilterEnabled(editingRoom.filterEnabled ?? false);
       setRoomColor(editingRoom.color ?? '');
       setRoomKeywordPatterns([...(editingRoom.keywordPatterns ?? [])]);
+      setHighlightMode(editingRoom.highlightMode ?? 'background');
     } else {
       setName('');
       setSelectedChannels([]);
@@ -71,6 +77,7 @@ export default function RoomConfig() {
       setFilterEnabled(false);
       setRoomColor('');
       setRoomKeywordPatterns([]);
+      setHighlightMode('background');
     }
     setSearch('');
     setNewUserId('');
@@ -128,7 +135,7 @@ export default function RoomConfig() {
     setSaving(true);
     try {
       if (editingRoom) {
-        await updateRoom(editingRoom.id, { name, channels: selectedChannels, highlightedUsers, filteredUsers, filterEnabled, color: roomColor || null, keywordPatterns: roomKeywordPatterns });
+        await updateRoom(editingRoom.id, { name, channels: selectedChannels, highlightedUsers, filteredUsers, filterEnabled, color: roomColor || null, keywordPatterns: roomKeywordPatterns, highlightMode });
       } else {
         if (!name.trim()) return;
         await createRoom(name.trim(), selectedChannels, highlightedUsers, roomColor || null, filteredUsers, filterEnabled);
@@ -304,6 +311,67 @@ export default function RoomConfig() {
                 </div>
               )}
 
+              {/* Guild message colors */}
+              {(() => {
+                const roomGuildIds = [...new Set(selectedChannels.map((c) => c.guildId).filter(Boolean))] as string[];
+                if (roomGuildIds.length === 0) return null;
+                const guildColors = config?.guildColors ?? {};
+                return (
+                  <div className="mb-4 border border-discord-divider rounded p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2 flex items-center gap-1.5">
+                      <Palette size={12} />
+                      Guild Message Colors
+                    </div>
+                    <p className="text-xs text-discord-text-muted mb-2">
+                      Color-code messages by server. Changes apply globally.
+                    </p>
+                    <div className="space-y-1.5">
+                      {roomGuildIds.map((guildId) => {
+                        const guildName = selectedChannels.find((c) => c.guildId === guildId)?.guildName
+                          ?? guilds.find((g) => g.id === guildId)?.name
+                          ?? guildId;
+                        return (
+                          <div key={guildId} className="flex items-center gap-2.5 px-2 py-1.5 rounded bg-discord-dark/50">
+                            <input
+                              type="color"
+                              value={guildColors[guildId] || '#313338'}
+                              onChange={(e) => {
+                                updateConfig({ guildColors: { ...guildColors, [guildId]: e.target.value } });
+                              }}
+                              className="w-5 h-5 rounded cursor-pointer border border-discord-divider bg-transparent shrink-0"
+                            />
+                            <span className="text-sm text-discord-text flex-1 truncate">{guildName}</span>
+                            <input
+                              type="text"
+                              value={guildColors[guildId] || ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const next = { ...guildColors };
+                                if (!val) { delete next[guildId]; } else { next[guildId] = val; }
+                                updateConfig({ guildColors: next });
+                              }}
+                              placeholder="default"
+                              className="w-20 bg-discord-dark border-none rounded px-2 py-1 text-[11px] text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple font-mono"
+                            />
+                            {guildColors[guildId] && (
+                              <button
+                                onClick={() => {
+                                  const { [guildId]: _, ...rest } = guildColors;
+                                  updateConfig({ guildColors: rest });
+                                }}
+                                className="text-discord-text-muted hover:text-white shrink-0"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Search */}
               <div className="relative mb-4">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-discord-text-muted" />
@@ -408,6 +476,40 @@ export default function RoomConfig() {
                 Add Discord user IDs to highlight in this room. Their messages will be visually
                 highlighted and you'll get alerts when they send messages.
               </p>
+
+              <div className="mb-4">
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
+                  Highlight Style
+                </label>
+                <div className="flex rounded overflow-hidden border border-discord-divider">
+                  <button
+                    onClick={() => setHighlightMode('background')}
+                    className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+                      highlightMode === 'background'
+                        ? 'bg-discord-blurple text-white'
+                        : 'bg-discord-dark text-discord-text-muted hover:text-discord-text'
+                    }`}
+                  >
+                    Background
+                  </button>
+                  <button
+                    onClick={() => setHighlightMode('username')}
+                    className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+                      highlightMode === 'username'
+                        ? 'bg-discord-blurple text-white'
+                        : 'bg-discord-dark text-discord-text-muted hover:text-discord-text'
+                    }`}
+                  >
+                    Username Color
+                  </button>
+                </div>
+                <p className="text-xs text-discord-text-muted mt-1.5">
+                  {highlightMode === 'background'
+                    ? 'Highlighted messages get a colored background and left border.'
+                    : 'Only the username is colored (like a Discord role) — no background change.'}
+                </p>
+              </div>
+
               <div className="flex gap-2 mb-4">
                 <input
                   type="text"
@@ -537,6 +639,35 @@ export default function RoomConfig() {
 
           {tab === 'keywords' && (
             <>
+              {/* Global keyword alerts toggle */}
+              <div className={`mb-4 rounded-lg p-3 ${config?.keywordAlertsEnabled ? 'bg-discord-dark/50' : 'bg-discord-red/10 border border-discord-red/20'}`}>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <div
+                    className={`w-10 h-5 rounded-full transition-colors relative shrink-0 ${
+                      config?.keywordAlertsEnabled ? 'bg-discord-green' : 'bg-discord-input'
+                    }`}
+                    onClick={async () => {
+                      await updateConfig({ keywordAlertsEnabled: !(config?.keywordAlertsEnabled ?? true) });
+                    }}
+                  >
+                    <div
+                      className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                        config?.keywordAlertsEnabled ? 'translate-x-5' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </div>
+                  <span className="text-sm text-discord-text">
+                    Keyword alerts {config?.keywordAlertsEnabled ? 'enabled' : 'disabled'}
+                  </span>
+                </label>
+                {!config?.keywordAlertsEnabled && (
+                  <div className="flex items-center gap-1.5 mt-2 text-xs text-discord-red">
+                    <AlertTriangle size={12} />
+                    <span>Keyword matching is disabled globally. Room keywords won't trigger until enabled.</span>
+                  </div>
+                )}
+              </div>
+
               <p className="text-sm text-discord-text-muted mb-2">
                 Add patterns to match against messages in this room. Use <strong className="text-discord-text">Contains</strong> for substring matches, <strong className="text-discord-text">Exact</strong> for whole-word matches, or <strong className="text-discord-text">Regex</strong> for advanced patterns. Matches trigger an orange highlight and alert.
               </p>

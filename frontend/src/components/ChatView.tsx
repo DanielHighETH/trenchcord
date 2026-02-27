@@ -264,17 +264,17 @@ export default function ChatView() {
   return (
     <div className="flex-1 flex flex-col min-w-0 relative" style={{ backgroundColor: activeRoom?.color || '#313338' }}>
       {/* Channel header */}
-      <div className="h-12 px-4 flex items-center shadow-md border-b border-discord-darker/50 shrink-0">
+      <div className="h-12 px-4 flex items-center shadow-[0_1px_0_rgba(0,0,0,0.2),0_1.5px_0_rgba(0,0,0,0.05),0_2px_0_rgba(0,0,0,0.05)] border-b border-discord-dark/60 shrink-0 bg-transparent z-10">
         {isDMView ? (
-          <MessageCircle size={20} className="text-discord-channel-icon mr-2" />
+          <MessageCircle size={24} className="text-discord-channel-icon mr-2 shrink-0" />
         ) : (
-          <Hash size={20} className="text-discord-channel-icon mr-2" />
+          <Hash size={24} className="text-discord-channel-icon mr-2 shrink-0" />
         )}
-        <span className="font-semibold text-[15px] text-white">
+        <span className="font-semibold text-base text-discord-header-primary truncate">
           {isDMView ? dmRecipientNames : activeRoom!.name}
         </span>
         {!isDMView && (
-          <span className="ml-3 text-sm text-discord-text-muted">
+          <span className="ml-3 text-sm text-discord-header-secondary truncate">
             {activeRoom!.channels.length} channel{activeRoom!.channels.length !== 1 ? 's' : ''}
           </span>
         )}
@@ -346,7 +346,7 @@ export default function ChatView() {
 
       {/* Search bar */}
       {searchOpen && (
-        <div className="px-4 py-2 border-b border-discord-darker/50 bg-discord-dark/60 shrink-0 flex items-center gap-2">
+        <div className="px-4 py-2 border-b border-discord-dark/60 bg-discord-embed-bg shrink-0 flex items-center gap-2">
           <Search size={16} className="text-discord-text-muted shrink-0" />
           <input
             ref={searchInputRef}
@@ -361,7 +361,7 @@ export default function ChatView() {
               if (e.key === 'Escape') closeSearch();
             }}
             placeholder="Search messages..."
-            className="flex-1 bg-discord-darker/80 text-discord-text text-sm px-3 py-1.5 rounded-md outline-none placeholder:text-discord-text-muted/60 focus:ring-1 focus:ring-discord-blurple/50"
+            className="flex-1 bg-discord-dark text-discord-text text-sm px-3 py-1.5 rounded outline-none placeholder:text-discord-text-muted/60"
             autoFocus
           />
           {trimmedSearch && searchResults && (
@@ -403,7 +403,7 @@ export default function ChatView() {
 
       {/* Hidden users panel */}
       {hiddenPanelOpen && channelHiddenUsers.length > 0 && (
-        <div className="border-b border-discord-divider bg-discord-dark/80 px-4 py-3 shrink-0">
+        <div className="border-b border-discord-dark/60 bg-discord-embed-bg px-4 py-3 shrink-0">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted">
               Hidden Users
@@ -445,7 +445,7 @@ export default function ChatView() {
       {/* Messages */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto py-4"
+        className="flex-1 overflow-y-auto"
         onScroll={checkNearBottom}
       >
         <div ref={contentRef}>
@@ -471,6 +471,7 @@ export default function ChatView() {
                   message={msg}
                   isCompact={isCompact}
                   guildColor={guildColor}
+                  highlightMode={activeRoom?.highlightMode ?? 'background'}
                   disableEmbeds={embedDisabledChannels.has(msg.channelId)}
                   evmAddressColor={config?.evmAddressColor ?? '#fee75c'}
                   solAddressColor={config?.solAddressColor ?? '#14f195'}
@@ -493,7 +494,7 @@ export default function ChatView() {
       {showScrollButton && roomMessages.length > 0 && (
         <button
           onClick={scrollToBottom}
-          className="absolute bottom-6 right-6 w-10 h-10 rounded-full bg-discord-dark border border-discord-divider flex items-center justify-center text-discord-text-muted hover:text-white hover:bg-discord-sidebar transition-colors shadow-lg"
+          className="absolute bottom-6 right-6 w-10 h-10 rounded-full bg-discord-dark border border-discord-dark flex items-center justify-center text-discord-text-muted hover:text-white hover:bg-discord-embed-bg transition-colors shadow-lg shadow-black/25"
           title="Jump to bottom"
         >
           <ArrowDown size={18} />
