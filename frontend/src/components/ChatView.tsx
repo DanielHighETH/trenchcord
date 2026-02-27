@@ -1,7 +1,7 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
 import Message from './Message';
-import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye } from 'lucide-react';
+import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown } from 'lucide-react';
 
 const SCROLL_THRESHOLD = 150;
 
@@ -29,6 +29,10 @@ export default function ChatView() {
   const setFocusFilter = useAppStore((s) => s.setFocusFilter);
   const clearFocusFilter = useAppStore((s) => s.clearFocusFilter);
   const [hiddenPanelOpen, setHiddenPanelOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const isDMView = activeRoomId?.startsWith('dm:') ?? false;
   const dmChannelId = isDMView ? activeRoomId!.slice(3) : null;
@@ -59,9 +63,27 @@ export default function ChatView() {
 
   const afterHidden = afterFilter.filter((msg) => !isUserHidden(msg));
 
-  const roomMessages = focusFilter
+  const afterFocus = focusFilter
     ? afterHidden.filter((msg) => msg.guildId === focusFilter.guildId && msg.channelId === focusFilter.channelId)
     : afterHidden;
+
+  const trimmedSearch = searchQuery.trim().toLowerCase();
+  const searchResults = useMemo(() => {
+    if (!searchOpen || !trimmedSearch) return null;
+    const matches: typeof afterFocus = [];
+    for (const msg of afterFocus) {
+      if (
+        msg.content.toLowerCase().includes(trimmedSearch) ||
+        msg.author.displayName.toLowerCase().includes(trimmedSearch) ||
+        msg.author.username.toLowerCase().includes(trimmedSearch)
+      ) {
+        matches.push(msg);
+      }
+    }
+    return matches;
+  }, [afterFocus, trimmedSearch, searchOpen]);
+
+  const roomMessages = searchResults ?? afterFocus;
 
   const channelHiddenUsers = activeRoom
     ? activeRoom.channels.flatMap((ch) => {
@@ -90,6 +112,50 @@ export default function ChatView() {
       setFocusFilter({ guildId, channelId, guildName, channelName });
     }
   };
+
+  const openSearch = useCallback(() => {
+    setSearchOpen(true);
+    requestAnimationFrame(() => searchInputRef.current?.focus());
+  }, []);
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQuery('');
+    setActiveMatchIndex(0);
+  }, []);
+
+  const jumpToMatch = useCallback((index: number) => {
+    if (!searchResults || searchResults.length === 0) return;
+    const clamped = ((index % searchResults.length) + searchResults.length) % searchResults.length;
+    setActiveMatchIndex(clamped);
+    const msg = searchResults[clamped];
+    const el = document.getElementById(`msg-${msg.id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-1', 'ring-discord-blurple');
+      setTimeout(() => el.classList.remove('ring-1', 'ring-discord-blurple'), 2000);
+    }
+  }, [searchResults]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        if (searchOpen) {
+          searchInputRef.current?.focus();
+          searchInputRef.current?.select();
+        } else {
+          openSearch();
+        }
+      }
+      if (e.key === 'Escape' && searchOpen) {
+        e.preventDefault();
+        closeSearch();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [searchOpen, openSearch, closeSearch]);
 
   const checkNearBottom = useCallback(() => {
     const el = scrollContainerRef.current;
@@ -151,7 +217,8 @@ export default function ChatView() {
     scrollToEnd();
     requestAnimationFrame(scrollToEnd);
     clearFocusFilter();
-  }, [activeRoomId, clearFocusFilter, scrollToEnd]);
+    closeSearch();
+  }, [activeRoomId, clearFocusFilter, scrollToEnd, closeSearch]);
 
   useEffect(() => {
     return () => clearTimeout(scrollTimeoutRef.current);
@@ -256,6 +323,15 @@ export default function ChatView() {
               {channelHiddenUsers.length} hidden
             </button>
           )}
+          <button
+            onClick={searchOpen ? closeSearch : openSearch}
+            className={`transition-colors ${
+              searchOpen ? 'text-white' : 'text-discord-channel-icon hover:text-discord-text'
+            }`}
+            title="Search messages (Ctrl+F)"
+          >
+            <Search size={18} />
+          </button>
           {activeRoom && (
             <button
               onClick={() => openConfigModal(activeRoom)}
@@ -267,6 +343,63 @@ export default function ChatView() {
           )}
         </div>
       </div>
+
+      {/* Search bar */}
+      {searchOpen && (
+        <div className="px-4 py-2 border-b border-discord-darker/50 bg-discord-dark/60 shrink-0 flex items-center gap-2">
+          <Search size={16} className="text-discord-text-muted shrink-0" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setActiveMatchIndex(0); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                if (e.shiftKey) jumpToMatch(activeMatchIndex - 1);
+                else jumpToMatch(activeMatchIndex + 1);
+              }
+              if (e.key === 'Escape') closeSearch();
+            }}
+            placeholder="Search messages..."
+            className="flex-1 bg-discord-darker/80 text-discord-text text-sm px-3 py-1.5 rounded-md outline-none placeholder:text-discord-text-muted/60 focus:ring-1 focus:ring-discord-blurple/50"
+            autoFocus
+          />
+          {trimmedSearch && searchResults && (
+            <div className="flex items-center gap-1 shrink-0">
+              <span className="text-[12px] text-discord-text-muted tabular-nums">
+                {searchResults.length === 0
+                  ? 'No results'
+                  : `${searchResults.length} result${searchResults.length !== 1 ? 's' : ''}`}
+              </span>
+              {searchResults.length > 1 && (
+                <>
+                  <button
+                    onClick={() => jumpToMatch(activeMatchIndex - 1)}
+                    className="p-0.5 text-discord-text-muted hover:text-white transition-colors"
+                    title="Previous match (Shift+Enter)"
+                  >
+                    <ChevronUp size={16} />
+                  </button>
+                  <button
+                    onClick={() => jumpToMatch(activeMatchIndex + 1)}
+                    className="p-0.5 text-discord-text-muted hover:text-white transition-colors"
+                    title="Next match (Enter)"
+                  >
+                    <ChevronDown size={16} />
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          <button
+            onClick={closeSearch}
+            className="p-0.5 text-discord-text-muted hover:text-white transition-colors shrink-0"
+            title="Close search (Esc)"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       {/* Hidden users panel */}
       {hiddenPanelOpen && channelHiddenUsers.length > 0 && (
@@ -318,7 +451,7 @@ export default function ChatView() {
         <div ref={contentRef}>
           {roomMessages.length === 0 && (
             <div className="flex items-center justify-center h-full text-discord-text-muted text-sm">
-              Waiting for messages...
+              {searchOpen && trimmedSearch ? 'No messages match your search.' : 'Waiting for messages...'}
             </div>
           )}
 

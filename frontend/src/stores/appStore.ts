@@ -3,7 +3,7 @@ import type { Room, FrontendMessage, Alert, AppConfig, GuildInfo, DMChannel, Con
 import { isDemoMode, createDemoOverrides } from '../demo/demoStore';
 
 const API_BASE = '/api';
-const MAX_MESSAGES_PER_ROOM = 500;
+const MAX_MESSAGES_PER_ROOM = 1000;
 const MAX_ALERTS = 50;
 const MAX_CONTRACTS = 2000;
 
