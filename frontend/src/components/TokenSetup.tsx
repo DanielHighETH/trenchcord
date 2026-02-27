@@ -49,7 +49,8 @@ export default function TokenSetup() {
               value={token}
               onChange={(e) => setToken(e.target.value)}
               placeholder="Paste your Discord token here"
-              autoComplete="off"
+              name="trenchcord-token-field"
+              autoComplete="one-time-code"
               data-1p-ignore
               data-lpignore="true"
               data-form-type="other"

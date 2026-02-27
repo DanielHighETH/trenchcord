@@ -275,9 +275,10 @@ export default function GlobalSettings() {
                           }
                         }}
                         placeholder="Paste Discord token..."
+                        name="trenchcord-token-field"
                         className="w-full bg-discord-sidebar border-none rounded px-3 py-2 pr-9 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple font-mono"
                         disabled={addingToken}
-                        autoComplete="off"
+                        autoComplete="one-time-code"
                         data-1p-ignore
                         data-lpignore="true"
                         data-form-type="other"
