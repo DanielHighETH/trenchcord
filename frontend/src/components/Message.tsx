@@ -542,10 +542,140 @@ export default function Message({ message, isCompact, guildColor, highlightMode 
         <span className="absolute left-0 w-[72px] text-[0.6875rem] text-discord-text-muted text-right pr-4 pt-[2px] opacity-0 group-hover/compact:opacity-100 select-none leading-[1.375rem]">
           {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
-        <div className="text-base text-discord-text-normal leading-[1.375rem] break-words min-w-0">
-          {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct)}
+        <div className="min-w-0">
+          {message.referencedMessage && (
+            <div
+              className="flex items-center gap-1 text-xs text-discord-text-muted mb-0.5 cursor-pointer hover:text-discord-text-normal max-w-full overflow-hidden"
+              onClick={() => {
+                const el = document.getElementById(`msg-${message.referencedMessage!.id}`);
+                if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('bg-discord-hover'); setTimeout(() => el.classList.remove('bg-discord-hover'), 2000); }
+              }}
+            >
+              <div className="w-8 h-3 border-l-2 border-t-2 border-discord-text-muted/30 rounded-tl ml-1 shrink-0" />
+              <span className="font-medium text-discord-text-muted shrink-0">{message.referencedMessage.author}</span>
+              <span className="truncate opacity-70">
+                {renderInlineMarkdown(message.referencedMessage.content, [], message.referencedMessage.mentions ?? {}, addrColors)}
+              </span>
+            </div>
+          )}
+
+          <div className="text-base text-discord-text-normal leading-[1.375rem] break-words">
+            {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct)}
+          </div>
+
+          {message.attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-1">
+              {message.attachments.map((att) =>
+                att.content_type?.startsWith('image/') ? (
+                  <img
+                    key={att.id}
+                    src={att.proxy_url}
+                    alt={att.filename}
+                    className="max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => setLightboxSrc(att.proxy_url)}
+                  />
+                ) : (
+                  <a
+                    key={att.id}
+                    href={att.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-discord-text-link hover:underline text-sm"
+                  >
+                    {att.filename}
+                  </a>
+                )
+              )}
+            </div>
+          )}
+
+          {message.embeds.length > 0 && !disableEmbeds && (
+            <div className="flex flex-col gap-2 mt-1">
+              {message.embeds.map((embed, i) => (
+                <div
+                  key={i}
+                  className="border-l-4 rounded bg-discord-embed-bg p-3 max-w-[520px]"
+                  style={{ borderColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : '#1e1f22' }}
+                >
+                  {embed.author?.name && (
+                    <div className="flex items-center gap-2 mb-1">
+                      {embed.author.icon_url && (
+                        <img src={embed.author.icon_url} alt="" className="w-6 h-6 rounded-full" />
+                      )}
+                      {embed.author.url ? (
+                        <a href={embed.author.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-white hover:underline">
+                          {renderInlineMarkdown(embed.author.name, [], {})}
+                        </a>
+                      ) : (
+                        <span className="text-sm font-medium text-white">
+                          {renderInlineMarkdown(embed.author.name, [], {})}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {embed.title && (
+                    <div className="font-semibold text-sm">
+                      {embed.url ? (
+                        <a href={embed.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-discord-text-link">
+                          {renderInlineMarkdown(embed.title, [], {})}
+                        </a>
+                      ) : <span className="text-white">{renderInlineMarkdown(embed.title, [], {})}</span>}
+                    </div>
+                  )}
+                  {embed.description && (
+                    <div className="text-[13px] text-discord-text mt-1 leading-[1.125rem]">
+                      {renderEmbedDescription(embed.description)}
+                    </div>
+                  )}
+                  {embed.fields && embed.fields.length > 0 && (
+                    <div className="grid gap-y-1 gap-x-2 mt-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
+                      {embed.fields.map((field, fi) => (
+                        <div key={fi} className={field.inline ? '' : 'col-span-full'}>
+                          <div className="text-xs font-semibold text-white mb-0.5">
+                            {renderInlineMarkdown(field.name, [], {})}
+                          </div>
+                          <div className="text-[13px] text-discord-text leading-[1.125rem]">
+                            {renderEmbedDescription(field.value)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {embed.thumbnail && !embed.image && (
+                    <img
+                      src={embed.thumbnail.url}
+                      alt=""
+                      className="max-w-[80px] max-h-[80px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => setLightboxSrc(embed.thumbnail!.url)}
+                    />
+                  )}
+                  {embed.image && (
+                    <img
+                      src={embed.image.url}
+                      alt=""
+                      className="max-w-[400px] max-h-[300px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => setLightboxSrc(embed.image!.url)}
+                    />
+                  )}
+                  {embed.footer?.text && (
+                    <div className="flex items-center gap-2 mt-2 text-xs text-discord-text-muted">
+                      {embed.footer.icon_url && (
+                        <img src={embed.footer.icon_url} alt="" className="w-5 h-5 rounded-full" />
+                      )}
+                      <span>{embed.footer.text}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           <ReactionPills reactions={message.reactions} />
         </div>
+
+        {lightboxSrc && (
+          <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+        )}
       </div>
     );
   }
