@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useAppStore } from './stores/appStore';
-import { requestNotificationPermission } from './utils/desktopNotification';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import ContractDashboard from './components/ContractDashboard';
@@ -31,7 +30,6 @@ export default function App() {
       fetchRooms().then(() => fetchHistory());
       fetchConfig();
       fetchDMChannels();
-      requestNotificationPermission();
     }
   }, [authStatus?.configured, fetchRooms, fetchHistory, fetchConfig, fetchDMChannels]);
 

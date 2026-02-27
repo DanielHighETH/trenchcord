@@ -49,6 +49,10 @@ export default function TokenSetup() {
               value={token}
               onChange={(e) => setToken(e.target.value)}
               placeholder="Paste your Discord token here"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               autoFocus
               disabled={loading}
               className="w-full px-3 py-2.5 bg-discord-darker border border-discord-dark rounded text-sm text-discord-text placeholder:text-discord-channel-icon focus:outline-none focus:ring-2 focus:ring-discord-blurple/40 disabled:opacity-50 transition-shadow"

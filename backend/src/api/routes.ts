@@ -145,6 +145,8 @@ export function createRouter(wsServer: WsServer): Router {
     const gateway = requireGateway(res);
     if (!gateway) return;
 
+    await gateway.waitUntilReady();
+
     const rooms = configStore.getRooms();
     const result: Record<string, FrontendMessage[]> = {};
 
@@ -191,16 +193,18 @@ export function createRouter(wsServer: WsServer): Router {
 
   // --- Guilds & Channels ---
 
-  router.get('/guilds', (_req, res) => {
+  router.get('/guilds', async (_req, res) => {
     const gateway = requireGateway(res);
     if (!gateway) return;
+    await gateway.waitUntilReady();
     const guilds = gateway.getGuilds();
     res.json(guilds);
   });
 
-  router.get('/dm-channels', (_req, res) => {
+  router.get('/dm-channels', async (_req, res) => {
     const gateway = requireGateway(res);
     if (!gateway) return;
+    await gateway.waitUntilReady();
     const dms = gateway.getDMChannels();
     res.json(dms);
   });

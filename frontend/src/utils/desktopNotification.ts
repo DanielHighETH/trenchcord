@@ -1,13 +1,9 @@
 import type { FrontendMessage } from '../types';
 
-let permissionRequested = false;
-
-export function requestNotificationPermission(): void {
-  if (permissionRequested || typeof Notification === 'undefined') return;
-  permissionRequested = true;
-  if (Notification.permission === 'default') {
-    Notification.requestPermission();
-  }
+export async function requestNotificationPermission(): Promise<NotificationPermission> {
+  if (typeof Notification === 'undefined') return 'denied';
+  if (Notification.permission !== 'default') return Notification.permission;
+  return Notification.requestPermission();
 }
 
 export function showDesktopNotification(msg: FrontendMessage, subtitle: string): void {

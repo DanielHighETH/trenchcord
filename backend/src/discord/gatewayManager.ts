@@ -9,13 +9,22 @@ export class GatewayManager extends EventEmitter {
   private gateways: DiscordGateway[] = [];
   private recentMessageIds = new Map<string, number>();
   private dedupeTimer: ReturnType<typeof setInterval> | null = null;
+  private readyCount = 0;
+  private readyResolve: (() => void) | null = null;
+  private readyPromise: Promise<void>;
 
   constructor(tokens: string[]) {
     super();
+    this.readyPromise = new Promise<void>((resolve) => {
+      this.readyResolve = resolve;
+    });
     for (const token of tokens) {
       const gw = new DiscordGateway(token);
       this.gateways.push(gw);
       this.wireEvents(gw);
+    }
+    if (tokens.length === 0) {
+      this.readyResolve?.();
     }
   }
 
@@ -28,9 +37,22 @@ export class GatewayManager extends EventEmitter {
     });
 
     gw.on('messageUpdate', (data) => this.emit('messageUpdate', data));
-    gw.on('ready', (user) => this.emit('ready', user));
+    gw.on('ready', (user) => {
+      this.readyCount++;
+      if (this.readyCount >= this.gateways.length) {
+        this.readyResolve?.();
+      }
+      this.emit('ready', user);
+    });
     gw.on('fatal', (err: Error) => this.emit('fatal', err));
     gw.on('reactionUpdate', (data) => this.emit('reactionUpdate', data));
+  }
+
+  waitUntilReady(timeoutMs = 15_000): Promise<void> {
+    return Promise.race([
+      this.readyPromise,
+      new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
   }
 
   connect(): void {

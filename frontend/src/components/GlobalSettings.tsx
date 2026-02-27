@@ -342,9 +342,15 @@ export default function GlobalSettings() {
                       <h4 className="text-sm font-semibold text-white mb-2">Desktop Notifications</h4>
                       <Toggle
                         value={desktopNotifications}
-                        onChange={(v) => {
+                        onChange={async (v) => {
+                          if (v) {
+                            const perm = await requestNotificationPermission();
+                            if (perm === 'denied') {
+                              alert('Notification permission was denied. Please allow notifications for this site in your browser settings, then try again.');
+                              return;
+                            }
+                          }
                           setDesktopNotifications(v);
-                          if (v) requestNotificationPermission();
                         }}
                         label="Show browser notifications for highlighted users and keyword matches (when tab is not focused)"
                       />
