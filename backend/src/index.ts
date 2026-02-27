@@ -30,6 +30,7 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer): void {
 
     const roomKeywords = rooms.flatMap((r) => r.keywordPatterns ?? []);
     const frontendMsg = processDiscordMessage(gw, rawMsg, rawMsg._channelName, rawMsg._guildName, roomKeywords);
+    const evmChainHint = detectEvmChainFromContent(rawMsg.content, rawMsg.embeds);
 
     if (frontendMsg.isHighlighted && frontendMsg.hasContractAddress) {
       const cfg = configStore.getConfig();
@@ -48,8 +49,6 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer): void {
     if (isDM) {
       roomIds.push(`dm:${rawMsg.channel_id}`);
     }
-
-    const evmChainHint = detectEvmChainFromContent(rawMsg.content, rawMsg.embeds);
 
     if (frontendMsg.hasContractAddress) {
       for (const addr of frontendMsg.contractAddresses) {

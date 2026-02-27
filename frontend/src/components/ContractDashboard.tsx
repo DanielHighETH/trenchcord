@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { Search, ExternalLink, Copy, Check, Trash2, LayoutGrid, List, X, MessageSquare } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import { buildContractUrl } from '../utils/contractUrl';
+import ConfirmModal from './ConfirmModal';
 import type { ContractEntry } from '../types';
 
 const EVM_CHAIN_LABELS: Record<string, string> = {
@@ -36,6 +37,7 @@ export default function ContractDashboard() {
   const [chainFilter, setChainFilter] = useState<'all' | 'evm' | 'sol'>('all');
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [showDeleteAll, setShowDeleteAll] = useState(false);
 
   useEffect(() => {
     fetchContracts();
@@ -83,8 +85,7 @@ export default function ContractDashboard() {
   };
 
   const handleDeleteAll = () => {
-    if (!confirm('Delete all contracts? This cannot be undone.')) return;
-    deleteAllContracts();
+    setShowDeleteAll(true);
   };
 
   const evmColor = config?.evmAddressColor ?? '#fee75c';
@@ -203,6 +204,18 @@ export default function ContractDashboard() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        open={showDeleteAll}
+        title="Delete All Contracts"
+        message="This will permanently delete all contracts. This cannot be undone."
+        confirmLabel="Delete All"
+        onConfirm={() => {
+          setShowDeleteAll(false);
+          deleteAllContracts();
+        }}
+        onCancel={() => setShowDeleteAll(false)}
+      />
     </div>
   );
 }

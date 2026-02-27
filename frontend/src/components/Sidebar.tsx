@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { Hash, Plus, Settings, Trash2, MessageCircle, FileText, HelpCircle } from 'lucide-react';
+import ConfirmModal from './ConfirmModal';
 
 export default function Sidebar() {
   const rooms = useAppStore((s) => s.rooms);
@@ -13,6 +15,7 @@ export default function Sidebar() {
   const messages = useAppStore((s) => s.messages);
   const dmChannels = useAppStore((s) => s.dmChannels);
   const contracts = useAppStore((s) => s.contracts);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   return (
     <div className="w-60 bg-discord-sidebar flex flex-col h-full">
@@ -104,7 +107,7 @@ export default function Sidebar() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (confirm(`Delete room "${room.name}"?`)) deleteRoom(room.id);
+                    setDeleteTarget({ id: room.id, name: room.name });
                   }}
                   className="p-0.5 hover:text-discord-red"
                   title="Delete room"
@@ -190,6 +193,18 @@ export default function Sidebar() {
           <HelpCircle size={16} />
         </button>
       </div>
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        title="Delete Room"
+        message={`Are you sure you want to delete "${deleteTarget?.name}"?`}
+        confirmLabel="Delete"
+        onConfirm={() => {
+          if (deleteTarget) deleteRoom(deleteTarget.id);
+          setDeleteTarget(null);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }
