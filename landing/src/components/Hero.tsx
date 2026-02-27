@@ -63,19 +63,32 @@ export function Hero() {
         </AnimatedSection>
 
         <AnimatedSection delay={0.4}>
-          <a
-            href="#tutorial"
-            onClick={(e) => {
-              e.preventDefault();
-              document.querySelector('#tutorial')?.scrollIntoView({ behavior: 'smooth' });
-            }}
-            className="mt-8 inline-flex items-center gap-2 px-6 py-2.5 rounded bg-dc-blurple text-white font-medium text-sm hover:bg-dc-blurple-hover transition-colors"
-          >
-            Get Started
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="mt-px">
-              <path d="M8 3L13 8L8 13M13 8H3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </a>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <a
+              href="#tutorial"
+              onClick={(e) => {
+                e.preventDefault();
+                document.querySelector('#tutorial')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="inline-flex items-center gap-2 px-6 py-2.5 rounded bg-dc-blurple text-white font-medium text-sm hover:bg-dc-blurple-hover transition-colors"
+            >
+              Get Started
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="mt-px">
+                <path d="M8 3L13 8L8 13M13 8H3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </a>
+            <a
+              href="https://demo.trenchcord.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-2.5 rounded bg-dc-dark border border-dc-divider text-dc-text font-medium text-sm hover:bg-dc-hover hover:border-dc-text-faint transition-colors"
+            >
+              Try Demo
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="mt-px">
+                <path d="M6 3L11 8L6 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </a>
+          </div>
         </AnimatedSection>
       </div>
 

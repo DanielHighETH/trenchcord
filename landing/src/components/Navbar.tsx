@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Github, Hash } from 'lucide-react';
+import { Menu, X, Github, Hash, ExternalLink } from 'lucide-react';
 
-const navLinks = [
+const navLinks: { label: string; href: string; external?: boolean }[] = [
   { label: 'Features', href: '#features' },
   { label: 'How It Works', href: '#how-it-works' },
   { label: 'Setup', href: '#tutorial' },
+  { label: 'Demo', href: 'https://demo.trenchcord.app', external: true },
 ];
 
 export function Navbar() {
@@ -76,19 +77,26 @@ export function Navbar() {
 
         <div className="hidden sm:flex items-center gap-1">
           {navLinks.map((link) => {
-            const isActive = activeSection === link.href.slice(1);
+            const isActive = !link.external && activeSection === link.href.slice(1);
             return (
               <a
                 key={link.href}
                 href={link.href}
-                onClick={(e) => handleClick(e, link.href)}
+                {...(link.external
+                  ? { target: '_blank', rel: 'noopener noreferrer' }
+                  : { onClick: (e: React.MouseEvent<HTMLAnchorElement>) => handleClick(e, link.href) }
+                )}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors ${
                   isActive
                     ? 'bg-dc-hover text-white'
                     : 'text-dc-text-muted hover:text-dc-text hover:bg-dc-hover/50'
                 }`}
               >
-                <Hash size={14} className="text-dc-channel-icon" />
+                {link.external ? (
+                  <ExternalLink size={14} className="text-dc-channel-icon" />
+                ) : (
+                  <Hash size={14} className="text-dc-channel-icon" />
+                )}
                 {link.label.toLowerCase()}
               </a>
             );
@@ -123,19 +131,26 @@ export function Navbar() {
           >
             <div className="px-4 py-3 flex flex-col gap-1">
               {navLinks.map((link) => {
-                const isActive = activeSection === link.href.slice(1);
+                const isActive = !link.external && activeSection === link.href.slice(1);
                 return (
                   <a
                     key={link.href}
                     href={link.href}
-                    onClick={(e) => handleClick(e, link.href)}
+                    {...(link.external
+                      ? { target: '_blank', rel: 'noopener noreferrer' }
+                      : { onClick: (e: React.MouseEvent<HTMLAnchorElement>) => handleClick(e, link.href) }
+                    )}
                     className={`flex items-center gap-2 px-3 py-2 rounded text-sm transition-colors ${
                       isActive
                         ? 'bg-dc-hover text-white'
                         : 'text-dc-text-muted hover:text-dc-text hover:bg-dc-hover/50'
                     }`}
                   >
-                    <Hash size={14} className="text-dc-channel-icon" />
+                    {link.external ? (
+                      <ExternalLink size={14} className="text-dc-channel-icon" />
+                    ) : (
+                      <Hash size={14} className="text-dc-channel-icon" />
+                    )}
                     {link.label.toLowerCase()}
                   </a>
                 );

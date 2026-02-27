@@ -1,4 +1,4 @@
-import { Github } from 'lucide-react';
+import { Github, ExternalLink } from 'lucide-react';
 
 export function Footer() {
   return (
@@ -10,14 +10,25 @@ export function Footer() {
           self-bots is against Discord's Terms of Service. This tool is for personal and
           educational use only. Use at your own risk.
         </p>
-        <a
-          href="https://github.com/DanielHighETH/trenchcord"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-dc-text-muted hover:text-dc-text transition-colors"
-        >
-          <Github size={18} />
-        </a>
+        <div className="flex items-center gap-3">
+          <a
+            href="https://demo.trenchcord.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-dc-text-muted hover:text-dc-text transition-colors flex items-center gap-1.5 text-xs"
+          >
+            <ExternalLink size={14} />
+            Demo
+          </a>
+          <a
+            href="https://github.com/DanielHighETH/trenchcord"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-dc-text-muted hover:text-dc-text transition-colors"
+          >
+            <Github size={18} />
+          </a>
+        </div>
       </div>
     </footer>
   );

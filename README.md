@@ -19,6 +19,10 @@ Aggregate channels, track key users, auto-detect contracts, and trade in one cli
 - **Auto-Open Contracts** — Automatically open links when highlighted users post contracts
 - **Custom Link Templates** — Configure which trading platform links generate for contracts
 
+## Demo
+
+Want to see Trenchcord in action before installing? Check out the live demo at **[demo.trenchcord.app](https://demo.trenchcord.app)** — no setup required.
+
 ## How It Works
 
 1. **Connect** — Add your Discord token to authenticate
@@ -229,4 +233,4 @@ Trenchcord is an independent project and is not affiliated with Discord Inc. Usi
 
 Trenchcord is fully open source. Inspect the code, build on top of it, add your own features, and share with the community.
 
-[View on GitHub](https://github.com/DanielHighETH/trenchcord)
+[View on GitHub](https://github.com/DanielHighETH/trenchcord) · [Live Demo](https://demo.trenchcord.app) · [Website](https://trenchcord.app)
