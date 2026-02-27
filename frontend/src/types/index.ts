@@ -167,14 +167,17 @@ export interface FrontendMessage {
 export interface ContractEntry {
   address: string;
   chain: 'evm' | 'sol';
+  evmChain?: string;
   authorId: string;
   authorName: string;
   channelId: string;
   channelName: string;
+  guildId: string | null;
   guildName: string | null;
   roomIds: string[];
   messageId: string;
   timestamp: string;
+  firstSeen?: boolean;
 }
 
 export interface Alert {
@@ -186,7 +189,7 @@ export interface Alert {
 }
 
 export interface WsIncoming {
-  type: 'message' | 'alert' | 'reaction_update' | 'contract';
+  type: 'message' | 'message_update' | 'alert' | 'reaction_update' | 'contract' | 'chain_update';
   data: any;
   roomIds?: string[];
 }

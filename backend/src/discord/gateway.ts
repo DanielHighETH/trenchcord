@@ -229,6 +229,21 @@ export class DiscordGateway extends EventEmitter {
         break;
       }
 
+      case 'MESSAGE_UPDATE': {
+        const msg = data as Partial<DiscordMessage> & { id: string; channel_id: string };
+        const guildId = msg.guild_id ?? this.channelGuildMap.get(msg.channel_id) ?? null;
+        const channelName = this.channelNameMap.get(msg.channel_id) ?? 'unknown';
+        const guildName = guildId ? this.guilds.get(guildId)?.name ?? null : null;
+
+        this.emit('messageUpdate', {
+          ...msg,
+          guild_id: guildId,
+          _channelName: channelName,
+          _guildName: guildName,
+        });
+        break;
+      }
+
       case 'MESSAGE_REACTION_ADD': {
         this.emit('reactionUpdate', {
           channelId: data.channel_id,

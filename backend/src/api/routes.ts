@@ -322,5 +322,16 @@ export function createRouter(wsServer: WsServer): Router {
     res.json(contractLog.getContracts(limit, since));
   });
 
+  router.delete('/contracts', (_req, res) => {
+    contractLog.deleteAllContracts();
+    res.json({ success: true });
+  });
+
+  router.delete('/contracts/:messageId/:address', (req, res) => {
+    const deleted = contractLog.deleteContract(req.params.messageId, req.params.address);
+    if (!deleted) return res.status(404).json({ error: 'Contract not found' });
+    res.json({ success: true });
+  });
+
   return router;
 }

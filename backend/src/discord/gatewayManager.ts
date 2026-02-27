@@ -27,6 +27,7 @@ export class GatewayManager extends EventEmitter {
       this.emit('message', rawMsg);
     });
 
+    gw.on('messageUpdate', (data) => this.emit('messageUpdate', data));
     gw.on('ready', (user) => this.emit('ready', user));
     gw.on('fatal', (err: Error) => this.emit('fatal', err));
     gw.on('reactionUpdate', (data) => this.emit('reactionUpdate', data));

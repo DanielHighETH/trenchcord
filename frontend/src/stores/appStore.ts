@@ -12,6 +12,7 @@ interface AppState {
   rooms: Room[];
   activeRoomId: string | null;
   activeView: 'chat' | 'contracts' | 'settings';
+  settingsSection: string | null;
   messages: Record<string, FrontendMessage[]>;
   alerts: Alert[];
   guilds: GuildInfo[];
@@ -29,12 +30,16 @@ interface AppState {
   setFocusFilter: (filter: AppState['focusFilter']) => void;
   clearFocusFilter: () => void;
   setActiveRoom: (roomId: string | null) => void;
-  setActiveView: (view: 'chat' | 'contracts' | 'settings') => void;
+  setActiveView: (view: 'chat' | 'contracts' | 'settings', settingsSection?: string) => void;
   addMessage: (message: FrontendMessage, roomIds: string[]) => void;
+  updateMessage: (update: { messageId: string; channelId: string; embeds?: FrontendMessage['embeds']; content?: string; attachments?: FrontendMessage['attachments'] }) => void;
   addAlert: (alert: Alert) => void;
   dismissAlert: (alertId: string) => void;
   updateReaction: (channelId: string, messageId: string, emoji: FrontendReaction['emoji'], delta: number) => void;
   addContract: (entry: ContractEntry) => void;
+  updateContractChain: (address: string, evmChain: string) => void;
+  deleteContract: (messageId: string, address: string) => Promise<void>;
+  deleteAllContracts: () => Promise<void>;
 
   checkAuth: () => Promise<void>;
   submitToken: (token: string) => Promise<{ success: boolean; error?: string }>;
@@ -66,6 +71,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   rooms: [],
   activeRoomId: null,
   activeView: 'chat',
+  settingsSection: null,
   messages: {},
   alerts: [],
   guilds: [],
@@ -150,7 +156,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setActiveRoom: (roomId) => set({ activeRoomId: roomId, activeView: 'chat' }),
-  setActiveView: (view) => set({ activeView: view }),
+  setActiveView: (view, settingsSection) => set({ activeView: view, settingsSection: settingsSection ?? null }),
 
   addMessage: (message, roomIds) => {
     set((state) => {
@@ -165,6 +171,27 @@ export const useAppStore = create<AppState>((set, get) => ({
         newMessages[roomId] = updated;
       }
       return { messages: newMessages };
+    });
+  },
+
+  updateMessage: (update) => {
+    set((state) => {
+      const newMessages = { ...state.messages };
+      let changed = false;
+      for (const roomId of Object.keys(newMessages)) {
+        const msgs = newMessages[roomId];
+        const idx = msgs.findIndex((m) => m.id === update.messageId && m.channelId === update.channelId);
+        if (idx === -1) continue;
+        changed = true;
+        const msg = { ...msgs[idx] };
+        if (update.embeds !== undefined) msg.embeds = update.embeds;
+        if (update.content !== undefined) msg.content = update.content;
+        if (update.attachments !== undefined) msg.attachments = update.attachments;
+        const updated = [...msgs];
+        updated[idx] = msg;
+        newMessages[roomId] = updated;
+      }
+      return changed ? { messages: newMessages } : state;
     });
   },
 
@@ -220,6 +247,36 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (updated.length > MAX_CONTRACTS) updated.length = MAX_CONTRACTS;
       return { contracts: updated };
     });
+  },
+
+  updateContractChain: (address, evmChain) => {
+    set((state) => ({
+      contracts: state.contracts.map((c) =>
+        c.address === address && c.chain === 'evm' ? { ...c, evmChain } : c,
+      ),
+    }));
+  },
+
+  deleteContract: async (messageId, address) => {
+    try {
+      const res = await fetch(`${API_BASE}/contracts/${messageId}/${encodeURIComponent(address)}`, { method: 'DELETE' });
+      if (!res.ok) return;
+      set((state) => ({
+        contracts: state.contracts.filter((c) => !(c.messageId === messageId && c.address === address)),
+      }));
+    } catch (err) {
+      console.error('[Store] Failed to delete contract:', err);
+    }
+  },
+
+  deleteAllContracts: async () => {
+    try {
+      const res = await fetch(`${API_BASE}/contracts`, { method: 'DELETE' });
+      if (!res.ok) return;
+      set({ contracts: [] });
+    } catch (err) {
+      console.error('[Store] Failed to delete all contracts:', err);
+    }
   },
 
   fetchRooms: async () => {

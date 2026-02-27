@@ -8,7 +8,7 @@ import { WsServer } from './ws/server.js';
 import { createRouter } from './api/routes.js';
 import { configStore } from './config/store.js';
 import { getGateway, setGateway } from './gateway/state.js';
-import { buildContractUrl } from './utils/contract.js';
+import { buildContractUrl, detectEvmChainFromContent, extractEvmChainFromGmgnLinks } from './utils/contract.js';
 import { processDiscordMessage } from './utils/messageProcessor.js';
 import { sendPushover } from './utils/pushover.js';
 import { contractLog } from './utils/contractLog.js';
@@ -34,7 +34,7 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer): void {
     if (frontendMsg.isHighlighted && frontendMsg.hasContractAddress) {
       const cfg = configStore.getConfig();
       const addr = frontendMsg.contractAddresses[0];
-      const url = buildContractUrl(addr, cfg.contractLinkTemplates);
+      const url = buildContractUrl(addr, cfg.contractLinkTemplates, evmChainHint ?? undefined);
 
       sendPushover(cfg.pushover, {
         title: `Contract Alert: ${frontendMsg.author.displayName}`,
@@ -49,23 +49,37 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer): void {
       roomIds.push(`dm:${rawMsg.channel_id}`);
     }
 
+    const evmChainHint = detectEvmChainFromContent(rawMsg.content, rawMsg.embeds);
+
     if (frontendMsg.hasContractAddress) {
       for (const addr of frontendMsg.contractAddresses) {
         const isEvm = addr.startsWith('0x');
         const entry = {
           address: addr,
           chain: (isEvm ? 'evm' : 'sol') as 'evm' | 'sol',
+          evmChain: isEvm ? (evmChainHint ?? undefined) : undefined,
           authorId: frontendMsg.author.id,
           authorName: frontendMsg.author.displayName,
           channelId: frontendMsg.channelId,
           channelName: frontendMsg.channelName,
+          guildId: frontendMsg.guildId,
           guildName: frontendMsg.guildName,
           roomIds,
           messageId: frontendMsg.id,
           timestamp: frontendMsg.timestamp,
         };
         contractLog.logContract(entry);
+        if (isEvm && evmChainHint) {
+          contractLog.updateEvmChain(addr, evmChainHint);
+        }
         wsServer.broadcastContract(entry);
+      }
+    }
+
+    const gmgnChainUpdates = extractEvmChainFromGmgnLinks(rawMsg.content, rawMsg.embeds);
+    for (const { address, chain: detectedChain } of gmgnChainUpdates) {
+      if (contractLog.updateEvmChain(address, detectedChain)) {
+        wsServer.broadcastChainUpdate(address, detectedChain);
       }
     }
 
@@ -78,6 +92,23 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer): void {
     }
 
     wsServer.broadcastMessage(frontendMsg, roomIds);
+  });
+
+  gw.on('messageUpdate', (rawMsg: Partial<DiscordMessage> & { id: string; channel_id: string; guild_id?: string; _channelName: string; _guildName: string | null }) => {
+    const rooms = configStore.getRoomsForChannel(rawMsg.channel_id);
+    const isDM = !rawMsg.guild_id && gw.getDMChannels().some((dm) => dm.id === rawMsg.channel_id);
+    if (rooms.length === 0 && !isDM) return;
+
+    const roomIds = rooms.map((r) => r.id);
+    if (isDM) roomIds.push(`dm:${rawMsg.channel_id}`);
+
+    wsServer.broadcastMessageUpdate({
+      messageId: rawMsg.id,
+      channelId: rawMsg.channel_id,
+      embeds: rawMsg.embeds,
+      content: rawMsg.content,
+      attachments: rawMsg.attachments,
+    }, roomIds);
   });
 
   gw.on('reactionUpdate', (data) => {

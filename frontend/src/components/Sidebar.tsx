@@ -1,5 +1,5 @@
 import { useAppStore } from '../stores/appStore';
-import { Hash, Plus, Settings, Trash2, MessageCircle, FileText } from 'lucide-react';
+import { Hash, Plus, Settings, Trash2, MessageCircle, FileText, HelpCircle } from 'lucide-react';
 
 export default function Sidebar() {
   const rooms = useAppStore((s) => s.rooms);
@@ -170,17 +170,24 @@ export default function Sidebar() {
       </div>
 
       {/* Footer */}
-      <div className="h-[52px] bg-discord-darker/30 px-2 flex items-center shrink-0">
+      <div className="h-[52px] px-2 flex items-center gap-1 shrink-0 border-t border-discord-darker/50">
         <button
           onClick={() => setActiveView('settings')}
-          className={`flex items-center gap-2 text-sm transition-colors w-full px-2 py-1 rounded ${
+          className={`flex items-center gap-2 text-sm transition-colors flex-1 px-2 py-1.5 rounded ${
             activeView === 'settings'
-              ? 'bg-discord-hover text-white'
+              ? 'text-white'
               : 'text-discord-text-muted hover:text-white hover:bg-discord-hover/50'
           }`}
         >
-          <Settings size={16} />
+          <Settings size={16} className={activeView === 'settings' ? 'text-discord-text' : ''} />
           <span>Settings</span>
+        </button>
+        <button
+          onClick={() => setActiveView('settings', 'help')}
+          className="p-1.5 rounded text-discord-text-muted hover:text-white hover:bg-discord-hover/50 transition-colors"
+          title="Help & Features"
+        >
+          <HelpCircle size={16} />
         </button>
       </div>
     </div>

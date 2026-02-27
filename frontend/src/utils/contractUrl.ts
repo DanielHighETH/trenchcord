@@ -9,7 +9,8 @@ export const DEFAULT_LINK_TEMPLATES: ContractLinkTemplates = {
   evmPlatform: 'gmgn',
 };
 
-function getPresetTemplate(platform: string, chain: 'sol' | 'evm'): string {
+function getPresetTemplate(platform: string, chain: 'sol' | 'evm', evmChain?: string): string {
+  const evmSlug = evmChain || 'base';
   switch (platform) {
     case 'axiom':
       return `https://axiom.trade/t/{address}/@${REFERRALS.axiom}?chain=sol`;
@@ -22,11 +23,11 @@ function getPresetTemplate(platform: string, chain: 'sol' | 'evm'): string {
     case 'gmgn':
       return chain === 'sol'
         ? `https://gmgn.ai/sol/token/${REFERRALS.gmgn}_{address}`
-        : `https://gmgn.ai/base/token/${REFERRALS.gmgn}_{address}`;
+        : `https://gmgn.ai/${evmSlug}/token/${REFERRALS.gmgn}_{address}`;
     default:
       return chain === 'sol'
         ? 'https://axiom.trade/t/{address}?chain=sol'
-        : 'https://gmgn.ai/base/token/{address}';
+        : `https://gmgn.ai/${evmSlug}/token/{address}`;
   }
 }
 
@@ -50,6 +51,7 @@ function injectReferralIntoCustomTemplate(template: string): string {
 export function buildContractUrl(
   addr: string,
   config: ContractLinkTemplates,
+  evmChain?: string,
 ): string {
   const isEvm = addr.startsWith('0x');
   const chain: 'sol' | 'evm' = isEvm ? 'evm' : 'sol';
@@ -59,10 +61,13 @@ export function buildContractUrl(
 
   let template: string;
   if (platform === 'custom') {
-    const customTpl = isEvm ? config.evm : config.sol;
+    let customTpl = isEvm ? config.evm : config.sol;
+    if (isEvm && evmChain) {
+      customTpl = customTpl.replace(/gmgn\.ai\/\w+\/token/, `gmgn.ai/${evmChain}/token`);
+    }
     template = injectReferralIntoCustomTemplate(customTpl);
   } else {
-    template = getPresetTemplate(platform, chain);
+    template = getPresetTemplate(platform, chain, evmChain);
   }
 
   return template.replace('{address}', addr);

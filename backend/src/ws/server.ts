@@ -76,6 +76,17 @@ export class WsServer {
     }
   }
 
+  broadcastMessageUpdate(update: { messageId: string; channelId: string; embeds?: FrontendMessage['embeds']; content?: string; attachments?: FrontendMessage['attachments'] }, roomIds: string[]): void {
+    const payload = JSON.stringify({ type: 'message_update', data: update, roomIds });
+    for (const [ws, state] of this.clients) {
+      if (ws.readyState !== WebSocket.OPEN) continue;
+      const shouldSend =
+        state.subscribedRooms.has('__all__') ||
+        roomIds.some((id) => state.subscribedRooms.has(id));
+      if (shouldSend) ws.send(payload);
+    }
+  }
+
   broadcastAlert(alert: { type: string; message: FrontendMessage; reason: string }): void {
     const payload = JSON.stringify({ type: 'alert', data: alert });
     for (const [ws] of this.clients) {
@@ -96,6 +107,15 @@ export class WsServer {
 
   broadcastContract(data: any): void {
     const payload = JSON.stringify({ type: 'contract', data });
+    for (const [ws] of this.clients) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(payload);
+      }
+    }
+  }
+
+  broadcastChainUpdate(address: string, evmChain: string): void {
+    const payload = JSON.stringify({ type: 'chain_update', data: { address, evmChain } });
     for (const [ws] of this.clients) {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(payload);

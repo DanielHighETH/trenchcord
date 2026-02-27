@@ -10,10 +10,12 @@ let idCounter = 0;
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const addMessage = useAppStore((s) => s.addMessage);
+  const updateMessage = useAppStore((s) => s.updateMessage);
   const addAlert = useAppStore((s) => s.addAlert);
   const setConnected = useAppStore((s) => s.setConnected);
   const updateReaction = useAppStore((s) => s.updateReaction);
   const addContract = useAppStore((s) => s.addContract);
+  const updateContractChain = useAppStore((s) => s.updateContractChain);
 
   useEffect(() => {
     let disposed = false;
@@ -83,12 +85,17 @@ export function useWebSocket() {
               timestamp: Date.now(),
             };
             addAlert(alert);
+          } else if (incoming.type === 'message_update') {
+            updateMessage(incoming.data);
           } else if (incoming.type === 'reaction_update') {
             const { channelId, messageId, emoji, delta } = incoming.data;
             updateReaction(channelId, messageId, emoji, delta);
           } else if (incoming.type === 'contract') {
             const entry = incoming.data as ContractEntry;
             addContract(entry);
+          } else if (incoming.type === 'chain_update') {
+            const { address, evmChain } = incoming.data as { address: string; evmChain: string };
+            updateContractChain(address, evmChain);
           }
         } catch {
           // ignore malformed
@@ -114,5 +121,5 @@ export function useWebSocket() {
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, [addMessage, addAlert, setConnected, updateReaction, addContract]);
+  }, [addMessage, updateMessage, addAlert, setConnected, updateReaction, addContract, updateContractChain]);
 }
