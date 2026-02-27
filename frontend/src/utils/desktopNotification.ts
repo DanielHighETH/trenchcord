@@ -8,19 +8,26 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 
 export function showDesktopNotification(msg: FrontendMessage, subtitle: string): void {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-  if (!document.hidden) return;
 
   const icon = msg.author.avatar
-    ? `https://cdn.discordapp.com/avatars/${msg.author.id}/${msg.author.avatar}.png?size=64`
+    ? `https://cdn.discordapp.com/avatars/${msg.author.id}/${msg.author.avatar}.png?size=128`
     : undefined;
 
-  const body = `${subtitle}\n${msg.content.slice(0, 100)}${msg.content.length > 100 ? '...' : ''}`;
+  const location = msg.guildName
+    ? `${msg.guildName} / #${msg.channelName}`
+    : `#${msg.channelName}`;
+
+  const preview = msg.content
+    ? msg.content.slice(0, 120) + (msg.content.length > 120 ? '…' : '')
+    : msg.attachments?.length
+      ? `[${msg.attachments.length} attachment${msg.attachments.length > 1 ? 's' : ''}]`
+      : '';
+
+  const body = `${subtitle} · ${location}\n${preview}`;
 
   const notification = new Notification(msg.author.displayName, {
     body,
     icon,
-    tag: msg.id,
-    silent: true,
   });
 
   notification.onclick = () => {
