@@ -19,6 +19,11 @@
   "openInDiscordApp": true,
   "hiddenUsers": {},
   "messageSounds": true,
+  "soundSettings": {
+    "highlight": { "enabled": true, "volume": 80, "useCustom": false },
+    "contractAlert": { "enabled": true, "volume": 80, "useCustom": false },
+    "keywordAlert": { "enabled": true, "volume": 80, "useCustom": false }
+  },
   "pushover": {
     "enabled": false,
     "appToken": "",
@@ -31,5 +36,6 @@
     "evmPlatform": "gmgn"
   },
   "contractClickAction": "copy_open",
-  "autoOpenHighlightedContracts": true
+  "autoOpenHighlightedContracts": true,
+  "badgeClickAction": "discord"
 }

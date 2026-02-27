@@ -6,9 +6,12 @@ export interface ChannelRef {
   disableEmbeds?: boolean;
 }
 
+export type KeywordMatchMode = 'includes' | 'exact' | 'regex';
+
 export interface KeywordPattern {
   pattern: string;
-  isRegex: boolean;
+  matchMode: KeywordMatchMode;
+  isRegex?: boolean;
   label?: string;
 }
 
@@ -32,6 +35,7 @@ export interface PushoverConfig {
 export type SolPlatform = 'axiom' | 'padre' | 'bloom' | 'gmgn' | 'custom';
 export type EvmPlatform = 'gmgn' | 'bloom' | 'custom';
 export type ContractClickAction = 'copy' | 'copy_open' | 'open';
+export type BadgeClickAction = 'discord' | 'platform' | 'both';
 
 export interface ContractLinkTemplates {
   evm: string;
@@ -39,6 +43,17 @@ export interface ContractLinkTemplates {
   solPlatform: SolPlatform;
   evmPlatform: EvmPlatform;
 }
+
+export type SoundType = 'highlight' | 'contractAlert' | 'keywordAlert';
+
+export interface SoundConfig {
+  enabled: boolean;
+  volume: number;
+  useCustom: boolean;
+  customSoundUrl?: string;
+}
+
+export type SoundSettings = Record<SoundType, SoundConfig>;
 
 export interface AppConfig {
   discordTokens: string[];
@@ -52,6 +67,7 @@ export interface AppConfig {
   openInDiscordApp: boolean;
   hiddenUsers: Record<string, { userId: string; displayName: string }[]>;
   messageSounds: boolean;
+  soundSettings: SoundSettings;
   pushover: PushoverConfig;
   contractLinkTemplates: ContractLinkTemplates;
   contractClickAction: ContractClickAction;
@@ -59,11 +75,22 @@ export interface AppConfig {
   globalKeywordPatterns: KeywordPattern[];
   keywordAlertsEnabled: boolean;
   desktopNotifications: boolean;
+  badgeClickAction: BadgeClickAction;
 }
 
 export interface AuthStatus {
   configured: boolean;
   connected: boolean;
+}
+
+export interface MaskedToken {
+  index: number;
+  masked: string;
+}
+
+export interface MaskedTokensResponse {
+  tokens: MaskedToken[];
+  count: number;
 }
 
 export interface GuildInfo {

@@ -1,4 +1,7 @@
+import type { SoundConfig, SoundType } from '../types';
+
 let audioCtx: AudioContext | null = null;
+const customAudioCache = new Map<string, HTMLAudioElement>();
 
 function getAudioContext(): AudioContext {
   if (!audioCtx) audioCtx = new AudioContext();
@@ -33,36 +36,73 @@ function playTones(tones: [number, number, number][], type: OscillatorType = 'tr
   }
 }
 
-/**
- * Two-tone chime for highlighted-user messages.
- */
-export function playHighlightSound() {
-  playTones([
-    [880, 0, 0.08],
-    [1175, 0.09, 0.12],
-  ]);
+function playCustomSound(url: string, volume: number) {
+  try {
+    let audio = customAudioCache.get(url);
+    if (!audio) {
+      audio = new Audio(url);
+      customAudioCache.set(url, audio);
+    }
+    audio.volume = Math.max(0, Math.min(1, volume));
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
+  } catch {
+    // Audio not supported
+  }
 }
 
-/**
- * Three-tone ascending alert for highlighted user + contract address.
- * More urgent than the standard highlight chime — uses a square wave
- * at higher volume with a rapid ascending pattern.
- */
-export function playContractAlertSound() {
-  playTones([
-    [880, 0, 0.1],
-    [1175, 0.1, 0.1],
-    [1480, 0.2, 0.18],
-  ], 'square', 0.14);
+const BUILT_IN_SOUNDS: Record<SoundType, { tones: [number, number, number][]; type: OscillatorType; baseVolume: number }> = {
+  highlight: {
+    tones: [[880, 0, 0.08], [1175, 0.09, 0.12]],
+    type: 'triangle',
+    baseVolume: 0.18,
+  },
+  contractAlert: {
+    tones: [[880, 0, 0.1], [1175, 0.1, 0.1], [1480, 0.2, 0.18]],
+    type: 'square',
+    baseVolume: 0.14,
+  },
+  keywordAlert: {
+    tones: [[1047, 0, 0.08], [784, 0.09, 0.12]],
+    type: 'sine',
+    baseVolume: 0.16,
+  },
+};
+
+export function playSound(soundType: SoundType, soundConfig?: SoundConfig) {
+  if (soundConfig && !soundConfig.enabled) return;
+
+  const volumeFraction = (soundConfig?.volume ?? 80) / 100;
+
+  if (soundConfig?.useCustom && soundConfig.customSoundUrl) {
+    playCustomSound(soundConfig.customSoundUrl, volumeFraction);
+    return;
+  }
+
+  const builtin = BUILT_IN_SOUNDS[soundType];
+  playTones(builtin.tones, builtin.type, builtin.baseVolume * volumeFraction);
 }
 
-/**
- * Two-tone descending alert for keyword matches.
- * Distinct from the highlight chime — uses a sine wave.
- */
-export function playKeywordAlertSound() {
-  playTones([
-    [1047, 0, 0.08],
-    [784, 0.09, 0.12],
-  ], 'sine', 0.16);
+export function playHighlightSound(soundConfig?: SoundConfig) {
+  playSound('highlight', soundConfig);
+}
+
+export function playContractAlertSound(soundConfig?: SoundConfig) {
+  playSound('contractAlert', soundConfig);
+}
+
+export function playKeywordAlertSound(soundConfig?: SoundConfig) {
+  playSound('keywordAlert', soundConfig);
+}
+
+export function previewSound(soundType: SoundType, soundConfig: SoundConfig) {
+  const volumeFraction = soundConfig.volume / 100;
+
+  if (soundConfig.useCustom && soundConfig.customSoundUrl) {
+    playCustomSound(soundConfig.customSoundUrl, volumeFraction);
+    return;
+  }
+
+  const builtin = BUILT_IN_SOUNDS[soundType];
+  playTones(builtin.tones, builtin.type, builtin.baseVolume * volumeFraction);
 }

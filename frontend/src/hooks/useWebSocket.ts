@@ -44,8 +44,10 @@ export function useWebSocket() {
             const roomIds = incoming.roomIds ?? [];
             const config = useAppStore.getState().config;
 
+            const ss = config?.soundSettings;
+
             if (msg.isHighlighted && msg.hasContractAddress) {
-              if (config?.messageSounds) playContractAlertSound();
+              if (config?.messageSounds) playContractAlertSound(ss?.contractAlert);
               if (config?.autoOpenHighlightedContracts && msg.contractAddresses.length > 0) {
                 const url = buildContractUrl(
                   msg.contractAddresses[0],
@@ -57,14 +59,14 @@ export function useWebSocket() {
                 showDesktopNotification(msg, 'Contract from highlighted user');
               }
             } else if (msg.isHighlighted) {
-              if (config?.messageSounds) playHighlightSound();
+              if (config?.messageSounds) playHighlightSound(ss?.highlight);
               if (config?.desktopNotifications) {
                 showDesktopNotification(msg, 'Highlighted user');
               }
             }
 
             if (msg.matchedKeywords && msg.matchedKeywords.length > 0) {
-              if (config?.messageSounds && config?.keywordAlertsEnabled) playKeywordAlertSound();
+              if (config?.messageSounds && config?.keywordAlertsEnabled) playKeywordAlertSound(ss?.keywordAlert);
               if (config?.desktopNotifications && config?.keywordAlertsEnabled) {
                 showDesktopNotification(msg, `Keyword: ${msg.matchedKeywords.join(', ')}`);
               }

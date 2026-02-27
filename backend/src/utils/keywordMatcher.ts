@@ -1,4 +1,4 @@
-import type { KeywordPattern } from '../discord/types.js';
+import type { KeywordPattern, KeywordMatchMode } from '../discord/types.js';
 
 const regexCache = new Map<string, RegExp>();
 
@@ -14,6 +14,11 @@ function getCompiledRegex(pattern: string): RegExp | null {
   }
 }
 
+function resolveMode(kw: KeywordPattern): KeywordMatchMode {
+  if (kw.matchMode) return kw.matchMode;
+  return kw.isRegex ? 'regex' : 'includes';
+}
+
 export function matchKeywords(content: string, patterns: KeywordPattern[]): string[] {
   if (!content || patterns.length === 0) return [];
 
@@ -23,15 +28,23 @@ export function matchKeywords(content: string, patterns: KeywordPattern[]): stri
   for (const kw of patterns) {
     if (!kw.pattern) continue;
     const label = kw.label || kw.pattern;
+    const mode = resolveMode(kw);
 
-    if (kw.isRegex) {
-      const re = getCompiledRegex(kw.pattern);
-      if (re?.test(content)) {
-        matched.push(label);
+    switch (mode) {
+      case 'regex': {
+        const re = getCompiledRegex(kw.pattern);
+        if (re?.test(content)) matched.push(label);
+        break;
       }
-    } else {
-      if (lowerContent.includes(kw.pattern.toLowerCase())) {
-        matched.push(label);
+      case 'exact': {
+        const re = getCompiledRegex(`\\b${kw.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+        if (re?.test(content)) matched.push(label);
+        break;
+      }
+      case 'includes':
+      default: {
+        if (lowerContent.includes(kw.pattern.toLowerCase())) matched.push(label);
+        break;
       }
     }
   }

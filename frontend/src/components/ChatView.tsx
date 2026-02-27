@@ -344,6 +344,7 @@ export default function ChatView() {
                   contractLinkTemplates={config?.contractLinkTemplates}
                   contractClickAction={config?.contractClickAction ?? 'copy_open'}
                   openInDiscordApp={config?.openInDiscordApp ?? false}
+                  badgeClickAction={config?.badgeClickAction ?? 'discord'}
                   onHideUser={hideUser}
                   onFocus={handleFocus}
                   isFocused={focusFilter !== null && focusFilter.guildId === msg.guildId && focusFilter.channelId === msg.channelId}

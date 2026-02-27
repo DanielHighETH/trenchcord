@@ -1,6 +1,6 @@
 import { type ReactNode, Fragment, useState } from 'react';
 import { Eye } from 'lucide-react';
-import type { FrontendMessage, ContractLinkTemplates, ContractClickAction } from '../types';
+import type { FrontendMessage, ContractLinkTemplates, ContractClickAction, BadgeClickAction } from '../types';
 import ImageLightbox from './ImageLightbox';
 import UserContextMenu from './UserContextMenu';
 import { buildContractUrl, DEFAULT_LINK_TEMPLATES } from '../utils/contractUrl';
@@ -20,6 +20,7 @@ interface MessageProps {
   contractLinkTemplates?: ContractLinkTemplates;
   contractClickAction?: ContractClickAction;
   openInDiscordApp?: boolean;
+  badgeClickAction?: BadgeClickAction;
   onHideUser?: (guildId: string | null, channelId: string, userId: string, displayName: string) => void;
   onFocus?: (guildId: string | null, channelId: string, guildName: string | null, channelName: string) => void;
   isFocused?: boolean;
@@ -448,7 +449,7 @@ function ReactionPills({ reactions }: { reactions: FrontendMessage['reactions'] 
   );
 }
 
-export default function Message({ message, isCompact, guildColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, openInDiscordApp, onHideUser, onFocus, isFocused }: MessageProps) {
+export default function Message({ message, isCompact, guildColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, openInDiscordApp, badgeClickAction, onHideUser, onFocus, isFocused }: MessageProps) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const addrColors: AddressColors = { evm: evmAddressColor ?? '#fee75c', sol: solAddressColor ?? '#14f195' };
   const templates: ContractLinkTemplates = contractLinkTemplates ?? DEFAULT_LINK_TEMPLATES;
@@ -479,6 +480,39 @@ export default function Message({ message, isCompact, guildColor, disableEmbeds,
 
   const discordPath = `discord.com/channels/${message.guildId ?? '@me'}/${message.channelId}/${message.id}`;
   const discordUrl = openInDiscordApp ? `discord://${discordPath}` : `https://${discordPath}`;
+  const badgeAct: BadgeClickAction = badgeClickAction ?? 'discord';
+
+  const handleBadgeClick = () => {
+    const hasContract = message.hasContractAddress && message.contractAddresses.length > 0;
+    const openDiscord = () => {
+      if (openInDiscordApp) {
+        window.location.href = discordUrl;
+      } else {
+        window.open(discordUrl, '_blank', 'noopener,noreferrer');
+      }
+    };
+    const openPlatform = () => {
+      if (hasContract) {
+        const url = buildContractUrl(message.contractAddresses[0], templates);
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    };
+
+    switch (badgeAct) {
+      case 'platform':
+        if (hasContract) openPlatform();
+        else openDiscord();
+        break;
+      case 'both':
+        openDiscord();
+        if (hasContract) openPlatform();
+        break;
+      case 'discord':
+      default:
+        openDiscord();
+        break;
+    }
+  };
 
   const channelBadge = openInDiscordApp ? (
     <span
@@ -554,12 +588,20 @@ export default function Message({ message, isCompact, guildColor, disableEmbeds,
             <Eye size={13} />
           </button>
           {message.hasContractAddress && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-discord-yellow/20 text-discord-yellow font-semibold">
+            <span
+              onClick={handleBadgeClick}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-discord-yellow/20 text-discord-yellow font-semibold cursor-pointer hover:bg-discord-yellow/30 transition-colors"
+              title={badgeAct === 'platform' ? 'Open in trading platform' : badgeAct === 'both' ? 'Open in Discord + platform' : 'Open in Discord'}
+            >
               CONTRACT
             </span>
           )}
           {hasKeywordMatch && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-400/20 text-orange-400 font-semibold">
+            <span
+              onClick={handleBadgeClick}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-orange-400/20 text-orange-400 font-semibold cursor-pointer hover:bg-orange-400/30 transition-colors"
+              title={badgeAct === 'platform' && message.hasContractAddress ? 'Open in trading platform' : badgeAct === 'both' && message.hasContractAddress ? 'Open in Discord + platform' : 'Open in Discord'}
+            >
               {message.matchedKeywords!.join(', ')}
             </span>
           )}

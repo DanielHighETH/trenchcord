@@ -1,11 +1,34 @@
-import { Router } from 'express';
+import { Router, static as expressStatic } from 'express';
+import multer from 'multer';
+import { existsSync, mkdirSync, unlinkSync } from 'fs';
+import { join, dirname, extname } from 'path';
+import { fileURLToPath } from 'url';
 import { configStore } from '../config/store.js';
 import type { GatewayManager } from '../discord/gatewayManager.js';
 import type { WsServer } from '../ws/server.js';
 import { getGateway } from '../gateway/state.js';
 import { processDiscordMessage } from '../utils/messageProcessor.js';
 import { contractLog } from '../utils/contractLog.js';
-import type { FrontendMessage } from '../discord/types.js';
+import type { FrontendMessage, SoundType } from '../discord/types.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const SOUNDS_DIR = join(__dirname, '../../data/sounds');
+if (!existsSync(SOUNDS_DIR)) mkdirSync(SOUNDS_DIR, { recursive: true });
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: SOUNDS_DIR,
+    filename: (_req, file, cb) => {
+      const soundType = _req.params.soundType as string;
+      cb(null, `${soundType}${extname(file.originalname)}`);
+    },
+  }),
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['.mp3', '.wav', '.ogg', '.webm', '.m4a'];
+    cb(null, allowed.includes(extname(file.originalname).toLowerCase()));
+  },
+  limits: { fileSize: 2 * 1024 * 1024 },
+});
 
 export function createRouter(wsServer: WsServer): Router {
   const router = Router();
@@ -56,6 +79,64 @@ export function createRouter(wsServer: WsServer): Router {
     const gw = getGateway();
     if (gw) gw.disconnect();
     res.json({ success: true });
+  });
+
+  router.get('/auth/tokens', (_req, res) => {
+    const tokens = configStore.getTokens();
+    const masked = tokens.map((t, index) => {
+      const len = t.length;
+      const visible = Math.min(4, Math.floor(len / 4));
+      const maskedToken = len <= 8
+        ? '*'.repeat(len)
+        : t.slice(0, visible) + '*'.repeat(Math.max(4, len - visible * 2)) + t.slice(-visible);
+      return { index, masked: maskedToken };
+    });
+    res.json({ tokens: masked, count: tokens.length });
+  });
+
+  router.post('/auth/tokens/add', async (_req, res) => {
+    const { token } = _req.body;
+    if (!token || typeof token !== 'string' || token.trim().length === 0) {
+      return res.status(400).json({ error: 'A valid Discord token is required.' });
+    }
+    const existing = configStore.getTokens();
+    const trimmed = token.trim();
+    if (existing.includes(trimmed)) {
+      return res.status(409).json({ error: 'This token is already configured.' });
+    }
+    const updated = [...existing, trimmed];
+    configStore.setTokens(updated);
+
+    try {
+      const { connectGateway } = await import('../index.js');
+      connectGateway(updated, wsServer);
+      res.json({ success: true, tokenCount: updated.length });
+    } catch (err: any) {
+      res.status(500).json({ error: `Failed to connect: ${err.message}` });
+    }
+  });
+
+  router.delete('/auth/tokens/:index', async (_req, res) => {
+    const index = parseInt(_req.params.index, 10);
+    const existing = configStore.getTokens();
+    if (isNaN(index) || index < 0 || index >= existing.length) {
+      return res.status(400).json({ error: 'Invalid token index.' });
+    }
+    const updated = existing.filter((_, i) => i !== index);
+    configStore.setTokens(updated);
+
+    try {
+      if (updated.length > 0) {
+        const { connectGateway } = await import('../index.js');
+        connectGateway(updated, wsServer);
+      } else {
+        const gw = getGateway();
+        if (gw) gw.disconnect();
+      }
+      res.json({ success: true, tokenCount: updated.length });
+    } catch (err: any) {
+      res.status(500).json({ error: `Failed to reconnect: ${err.message}` });
+    }
   });
 
   // --- Channel History ---
@@ -180,7 +261,7 @@ export function createRouter(wsServer: WsServer): Router {
   });
 
   router.put('/config', (req, res) => {
-    const { globalHighlightedUsers, contractDetection, guildColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, messageSounds, pushover, contractLinkTemplates, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, messageSounds, soundSettings, pushover, contractLinkTemplates, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction } = req.body;
     const config = configStore.updateConfig({
       ...(globalHighlightedUsers !== undefined && { globalHighlightedUsers }),
       ...(contractDetection !== undefined && { contractDetection }),
@@ -191,15 +272,47 @@ export function createRouter(wsServer: WsServer): Router {
       ...(solAddressColor !== undefined && { solAddressColor }),
       ...(openInDiscordApp !== undefined && { openInDiscordApp }),
       ...(messageSounds !== undefined && { messageSounds }),
+      ...(soundSettings !== undefined && { soundSettings }),
       ...(pushover !== undefined && { pushover }),
       ...(contractLinkTemplates !== undefined && { contractLinkTemplates }),
       ...(autoOpenHighlightedContracts !== undefined && { autoOpenHighlightedContracts }),
       ...(globalKeywordPatterns !== undefined && { globalKeywordPatterns }),
       ...(keywordAlertsEnabled !== undefined && { keywordAlertsEnabled }),
       ...(desktopNotifications !== undefined && { desktopNotifications }),
+      ...(badgeClickAction !== undefined && { badgeClickAction }),
     });
     res.json(config);
   });
+
+  // --- Sound file uploads ---
+
+  const validSoundTypes: SoundType[] = ['highlight', 'contractAlert', 'keywordAlert'];
+
+  router.post('/sounds/:soundType', upload.single('file'), (req, res) => {
+    if (!validSoundTypes.includes(req.params.soundType as SoundType)) {
+      return res.status(400).json({ error: 'Invalid sound type' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No audio file provided or unsupported format' });
+    }
+    const url = `/api/sounds/${req.file.filename}`;
+    res.json({ url, filename: req.file.filename });
+  });
+
+  router.delete('/sounds/:soundType', (req, res) => {
+    const soundType = req.params.soundType as SoundType;
+    if (!validSoundTypes.includes(soundType)) {
+      return res.status(400).json({ error: 'Invalid sound type' });
+    }
+    const extensions = ['.mp3', '.wav', '.ogg', '.webm', '.m4a'];
+    for (const ext of extensions) {
+      const filePath = join(SOUNDS_DIR, `${soundType}${ext}`);
+      try { if (existsSync(filePath)) unlinkSync(filePath); } catch { /* ignore */ }
+    }
+    res.json({ success: true });
+  });
+
+  router.use('/sounds', expressStatic(SOUNDS_DIR));
 
   // --- Contracts ---
 

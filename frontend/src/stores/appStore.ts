@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Room, FrontendMessage, Alert, AppConfig, GuildInfo, DMChannel, ContractEntry, FrontendReaction, AuthStatus } from '../types';
+import type { Room, FrontendMessage, Alert, AppConfig, GuildInfo, DMChannel, ContractEntry, FrontendReaction, AuthStatus, MaskedToken } from '../types';
 
 const API_BASE = '/api';
 const MAX_MESSAGES_PER_ROOM = 500;
@@ -11,7 +11,7 @@ interface AppState {
   authLoading: boolean;
   rooms: Room[];
   activeRoomId: string | null;
-  activeView: 'chat' | 'contracts';
+  activeView: 'chat' | 'contracts' | 'settings';
   messages: Record<string, FrontendMessage[]>;
   alerts: Alert[];
   guilds: GuildInfo[];
@@ -23,12 +23,13 @@ interface AppState {
   connected: boolean;
   focusFilter: { guildId: string | null; channelId: string; guildName: string | null; channelName: string } | null;
   contracts: ContractEntry[];
+  maskedTokens: MaskedToken[];
 
   setConnected: (connected: boolean) => void;
   setFocusFilter: (filter: AppState['focusFilter']) => void;
   clearFocusFilter: () => void;
   setActiveRoom: (roomId: string | null) => void;
-  setActiveView: (view: 'chat' | 'contracts') => void;
+  setActiveView: (view: 'chat' | 'contracts' | 'settings') => void;
   addMessage: (message: FrontendMessage, roomIds: string[]) => void;
   addAlert: (alert: Alert) => void;
   dismissAlert: (alertId: string) => void;
@@ -37,6 +38,9 @@ interface AppState {
 
   checkAuth: () => Promise<void>;
   submitToken: (token: string) => Promise<{ success: boolean; error?: string }>;
+  fetchMaskedTokens: () => Promise<void>;
+  addToken: (token: string) => Promise<{ success: boolean; error?: string }>;
+  removeToken: (index: number) => Promise<{ success: boolean; error?: string }>;
 
   fetchRooms: () => Promise<void>;
   fetchHistory: () => Promise<void>;
@@ -48,7 +52,7 @@ interface AppState {
   createRoom: (name: string, channels: Room['channels'], highlightedUsers: string[], color?: string | null, filteredUsers?: string[], filterEnabled?: boolean) => Promise<Room>;
   updateRoom: (id: string, data: Partial<Omit<Room, 'id'>>) => Promise<void>;
   deleteRoom: (id: string) => Promise<void>;
-  updateConfig: (data: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'hiddenUsers' | 'messageSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications'>>) => Promise<void>;
+  updateConfig: (data: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction'>>) => Promise<void>;
   hideUser: (guildId: string | null, channelId: string, userId: string, displayName: string) => Promise<void>;
   unhideUser: (guildId: string | null, channelId: string, userId: string) => Promise<void>;
 
@@ -73,6 +77,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   connected: false,
   focusFilter: null,
   contracts: [],
+  maskedTokens: [],
 
   setConnected: (connected) => set({ connected }),
   setFocusFilter: (filter) => set({ focusFilter: filter }),
@@ -99,6 +104,45 @@ export const useAppStore = create<AppState>((set, get) => ({
       const data = await res.json();
       if (!res.ok) return { success: false, error: data.error };
       set({ authStatus: { configured: true, connected: true } });
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  fetchMaskedTokens: async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/tokens`);
+      if (!res.ok) return;
+      const data = await res.json();
+      set({ maskedTokens: data.tokens ?? [] });
+    } catch {}
+  },
+
+  addToken: async (token: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/tokens/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error };
+      await get().fetchMaskedTokens();
+      set({ authStatus: { configured: true, connected: true } });
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  removeToken: async (index: number) => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/tokens/${index}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error };
+      await get().fetchMaskedTokens();
+      await get().checkAuth();
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message };

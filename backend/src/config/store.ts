@@ -9,6 +9,8 @@ const DATA_DIR = join(__dirname, '../../data');
 const CONFIG_PATH = join(DATA_DIR, 'config.json');
 const DEFAULT_CONFIG_PATH = join(DATA_DIR, 'config.default.json');
 
+const DEFAULT_SOUND_CONFIG = { enabled: true, volume: 80, useCustom: false };
+
 const DEFAULT_CONFIG: AppConfig = {
   discordTokens: [],
   rooms: [],
@@ -21,6 +23,11 @@ const DEFAULT_CONFIG: AppConfig = {
   openInDiscordApp: false,
   hiddenUsers: {},
   messageSounds: false,
+  soundSettings: {
+    highlight: { ...DEFAULT_SOUND_CONFIG },
+    contractAlert: { ...DEFAULT_SOUND_CONFIG },
+    keywordAlert: { ...DEFAULT_SOUND_CONFIG },
+  },
   pushover: { enabled: false, appToken: '', userKey: '' },
   contractLinkTemplates: {
     evm: 'https://gmgn.ai/base/token/{address}',
@@ -33,6 +40,7 @@ const DEFAULT_CONFIG: AppConfig = {
   globalKeywordPatterns: [],
   keywordAlertsEnabled: true,
   desktopNotifications: false,
+  badgeClickAction: 'discord',
 };
 
 class ConfigStore {
@@ -52,6 +60,13 @@ class ConfigStore {
           filteredUsers: r.filteredUsers ?? [],
           filterEnabled: r.filterEnabled ?? false,
         }));
+        if (!parsed.soundSettings) {
+          parsed.soundSettings = { ...DEFAULT_CONFIG.soundSettings };
+        } else {
+          for (const key of ['highlight', 'contractAlert', 'keywordAlert'] as const) {
+            parsed.soundSettings[key] = { ...DEFAULT_SOUND_CONFIG, ...parsed.soundSettings[key] };
+          }
+        }
         return parsed;
       }
     } catch (err) {
@@ -118,7 +133,7 @@ class ConfigStore {
     return this.config;
   }
 
-  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'hiddenUsers' | 'messageSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications'>>): AppConfig {
+  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction'>>): AppConfig {
     Object.assign(this.config, partial);
     this.save();
     return this.config;

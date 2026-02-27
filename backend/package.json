@@ -12,12 +12,14 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "multer": "^2.0.2",
     "uuid": "^11.1.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
+    "@types/multer": "^2.0.0",
     "@types/uuid": "^10.0.0",
     "@types/ws": "^8.5.14",
     "tsx": "^4.19.2",
