@@ -3,9 +3,30 @@ import { useAppStore } from '../stores/appStore';
 import { playHighlightSound, playContractAlertSound, playKeywordAlertSound } from '../utils/notificationSound';
 import { buildContractUrl } from '../utils/contractUrl';
 import { showDesktopNotification } from '../utils/desktopNotification';
+import { isDemoMode } from '../demo/demoStore';
+import { buildStreamMessage, STREAM_POOL } from '../demo/demoData';
 import type { WsIncoming, Alert, FrontendMessage, ContractEntry } from '../types';
 
 let idCounter = 0;
+
+function useDemoStream() {
+  const addMessage = useAppStore((s) => s.addMessage);
+  const setConnected = useAppStore((s) => s.setConnected);
+  const poolIndex = useRef(0);
+
+  useEffect(() => {
+    if (!isDemoMode) return;
+    setConnected(true);
+
+    const interval = setInterval(() => {
+      const { message, roomIds } = buildStreamMessage(poolIndex.current);
+      poolIndex.current = (poolIndex.current + 1) % STREAM_POOL.length;
+      addMessage(message, roomIds);
+    }, 6000 + Math.random() * 4000);
+
+    return () => clearInterval(interval);
+  }, [addMessage, setConnected]);
+}
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
@@ -17,7 +38,11 @@ export function useWebSocket() {
   const addContract = useAppStore((s) => s.addContract);
   const updateContractChain = useAppStore((s) => s.updateContractChain);
 
+  useDemoStream();
+
   useEffect(() => {
+    if (isDemoMode) return;
+
     let disposed = false;
     let reconnectTimer: ReturnType<typeof setTimeout>;
 
