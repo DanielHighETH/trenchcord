@@ -5,6 +5,7 @@ import { requestNotificationPermission } from './utils/desktopNotification';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import ContractDashboard from './components/ContractDashboard';
+import GlobalSettings from './components/GlobalSettings';
 import RoomConfig from './components/RoomConfig';
 import AlertToast from './components/AlertToast';
 import TokenSetup from './components/TokenSetup';
@@ -49,7 +50,7 @@ export default function App() {
   return (
     <div className="flex h-full w-full">
       <Sidebar />
-      {activeView === 'contracts' ? <ContractDashboard /> : <ChatView />}
+      {activeView === 'settings' ? <GlobalSettings /> : activeView === 'contracts' ? <ContractDashboard /> : <ChatView />}
       <RoomConfig />
       <AlertToast />
     </div>

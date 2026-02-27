@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Github } from 'lucide-react';
+import { Menu, X, Github, Hash } from 'lucide-react';
 
 const navLinks = [
   { label: 'Features', href: '#features' },
@@ -54,14 +54,14 @@ export function Navbar() {
     <motion.nav
       initial={{ y: -80 }}
       animate={{ y: 0 }}
-      transition={{ duration: 0.5, ease: [0.25, 0.4, 0.25, 1] }}
-      className={`fixed top-0 left-0 right-0 z-50 border-b transition-all duration-300 ${
+      transition={{ duration: 0.4, ease: [0.25, 0.4, 0.25, 1] }}
+      className={`fixed top-0 left-0 right-0 z-50 transition-colors duration-200 ${
         scrolled || mobileOpen
-          ? 'bg-bg-deep/80 backdrop-blur-xl border-white/5 shadow-lg shadow-black/20'
-          : 'bg-transparent border-transparent'
+          ? 'bg-dc-sidebar shadow-md shadow-black/20'
+          : 'bg-dc-sidebar/80'
       }`}
     >
-      <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between">
+      <div className="mx-auto max-w-6xl h-12 px-4 flex items-center justify-between">
         <a
           href="#"
           onClick={(e) => {
@@ -69,84 +69,84 @@ export function Navbar() {
             setMobileOpen(false);
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
-          className="text-xl font-bold gradient-text"
+          className="text-base font-bold text-dc-text hover:text-white transition-colors"
         >
           Trenchcord
         </a>
 
-        {/* Desktop links */}
-        <div className="hidden sm:flex items-center gap-8">
-          {navLinks.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              onClick={(e) => handleClick(e, link.href)}
-              className={`relative text-sm font-medium transition-colors ${
-                activeSection === link.href.slice(1)
-                  ? 'text-white'
-                  : 'text-white/50 hover:text-white/80'
-              }`}
-            >
-              {link.label}
-              {activeSection === link.href.slice(1) && (
-                <motion.div
-                  layoutId="nav-underline"
-                  className="absolute -bottom-1 left-0 right-0 h-0.5 bg-gradient-to-r from-accent-blurple to-accent-purple rounded-full"
-                />
-              )}
-            </a>
-          ))}
+        <div className="hidden sm:flex items-center gap-1">
+          {navLinks.map((link) => {
+            const isActive = activeSection === link.href.slice(1);
+            return (
+              <a
+                key={link.href}
+                href={link.href}
+                onClick={(e) => handleClick(e, link.href)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors ${
+                  isActive
+                    ? 'bg-dc-hover text-white'
+                    : 'text-dc-text-muted hover:text-dc-text hover:bg-dc-hover/50'
+                }`}
+              >
+                <Hash size={14} className="text-dc-channel-icon" />
+                {link.label.toLowerCase()}
+              </a>
+            );
+          })}
+          <div className="w-px h-5 bg-dc-divider mx-2" />
           <a
             href="https://github.com/DanielHighETH/trenchcord"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-white/50 hover:text-white transition-colors"
+            className="text-dc-text-muted hover:text-dc-text transition-colors p-1.5 rounded hover:bg-dc-hover/50"
           >
-            <Github size={20} />
+            <Github size={18} />
           </a>
         </div>
 
-        {/* Mobile toggle */}
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
-          className="sm:hidden text-white/60 hover:text-white transition-colors"
+          className="sm:hidden text-dc-text-muted hover:text-dc-text transition-colors"
           aria-label="Toggle menu"
         >
           {mobileOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
       </div>
 
-      {/* Mobile menu */}
       <AnimatePresence>
         {mobileOpen && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="sm:hidden overflow-hidden border-t border-white/5"
+            className="sm:hidden overflow-hidden border-t border-dc-divider bg-dc-sidebar"
           >
-            <div className="px-6 py-4 flex flex-col gap-4">
-              {navLinks.map((link) => (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  onClick={(e) => handleClick(e, link.href)}
-                  className={`text-sm font-medium transition-colors ${
-                    activeSection === link.href.slice(1)
-                      ? 'text-white'
-                      : 'text-white/50'
-                  }`}
-                >
-                  {link.label}
-                </a>
-              ))}
+            <div className="px-4 py-3 flex flex-col gap-1">
+              {navLinks.map((link) => {
+                const isActive = activeSection === link.href.slice(1);
+                return (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    onClick={(e) => handleClick(e, link.href)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded text-sm transition-colors ${
+                      isActive
+                        ? 'bg-dc-hover text-white'
+                        : 'text-dc-text-muted hover:text-dc-text hover:bg-dc-hover/50'
+                    }`}
+                  >
+                    <Hash size={14} className="text-dc-channel-icon" />
+                    {link.label.toLowerCase()}
+                  </a>
+                );
+              })}
               <a
                 href="https://github.com/DanielHighETH/trenchcord"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm font-medium text-white/50 hover:text-white transition-colors flex items-center gap-2"
+                className="flex items-center gap-2 px-3 py-2 rounded text-sm text-dc-text-muted hover:text-dc-text hover:bg-dc-hover/50 transition-colors"
               >
-                <Github size={16} />
+                <Github size={14} />
                 GitHub
               </a>
             </div>

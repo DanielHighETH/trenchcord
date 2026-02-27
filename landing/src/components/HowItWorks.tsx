@@ -32,23 +32,23 @@ const steps = [
 
 export function HowItWorks() {
   return (
-    <section id="how-it-works" className="relative py-28 px-6 bg-bg-section/50">
+    <section id="how-it-works" className="relative py-20 px-6 bg-dc-sidebar">
       <div className="mx-auto max-w-6xl">
-        <AnimatedSection className="text-center mb-16">
-          <h2 className="text-3xl sm:text-5xl font-bold gradient-text inline-block pb-1">
+        <AnimatedSection className="text-center mb-12">
+          <h2 className="text-2xl sm:text-4xl font-bold text-white">
             How It Works
           </h2>
-          <p className="mt-4 text-white/50 max-w-md mx-auto">
+          <p className="mt-3 text-dc-text-muted max-w-md mx-auto text-sm">
             Get up and running in minutes.
           </p>
         </AnimatedSection>
 
         <StaggerContainer
           className="relative grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-4"
-          staggerDelay={0.12}
+          staggerDelay={0.1}
         >
-          {/* Connecting line (desktop only) */}
-          <div className="hidden md:block absolute top-16 left-[12.5%] right-[12.5%] h-px bg-gradient-to-r from-accent-blurple/40 via-accent-purple/40 to-accent-blurple/40" />
+          {/* Connecting line */}
+          <div className="hidden md:block absolute top-8 left-[12.5%] right-[12.5%] h-px bg-dc-divider" />
 
           {steps.map((step) => {
             const Icon = step.icon;
@@ -58,14 +58,14 @@ export function HowItWorks() {
                 variants={fadeUpVariant}
                 className="relative flex flex-col items-center text-center"
               >
-                <div className="relative z-10 w-14 h-14 rounded-2xl bg-gradient-to-br from-accent-blurple/20 to-accent-purple/20 border border-white/10 flex items-center justify-center mb-5">
-                  <Icon size={22} className="text-accent-blurple" />
+                <div className="relative z-10 w-12 h-12 rounded-lg bg-dc-dark border border-dc-divider flex items-center justify-center mb-4">
+                  <Icon size={20} className="text-dc-blurple" />
                 </div>
-                <span className="text-[10px] font-bold tracking-widest text-accent-blurple/60 uppercase mb-2">
+                <span className="text-[10px] font-bold tracking-widest text-dc-text-faint uppercase mb-1.5">
                   Step {step.num}
                 </span>
-                <h3 className="font-semibold text-white mb-1">{step.title}</h3>
-                <p className="text-xs text-white/45 max-w-[180px]">{step.desc}</p>
+                <h3 className="font-semibold text-dc-text mb-1 text-sm">{step.title}</h3>
+                <p className="text-xs text-dc-text-muted max-w-[180px]">{step.desc}</p>
               </motion.div>
             );
           })}

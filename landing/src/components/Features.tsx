@@ -94,48 +94,48 @@ const features = [
 ];
 
 const accentColors = {
-  solana: 'text-accent-solana',
-  evm: 'text-accent-evm',
+  solana: 'text-dc-solana',
+  evm: 'text-dc-evm',
 };
 
 export function Features() {
   return (
-    <section id="features" className="relative py-28 px-6">
+    <section id="features" className="relative py-20 px-6 bg-dc-sidebar">
       <div className="mx-auto max-w-6xl">
-        <AnimatedSection className="text-center mb-16">
-          <h2 className="text-3xl sm:text-5xl font-bold gradient-text inline-block pb-1">
+        <AnimatedSection className="text-center mb-12">
+          <h2 className="text-2xl sm:text-4xl font-bold text-white">
             Everything You Need
           </h2>
-          <p className="mt-4 text-white/50 max-w-xl mx-auto">
+          <p className="mt-3 text-dc-text-muted max-w-xl mx-auto text-sm">
             A complete toolkit for monitoring Discord alpha and trading crypto — all in one place.
           </p>
         </AnimatedSection>
 
         <StaggerContainer
-          className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4"
-          staggerDelay={0.06}
+          className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3"
+          staggerDelay={0.04}
         >
           {features.map((f) => {
             const Icon = f.icon;
             const iconColor = f.accent
               ? accentColors[f.accent]
-              : 'text-accent-blurple';
+              : 'text-dc-blurple';
 
             return (
               <motion.div
                 key={f.title}
                 variants={fadeUpVariant}
-                className={`glass-card rounded-2xl p-6 flex flex-col gap-3 ${f.span}`}
+                className={`bg-dc-dark rounded-lg p-5 flex flex-col gap-3 border border-dc-divider/50 hover:border-dc-divider transition-colors ${f.span}`}
               >
                 <div
-                  className={`w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center ${iconColor}`}
+                  className={`w-9 h-9 rounded-lg bg-dc-main flex items-center justify-center ${iconColor}`}
                 >
-                  <Icon size={20} />
+                  <Icon size={18} />
                 </div>
-                <h3 className="font-semibold text-white text-sm">
+                <h3 className="font-semibold text-dc-text text-sm">
                   {f.title}
                 </h3>
-                <p className="text-xs text-white/45 leading-relaxed">
+                <p className="text-xs text-dc-text-muted leading-relaxed">
                   {f.desc}
                 </p>
               </motion.div>

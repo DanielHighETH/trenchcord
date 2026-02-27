@@ -1,60 +1,75 @@
 import { motion } from 'framer-motion';
 import { AnimatedSection } from './AnimatedSection';
+import { Hash, AtSign } from 'lucide-react';
 
-const floatingCards = [
+interface MockMsg {
+  author: string;
+  avatar: string;
+  text: string;
+  time: string;
+  isContract?: boolean;
+  chain?: string;
+  isHighlighted?: boolean;
+}
+
+interface MockGroup {
+  channel: { name: string; type: 'channel' | 'dm' };
+  messages: MockMsg[];
+}
+
+const mockMessages: MockGroup[] = [
   {
-    title: '#sol-calls',
-    messages: ['New CA detected', 'pump.fun/...x7f2'],
-    rotate: -6,
+    channel: { name: 'sol-calls', type: 'channel' },
+    messages: [
+      { author: 'alpha_sniper', avatar: '#23a559', text: 'New CA just dropped on pump.fun', time: 'Today at 2:14 PM' },
+      { author: 'whale_tracker', avatar: '#5865f2', text: 'pump.fun/coin/...x7f2', time: 'Today at 2:14 PM', isContract: true, chain: 'SOL' },
+    ],
   },
   {
-    title: '#eth-alpha',
-    messages: ['Contract: 0x1a2...f3d', '+340% in 2h'],
-    rotate: 4,
+    channel: { name: 'eth-alpha', type: 'channel' },
+    messages: [
+      { author: 'degen_carl', avatar: '#f23f43', text: '0x1a2b...f3d4 — up 340% in 2h', time: 'Today at 1:52 PM', isContract: true, chain: 'EVM' },
+    ],
   },
   {
-    title: 'DMs · whale_tracker',
-    messages: ['Just aped into this', 'Check $TRENCHCORD'],
-    rotate: -2,
+    channel: { name: 'whale_tracker', type: 'dm' },
+    messages: [
+      { author: 'whale_tracker', avatar: '#5865f2', text: 'Just aped into this one, check $TRENCHCORD', time: 'Today at 1:30 PM', isHighlighted: true },
+    ],
   },
 ];
 
 export function Hero() {
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-20">
-      <div className="absolute inset-0 particle-grid opacity-50" />
-
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] sm:w-[600px] h-[300px] sm:h-[600px] rounded-full bg-accent-blurple/10 blur-[120px]" />
-      <div className="absolute bottom-1/4 right-1/4 w-[200px] sm:w-[400px] h-[200px] sm:h-[400px] rounded-full bg-accent-purple/10 blur-[100px]" />
-
-      <div className="relative z-10 mx-auto max-w-6xl px-6 text-center">
+    <section className="relative flex flex-col items-center pt-24 pb-16 sm:pt-28 sm:pb-20 overflow-hidden">
+      <div className="relative z-10 mx-auto max-w-4xl px-6 text-center">
         <AnimatedSection delay={0.1}>
-          <h1 className="text-5xl sm:text-7xl lg:text-8xl font-extrabold tracking-tight gradient-text pb-2">
+          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white pb-2">
             Trenchcord
           </h1>
         </AnimatedSection>
 
-        <AnimatedSection delay={0.25}>
-          <p className="mt-6 text-lg sm:text-xl text-white/60 max-w-2xl mx-auto leading-relaxed">
+        <AnimatedSection delay={0.2}>
+          <p className="mt-4 text-lg sm:text-xl text-dc-text-muted max-w-2xl mx-auto leading-relaxed">
             Your Discord, Supercharged for Trenching
           </p>
         </AnimatedSection>
 
-        <AnimatedSection delay={0.4}>
-          <p className="mt-4 text-sm sm:text-base text-white/40 max-w-xl mx-auto">
+        <AnimatedSection delay={0.3}>
+          <p className="mt-3 text-sm text-dc-text-faint max-w-xl mx-auto">
             Aggregate channels, track key users, auto-detect contracts,
             and trade in one click — all from a single dashboard.
           </p>
         </AnimatedSection>
 
-        <AnimatedSection delay={0.55}>
+        <AnimatedSection delay={0.4}>
           <a
             href="#tutorial"
             onClick={(e) => {
               e.preventDefault();
               document.querySelector('#tutorial')?.scrollIntoView({ behavior: 'smooth' });
             }}
-            className="mt-10 inline-flex items-center gap-2 px-8 py-3.5 rounded-full bg-gradient-to-r from-accent-blurple to-accent-purple text-white font-semibold text-sm shadow-lg shadow-accent-blurple/25 hover:shadow-accent-blurple/40 hover:scale-105 transition-all duration-300"
+            className="mt-8 inline-flex items-center gap-2 px-6 py-2.5 rounded bg-dc-blurple text-white font-medium text-sm hover:bg-dc-blurple-hover transition-colors"
           >
             Get Started
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="mt-px">
@@ -62,35 +77,97 @@ export function Hero() {
             </svg>
           </a>
         </AnimatedSection>
+      </div>
 
-        <div className="mt-16 sm:mt-20 relative">
-          <div className="flex flex-col sm:flex-row flex-wrap justify-center items-center gap-4 sm:gap-6 max-w-3xl mx-auto">
-            {floatingCards.map((card, i) => (
-              <motion.div
-                key={card.title}
-                initial={{ opacity: 0, y: 40 }}
-                animate={{ opacity: 1, y: 0, rotate: card.rotate }}
-                transition={{
-                  duration: 0.8,
-                  delay: 0.7 + i * 0.15,
-                  ease: [0.25, 0.4, 0.25, 1],
-                }}
-                whileHover={{ scale: 1.05, rotate: 0 }}
-                className="glass-card rounded-xl p-4 w-full sm:w-52 text-left"
-              >
-                <div className="text-xs font-semibold text-accent-blurple mb-2">
-                  {card.title}
+      {/* Discord-style message preview */}
+      <AnimatedSection delay={0.5} className="w-full max-w-3xl mx-auto mt-12 px-6">
+        <div className="rounded-lg overflow-hidden border border-dc-divider bg-dc-dark shadow-xl shadow-black/30">
+          {/* Title bar */}
+          <div className="h-8 bg-dc-darker flex items-center px-3 gap-1.5">
+            <div className="w-3 h-3 rounded-full bg-[#ff5f57]" />
+            <div className="w-3 h-3 rounded-full bg-[#febc2e]" />
+            <div className="w-3 h-3 rounded-full bg-[#28c840]" />
+            <span className="ml-3 text-[11px] text-dc-text-faint">Trenchcord</span>
+          </div>
+
+          <div className="flex">
+            {/* Mini sidebar */}
+            <div className="hidden sm:block w-48 bg-dc-sidebar border-r border-dc-divider p-2 shrink-0">
+              <div className="text-[10px] font-semibold text-dc-text-faint uppercase tracking-wide px-1.5 mb-1.5">Rooms</div>
+              {mockMessages.map((m, i) => (
+                <div
+                  key={i}
+                  className={`flex items-center gap-1.5 px-1.5 py-1 rounded text-[13px] ${
+                    i === 0 ? 'bg-dc-hover text-white' : 'text-dc-text-muted'
+                  }`}
+                >
+                  {m.channel.type === 'dm' ? (
+                    <AtSign size={14} className="text-dc-channel-icon shrink-0" />
+                  ) : (
+                    <Hash size={14} className="text-dc-channel-icon shrink-0" />
+                  )}
+                  <span className="truncate">{m.channel.name}</span>
                 </div>
-                {card.messages.map((msg) => (
-                  <div key={msg} className="text-xs text-white/50 py-0.5 truncate">
-                    {msg}
-                  </div>
-                ))}
-              </motion.div>
-            ))}
+              ))}
+            </div>
+
+            {/* Messages area */}
+            <div className="flex-1 min-w-0">
+              {/* Channel header */}
+              <div className="h-10 border-b border-dc-divider flex items-center px-4 gap-2">
+                <Hash size={18} className="text-dc-channel-icon shrink-0" />
+                <span className="text-[15px] font-semibold text-white">sol-calls</span>
+                <span className="text-[13px] text-dc-text-faint hidden sm:inline ml-2">Aggregated from 3 channels</span>
+              </div>
+
+              <div className="p-4 space-y-3">
+                {mockMessages.flatMap((group) =>
+                  group.messages.map((msg, j) => (
+                    <motion.div
+                      key={`${group.channel.name}-${j}`}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.8 + j * 0.15 + mockMessages.indexOf(group) * 0.3 }}
+                      className={`flex items-start gap-3 rounded px-2 py-1.5 -mx-2 ${
+                        msg.isHighlighted ? 'bg-dc-highlight border-l-2 border-dc-blurple' : ''
+                      }`}
+                    >
+                      <div
+                        className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-[11px] font-bold text-white"
+                        style={{ backgroundColor: msg.avatar }}
+                      >
+                        {msg.author[0].toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-baseline gap-2">
+                          <span className={`text-[13px] font-semibold ${msg.isHighlighted ? 'text-dc-blurple' : 'text-white'}`}>
+                            {msg.author}
+                          </span>
+                          <span className="text-[11px] text-dc-text-faint">{msg.time}</span>
+                        </div>
+                        <p className="text-[14px] text-dc-text mt-0.5">
+                          {msg.text}
+                          {msg.isContract && msg.chain && (
+                            <span
+                              className={`inline-flex items-center ml-2 px-1.5 py-0.5 rounded text-[11px] font-semibold ${
+                                msg.chain === 'SOL'
+                                  ? 'bg-[#14f195]/10 text-dc-solana'
+                                  : 'bg-[#fee75c]/10 text-dc-evm'
+                              }`}
+                            >
+                              {msg.chain}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </motion.div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </AnimatedSection>
     </section>
   );
 }

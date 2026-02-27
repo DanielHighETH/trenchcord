@@ -4,14 +4,24 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg: {
-          deep: '#0f0f1a',
-          section: '#1a1a2e',
-          card: 'rgba(255, 255, 255, 0.05)',
-        },
-        accent: {
-          blurple: '#5865F2',
-          purple: '#7c3aed',
+        dc: {
+          dark: '#1e1f22',
+          darker: '#111214',
+          sidebar: '#2b2d31',
+          main: '#313338',
+          input: '#383a40',
+          hover: '#35373c',
+          blurple: '#5865f2',
+          'blurple-hover': '#4752c4',
+          green: '#23a559',
+          red: '#f23f43',
+          yellow: '#fee75c',
+          text: '#dbdee1',
+          'text-muted': '#949ba4',
+          'text-faint': '#6d6f78',
+          'channel-icon': '#80848e',
+          divider: '#3f4147',
+          highlight: 'rgba(88,101,242,0.1)',
           evm: '#fee75c',
           solana: '#14f195',
         },
@@ -25,9 +35,6 @@ export default {
           'Arial',
           'sans-serif',
         ],
-      },
-      backgroundImage: {
-        'gradient-accent': 'linear-gradient(135deg, #5865F2, #7c3aed)',
       },
     },
   },
