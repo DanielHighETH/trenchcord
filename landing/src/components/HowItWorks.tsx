@@ -59,7 +59,7 @@ export function HowItWorks() {
                 className="relative flex flex-col items-center text-center"
               >
                 <div className="relative z-10 w-12 h-12 rounded-lg bg-dc-dark border border-dc-divider flex items-center justify-center mb-4">
-                  <Icon size={20} className="text-dc-blurple" />
+                  <Icon size={20} className="text-dc-text" />
                 </div>
                 <span className="text-[10px] font-bold tracking-widest text-dc-text-faint uppercase mb-1.5">
                   Step {step.num}

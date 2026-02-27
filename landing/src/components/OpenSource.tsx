@@ -19,19 +19,19 @@ export function OpenSource() {
           <div className="bg-dc-sidebar rounded-lg border border-dc-divider p-8 sm:p-10 max-w-2xl mx-auto text-center">
             <div className="flex justify-center gap-10 mb-6">
               <div className="flex flex-col items-center gap-2">
-                <div className="w-11 h-11 rounded-lg bg-dc-dark flex items-center justify-center text-dc-blurple">
+                <div className="w-11 h-11 rounded-lg bg-dc-dark flex items-center justify-center text-dc-text">
                   <GitFork size={20} />
                 </div>
                 <span className="text-xs text-dc-text-muted">Fork it</span>
               </div>
               <div className="flex flex-col items-center gap-2">
-                <div className="w-11 h-11 rounded-lg bg-dc-dark flex items-center justify-center text-dc-yellow">
+                <div className="w-11 h-11 rounded-lg bg-dc-dark flex items-center justify-center text-dc-text">
                   <Star size={20} />
                 </div>
                 <span className="text-xs text-dc-text-muted">Star it</span>
               </div>
               <div className="flex flex-col items-center gap-2">
-                <div className="w-11 h-11 rounded-lg bg-dc-dark flex items-center justify-center text-dc-text-muted">
+                <div className="w-11 h-11 rounded-lg bg-dc-dark flex items-center justify-center text-dc-text">
                   <Github size={20} />
                 </div>
                 <span className="text-xs text-dc-text-muted">Build on it</span>

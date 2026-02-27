@@ -22,7 +22,7 @@ function RequirementsContent() {
           { name: 'npm', version: 'Comes with Node.js', link: null },
           { name: 'Git', version: 'Any recent version', link: 'https://git-scm.com' },
         ].map((req) => (
-          <div key={req.name} className="bg-dc-dark rounded-lg p-4 flex items-center justify-between border border-dc-divider/50">
+          <div key={req.name} className="bg-dc-main rounded-lg p-4 flex items-center justify-between border border-dc-divider/50">
             <div>
               <span className="text-dc-text font-medium text-sm">{req.name}</span>
               <span className="text-dc-text-faint text-xs ml-2">{req.version}</span>
@@ -32,7 +32,7 @@ function RequirementsContent() {
                 href={req.link}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-dc-blurple hover:underline"
+                className="text-xs text-dc-text hover:text-white hover:underline"
               >
                 Download
               </a>
@@ -54,7 +54,7 @@ function InstallationContent() {
           <span className="text-[10px] font-bold tracking-widest text-dc-text-faint uppercase">
             Option A &mdash; Download ZIP
           </span>
-          <div className="bg-dc-dark rounded-lg p-4 mt-1.5 flex items-center justify-between border border-dc-divider/50">
+          <div className="bg-dc-main rounded-lg p-4 mt-1.5 flex items-center justify-between border border-dc-divider/50">
             <p className="text-sm text-dc-text-muted">
               Download the latest release from GitHub and extract it.
             </p>
@@ -62,7 +62,7 @@ function InstallationContent() {
               href="https://github.com/DanielHighETH/trenchcord/archive/refs/heads/main.zip"
               target="_blank"
               rel="noopener noreferrer"
-              className="shrink-0 ml-4 text-xs font-medium text-dc-blurple hover:underline"
+              className="shrink-0 ml-4 text-xs font-medium text-dc-text hover:text-white hover:underline"
             >
               Download ZIP
             </a>
@@ -122,7 +122,7 @@ function TokenContent() {
         {steps.map((step, i) => (
           <div key={i} className="flex items-start gap-3">
             <div className="shrink-0 w-6 h-6 rounded bg-dc-dark border border-dc-divider flex items-center justify-center">
-              <span className="text-[11px] font-bold text-dc-blurple">{i + 1}</span>
+              <span className="text-[11px] font-bold text-dc-text">{i + 1}</span>
             </div>
             <div className="pt-0.5">
               <p className="text-sm text-dc-text-muted">{step}</p>
@@ -155,10 +155,10 @@ function RunningContent() {
       </div>
       <p className="text-dc-text-muted text-sm">
         This builds the frontend and backend, then starts the server. Open{' '}
-        <span className="text-dc-blurple font-mono text-xs">http://localhost:3001</span>{' '}
+        <span className="text-white font-mono text-xs">http://localhost:3001</span>{' '}
         in your browser — you'll be prompted to paste your Discord token on first launch.
       </p>
-      <div className="bg-dc-dark rounded-lg p-3 mt-2 border border-dc-divider/50">
+      <div className="bg-dc-main rounded-lg p-3 mt-2 border border-dc-divider/50">
         <p className="text-xs text-dc-text-faint">
           For development with hot-reload, use{' '}
           <span className="text-dc-text-muted font-mono">npm run dev</span>{' '}
@@ -219,7 +219,7 @@ export function Tutorial() {
                     {isActive && (
                       <motion.div
                         layoutId="tab-indicator"
-                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-dc-blurple"
+                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-white"
                       />
                     )}
                   </button>

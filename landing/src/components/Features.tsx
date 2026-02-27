@@ -119,13 +119,13 @@ export function Features() {
             const Icon = f.icon;
             const iconColor = f.accent
               ? accentColors[f.accent]
-              : 'text-dc-blurple';
+              : 'text-dc-text';
 
             return (
               <motion.div
                 key={f.title}
                 variants={fadeUpVariant}
-                className={`bg-dc-dark rounded-lg p-5 flex flex-col gap-3 border border-dc-divider/50 hover:border-dc-divider transition-colors ${f.span}`}
+                className={`bg-dc-main rounded-lg p-5 flex flex-col gap-3 border border-dc-divider/50 hover:border-dc-divider transition-colors ${f.span}`}
               >
                 <div
                   className={`w-9 h-9 rounded-lg bg-dc-main flex items-center justify-center ${iconColor}`}
