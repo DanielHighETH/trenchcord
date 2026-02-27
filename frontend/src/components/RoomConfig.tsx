@@ -1,9 +1,7 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
-import type { ChannelRef, SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig } from '../types';
-import { X, Search, Plus, Trash2, Hash, MessageCircle, Users, Filter, Eye, EyeOff, Key, Volume2, Upload, Play } from 'lucide-react';
-import { requestNotificationPermission } from '../utils/desktopNotification';
-import { previewSound } from '../utils/notificationSound';
+import type { ChannelRef, KeywordPattern, KeywordMatchMode } from '../types';
+import { X, Search, Plus, Trash2, Hash, MessageCircle, Users, Filter } from 'lucide-react';
 
 export default function RoomConfig() {
   const configModalOpen = useAppStore((s) => s.configModalOpen);
@@ -15,14 +13,9 @@ export default function RoomConfig() {
   const createRoom = useAppStore((s) => s.createRoom);
   const updateRoom = useAppStore((s) => s.updateRoom);
   const config = useAppStore((s) => s.config);
-  const updateConfig = useAppStore((s) => s.updateConfig);
   const fetchGuilds = useAppStore((s) => s.fetchGuilds);
   const fetchDMChannels = useAppStore((s) => s.fetchDMChannels);
   const fetchConfig = useAppStore((s) => s.fetchConfig);
-  const maskedTokens = useAppStore((s) => s.maskedTokens);
-  const fetchMaskedTokens = useAppStore((s) => s.fetchMaskedTokens);
-  const addToken = useAppStore((s) => s.addToken);
-  const removeToken = useAppStore((s) => s.removeToken);
   const allMessages = useAppStore((s) => s.messages);
 
   const userNameMap = useMemo(() => {
@@ -46,55 +39,20 @@ export default function RoomConfig() {
   const [newUserId, setNewUserId] = useState('');
   const [newFilterUser, setNewFilterUser] = useState('');
   const [search, setSearch] = useState('');
-  const [tab, setTab] = useState<'channels' | 'users' | 'filter' | 'keywords' | 'global'>('channels');
-  const [globalUsers, setGlobalUsers] = useState<string[]>([]);
-  const [contractDetection, setContractDetection] = useState(true);
-  const [guildColors, setGuildColors] = useState<Record<string, string>>({});
-  const [enabledGuilds, setEnabledGuilds] = useState<string[]>([]);
-  const [guildSearch, setGuildSearch] = useState('');
-  const [evmAddressColor, setEvmAddressColor] = useState('#fee75c');
-  const [solAddressColor, setSolAddressColor] = useState('#14f195');
-  const [openInDiscordApp, setOpenInDiscordApp] = useState(false);
-  const [messageSounds, setMessageSounds] = useState(false);
-  const defaultSoundConfig: SoundConfig = { enabled: true, volume: 80, useCustom: false };
-  const [soundSettings, setSoundSettings] = useState<SoundSettings>({
-    highlight: { ...defaultSoundConfig },
-    contractAlert: { ...defaultSoundConfig },
-    keywordAlert: { ...defaultSoundConfig },
-  });
-  const [uploadingSoundType, setUploadingSoundType] = useState<SoundType | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [pushoverEnabled, setPushoverEnabled] = useState(false);
-  const [pushoverAppToken, setPushoverAppToken] = useState('');
-  const [pushoverUserKey, setPushoverUserKey] = useState('');
-  const [solPlatform, setSolPlatform] = useState<SolPlatform>('axiom');
-  const [evmPlatform, setEvmPlatform] = useState<EvmPlatform>('gmgn');
-  const [customSolUrl, setCustomSolUrl] = useState('');
-  const [customEvmUrl, setCustomEvmUrl] = useState('');
-  const [contractClickAction, setContractClickAction] = useState<ContractClickAction>('copy_open');
-  const [autoOpenHighlightedContracts, setAutoOpenHighlightedContracts] = useState(false);
-  const [globalKeywordPatterns, setGlobalKeywordPatterns] = useState<KeywordPattern[]>([]);
-  const [keywordAlertsEnabled, setKeywordAlertsEnabled] = useState(true);
-  const [desktopNotifications, setDesktopNotifications] = useState(false);
-  const [badgeClickAction, setBadgeClickAction] = useState<BadgeClickAction>('discord');
+  const [tab, setTab] = useState<'channels' | 'users' | 'filter' | 'keywords'>('channels');
   const [roomKeywordPatterns, setRoomKeywordPatterns] = useState<KeywordPattern[]>([]);
   const [newKeywordPattern, setNewKeywordPattern] = useState('');
   const [newKeywordMatchMode, setNewKeywordMatchMode] = useState<KeywordMatchMode>('includes');
   const [newKeywordLabel, setNewKeywordLabel] = useState('');
   const [saving, setSaving] = useState(false);
-  const [newToken, setNewToken] = useState('');
-  const [showNewToken, setShowNewToken] = useState(false);
-  const [tokenError, setTokenError] = useState('');
-  const [addingToken, setAddingToken] = useState(false);
 
   useEffect(() => {
     if (configModalOpen) {
       fetchGuilds();
       fetchDMChannels();
       fetchConfig();
-      fetchMaskedTokens();
     }
-  }, [configModalOpen, fetchGuilds, fetchDMChannels, fetchConfig, fetchMaskedTokens]);
+  }, [configModalOpen, fetchGuilds, fetchDMChannels, fetchConfig]);
 
   useEffect(() => {
     if (editingRoom) {
@@ -117,43 +75,11 @@ export default function RoomConfig() {
     setSearch('');
     setNewUserId('');
     setNewFilterUser('');
-    setTab(configModalTab ?? 'channels');
+    const initialTab = configModalTab && configModalTab !== 'global' ? configModalTab : 'channels';
+    setTab(initialTab);
   }, [editingRoom, configModalOpen, configModalTab]);
 
-  useEffect(() => {
-    if (config) {
-      setGlobalUsers(config.globalHighlightedUsers);
-      setContractDetection(config.contractDetection);
-      setGuildColors(config.guildColors ?? {});
-      setEnabledGuilds(config.enabledGuilds ?? []);
-      setEvmAddressColor(config.evmAddressColor ?? '#fee75c');
-      setSolAddressColor(config.solAddressColor ?? '#14f195');
-      setOpenInDiscordApp(config.openInDiscordApp ?? false);
-      setMessageSounds(config.messageSounds ?? false);
-      if (config.soundSettings) {
-        setSoundSettings({
-          highlight: { ...defaultSoundConfig, ...config.soundSettings.highlight },
-          contractAlert: { ...defaultSoundConfig, ...config.soundSettings.contractAlert },
-          keywordAlert: { ...defaultSoundConfig, ...config.soundSettings.keywordAlert },
-        });
-      }
-      setPushoverEnabled(config.pushover?.enabled ?? false);
-      setPushoverAppToken(config.pushover?.appToken ?? '');
-      setPushoverUserKey(config.pushover?.userKey ?? '');
-      setSolPlatform(config.contractLinkTemplates?.solPlatform ?? 'axiom');
-      setEvmPlatform(config.contractLinkTemplates?.evmPlatform ?? 'gmgn');
-      setCustomSolUrl(config.contractLinkTemplates?.sol ?? '');
-      setCustomEvmUrl(config.contractLinkTemplates?.evm ?? '');
-      setContractClickAction(config.contractClickAction ?? 'copy_open');
-      setAutoOpenHighlightedContracts(config.autoOpenHighlightedContracts ?? false);
-      setGlobalKeywordPatterns(config.globalKeywordPatterns ?? []);
-      setKeywordAlertsEnabled(config.keywordAlertsEnabled ?? true);
-      setDesktopNotifications(config.desktopNotifications ?? false);
-      setBadgeClickAction(config.badgeClickAction ?? 'discord');
-    }
-  }, [config]);
-
-  if (!configModalOpen) return null;
+  if (!configModalOpen || configModalTab === 'global') return null;
 
   const isChannelSelected = (channelId: string) =>
     selectedChannels.some((c) => c.channelId === channelId);
@@ -198,47 +124,10 @@ export default function RoomConfig() {
     setFilteredUsers((prev) => prev.filter((u) => u !== user));
   };
 
-  const addGlobalUser = () => {
-    const id = newUserId.trim();
-    if (id && !globalUsers.includes(id)) {
-      setGlobalUsers((prev) => [...prev, id]);
-      setNewUserId('');
-    }
-  };
-
-  const removeGlobalUser = (userId: string) => {
-    setGlobalUsers((prev) => prev.filter((u) => u !== userId));
-  };
-
   const handleSave = async () => {
     setSaving(true);
     try {
-      if (tab === 'global') {
-        await updateConfig({
-          globalHighlightedUsers: globalUsers,
-          contractDetection,
-          guildColors,
-          enabledGuilds,
-          evmAddressColor,
-          solAddressColor,
-          openInDiscordApp,
-          messageSounds,
-          soundSettings,
-          pushover: { enabled: pushoverEnabled, appToken: pushoverAppToken, userKey: pushoverUserKey },
-          contractLinkTemplates: {
-            evm: customEvmUrl,
-            sol: customSolUrl,
-            solPlatform,
-            evmPlatform,
-          },
-          contractClickAction,
-          autoOpenHighlightedContracts,
-          globalKeywordPatterns,
-          keywordAlertsEnabled,
-          desktopNotifications,
-          badgeClickAction,
-        });
-      } else if (editingRoom) {
+      if (editingRoom) {
         await updateRoom(editingRoom.id, { name, channels: selectedChannels, highlightedUsers, filteredUsers, filterEnabled, color: roomColor || null, keywordPatterns: roomKeywordPatterns });
       } else {
         if (!name.trim()) return;
@@ -280,70 +169,56 @@ export default function RoomConfig() {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-discord-divider">
           <h2 className="text-lg font-semibold text-white">
-            {editingRoom ? `Edit Room: ${editingRoom.name}` : configModalTab === 'global' ? 'Settings' : 'Create New Room'}
+            {editingRoom ? `Edit Room: ${editingRoom.name}` : 'Create New Room'}
           </h2>
           <button onClick={closeConfigModal} className="text-discord-text-muted hover:text-white">
             <X size={20} />
           </button>
         </div>
 
-        {/* Tabs - hide when opened as global-settings-only */}
-        {!(configModalTab === 'global' && !editingRoom) && (
-          <div className="flex gap-0 border-b border-discord-divider px-6">
-            <button
-              onClick={() => setTab('channels')}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                tab === 'channels'
-                  ? 'border-discord-blurple text-white'
-                  : 'border-transparent text-discord-text-muted hover:text-discord-text'
-              }`}
-            >
-              Channels
-            </button>
-            <button
-              onClick={() => setTab('users')}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                tab === 'users'
-                  ? 'border-discord-blurple text-white'
-                  : 'border-transparent text-discord-text-muted hover:text-discord-text'
-              }`}
-            >
-              Highlighted Users
-            </button>
-            <button
-              onClick={() => setTab('filter')}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                tab === 'filter'
-                  ? 'border-discord-blurple text-white'
-                  : 'border-transparent text-discord-text-muted hover:text-discord-text'
-              }`}
-            >
-              User Filter
-            </button>
-            <button
-              onClick={() => setTab('keywords')}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                tab === 'keywords'
-                  ? 'border-discord-blurple text-white'
-                  : 'border-transparent text-discord-text-muted hover:text-discord-text'
-              }`}
-            >
-              Keywords
-            </button>
-            {editingRoom && (
-              <button
-                onClick={() => setTab('global')}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                  tab === 'global'
-                    ? 'border-discord-blurple text-white'
-                    : 'border-transparent text-discord-text-muted hover:text-discord-text'
-                }`}
-              >
-                Global Settings
-              </button>
-            )}
-          </div>
-        )}
+        {/* Tabs */}
+        <div className="flex gap-0 border-b border-discord-divider px-6">
+          <button
+            onClick={() => setTab('channels')}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              tab === 'channels'
+                ? 'border-discord-blurple text-white'
+                : 'border-transparent text-discord-text-muted hover:text-discord-text'
+            }`}
+          >
+            Channels
+          </button>
+          <button
+            onClick={() => setTab('users')}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              tab === 'users'
+                ? 'border-discord-blurple text-white'
+                : 'border-transparent text-discord-text-muted hover:text-discord-text'
+            }`}
+          >
+            Highlighted Users
+          </button>
+          <button
+            onClick={() => setTab('filter')}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              tab === 'filter'
+                ? 'border-discord-blurple text-white'
+                : 'border-transparent text-discord-text-muted hover:text-discord-text'
+            }`}
+          >
+            User Filter
+          </button>
+          <button
+            onClick={() => setTab('keywords')}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              tab === 'keywords'
+                ? 'border-discord-blurple text-white'
+                : 'border-transparent text-discord-text-muted hover:text-discord-text'
+            }`}
+          >
+            Keywords
+          </button>
+        </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-4" data-form-type="other" data-lpignore="true" data-1p-ignore>
@@ -663,7 +538,7 @@ export default function RoomConfig() {
           {tab === 'keywords' && (
             <>
               <p className="text-sm text-discord-text-muted mb-2">
-                Add patterns to match against messages{editingRoom ? ' in this room' : ''}. Use <strong className="text-discord-text">Contains</strong> for substring matches, <strong className="text-discord-text">Exact</strong> for whole-word matches, or <strong className="text-discord-text">Regex</strong> for advanced patterns. Matches trigger an orange highlight and alert.
+                Add patterns to match against messages in this room. Use <strong className="text-discord-text">Contains</strong> for substring matches, <strong className="text-discord-text">Exact</strong> for whole-word matches, or <strong className="text-discord-text">Regex</strong> for advanced patterns. Matches trigger an orange highlight and alert.
               </p>
               <div className="text-xs text-discord-text-muted bg-discord-dark rounded px-3 py-2 mb-4 space-y-1">
                 <p className="font-semibold text-discord-text-muted/80">Regex examples:</p>
@@ -682,9 +557,7 @@ export default function RoomConfig() {
                     onChange={(e) => setNewKeywordPattern(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && newKeywordPattern.trim()) {
-                        const patterns = editingRoom ? roomKeywordPatterns : globalKeywordPatterns;
-                        const setter = editingRoom ? setRoomKeywordPatterns : setGlobalKeywordPatterns;
-                        setter([...patterns, { pattern: newKeywordPattern.trim(), matchMode: newKeywordMatchMode, label: newKeywordLabel.trim() || undefined }]);
+                        setRoomKeywordPatterns((prev) => [...prev, { pattern: newKeywordPattern.trim(), matchMode: newKeywordMatchMode, label: newKeywordLabel.trim() || undefined }]);
                         setNewKeywordPattern('');
                         setNewKeywordLabel('');
                       }
@@ -699,9 +572,7 @@ export default function RoomConfig() {
                   <button
                     onClick={() => {
                       if (!newKeywordPattern.trim()) return;
-                      const patterns = editingRoom ? roomKeywordPatterns : globalKeywordPatterns;
-                      const setter = editingRoom ? setRoomKeywordPatterns : setGlobalKeywordPatterns;
-                      setter([...patterns, { pattern: newKeywordPattern.trim(), matchMode: newKeywordMatchMode, label: newKeywordLabel.trim() || undefined }]);
+                      setRoomKeywordPatterns((prev) => [...prev, { pattern: newKeywordPattern.trim(), matchMode: newKeywordMatchMode, label: newKeywordLabel.trim() || undefined }]);
                       setNewKeywordPattern('');
                       setNewKeywordLabel('');
                     }}
@@ -737,839 +608,41 @@ export default function RoomConfig() {
               </div>
 
               <div className="space-y-1">
-                {(() => {
-                  const patterns = editingRoom ? roomKeywordPatterns : globalKeywordPatterns;
-                  const setter = editingRoom ? setRoomKeywordPatterns : setGlobalKeywordPatterns;
-                  if (patterns.length === 0) {
-                    return (
-                      <p className="text-sm text-discord-text-muted text-center py-4">
-                        No keyword patterns configured.
-                      </p>
-                    );
-                  }
-                  return patterns.map((kw, idx) => (
-                    <div key={idx} className="flex items-center justify-between px-3 py-2 bg-discord-dark rounded">
-                      <div className="flex items-center gap-2 min-w-0">
-                        {(kw.matchMode === 'regex' || (!kw.matchMode && kw.isRegex)) && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-400/20 text-orange-400 font-semibold shrink-0">
-                            REGEX
-                          </span>
-                        )}
-                        {kw.matchMode === 'exact' && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-discord-blurple/20 text-discord-blurple font-semibold shrink-0">
-                            EXACT
-                          </span>
-                        )}
-                        <span className="text-sm text-discord-text font-mono truncate">{kw.pattern}</span>
-                        {kw.label && (
-                          <span className="text-[11px] text-discord-text-muted">({kw.label})</span>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => setter(patterns.filter((_, i) => i !== idx))}
-                        className="text-discord-text-muted hover:text-discord-red shrink-0"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ));
-                })()}
-              </div>
-            </>
-          )}
-
-          {tab === 'global' && (
-            <>
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold text-white mb-2">Discord Tokens</h3>
-                <p className="text-sm text-discord-text-muted mb-3">
-                  Manage your Discord authentication tokens. Multiple tokens allow monitoring across different accounts.
-                </p>
-
-                {maskedTokens.length > 0 && (
-                  <div className="space-y-1.5 mb-3">
-                    {maskedTokens.map((t) => (
-                      <div
-                        key={t.index}
-                        className="flex items-center justify-between px-3 py-2 bg-discord-dark rounded"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Key size={14} className="shrink-0 text-discord-blurple" />
-                          <span className="text-sm text-discord-text font-mono tracking-wider truncate">{t.masked}</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-discord-blurple/20 text-discord-blurple font-semibold shrink-0">
-                            TOKEN {t.index + 1}
-                          </span>
-                        </div>
-                        <button
-                          onClick={async () => {
-                            await removeToken(t.index);
-                          }}
-                          className="text-discord-text-muted hover:text-discord-red shrink-0 ml-2"
-                          title="Remove token"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {maskedTokens.length === 0 && (
-                  <p className="text-sm text-discord-text-muted text-center py-3 mb-3 bg-discord-dark/50 rounded">
-                    No tokens configured.
+                {roomKeywordPatterns.length === 0 && (
+                  <p className="text-sm text-discord-text-muted text-center py-4">
+                    No keyword patterns configured.
                   </p>
                 )}
-
-                <div className="flex gap-2">
-                  <div className="flex-1 relative">
-                    <input
-                      type={showNewToken ? 'text' : 'password'}
-                      value={newToken}
-                      onChange={(e) => { setNewToken(e.target.value); setTokenError(''); }}
-                      onKeyDown={async (e) => {
-                        if (e.key === 'Enter' && newToken.trim()) {
-                          setAddingToken(true);
-                          setTokenError('');
-                          const result = await addToken(newToken.trim());
-                          if (result.success) {
-                            setNewToken('');
-                            setShowNewToken(false);
-                          } else {
-                            setTokenError(result.error ?? 'Failed to add token');
-                          }
-                          setAddingToken(false);
-                        }
-                      }}
-                      placeholder="Paste Discord token..."
-                      className="w-full bg-discord-dark border-none rounded px-3 py-2 pr-9 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple font-mono"
-                      disabled={addingToken}
-                      autoComplete="off"
-                      data-1p-ignore
-                      data-lpignore="true"
-                      data-form-type="other"
-                    />
-                    <button
-                      onClick={() => setShowNewToken(!showNewToken)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-discord-text-muted hover:text-discord-text"
-                      type="button"
-                      tabIndex={-1}
-                    >
-                      {showNewToken ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      if (!newToken.trim()) return;
-                      setAddingToken(true);
-                      setTokenError('');
-                      const result = await addToken(newToken.trim());
-                      if (result.success) {
-                        setNewToken('');
-                        setShowNewToken(false);
-                      } else {
-                        setTokenError(result.error ?? 'Failed to add token');
-                      }
-                      setAddingToken(false);
-                    }}
-                    disabled={addingToken || !newToken.trim()}
-                    className="px-3 py-2 bg-discord-blurple hover:bg-discord-blurple-hover disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm text-white transition-colors"
-                  >
-                    <Plus size={16} />
-                  </button>
-                </div>
-                {tokenError && (
-                  <p className="text-xs text-discord-red mt-1.5">{tokenError}</p>
-                )}
-              </div>
-
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold text-white mb-2">Contract Detection</h3>
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <div
-                    className={`w-10 h-5 rounded-full transition-colors relative ${
-                      contractDetection ? 'bg-discord-green' : 'bg-discord-input'
-                    }`}
-                    onClick={() => setContractDetection(!contractDetection)}
-                  >
-                    <div
-                      className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-                        contractDetection ? 'translate-x-5' : 'translate-x-0.5'
-                      }`}
-                    />
-                  </div>
-                  <span className="text-sm text-discord-text">
-                    Detect SOL/EVM contract addresses in messages
-                  </span>
-                </label>
-              </div>
-
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold text-white mb-2">Open in Discord App</h3>
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <div
-                    className={`w-10 h-5 rounded-full transition-colors relative ${
-                      openInDiscordApp ? 'bg-discord-green' : 'bg-discord-input'
-                    }`}
-                    onClick={() => setOpenInDiscordApp(!openInDiscordApp)}
-                  >
-                    <div
-                      className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-                        openInDiscordApp ? 'translate-x-5' : 'translate-x-0.5'
-                      }`}
-                    />
-                  </div>
-                  <span className="text-sm text-discord-text">
-                    Clicking a channel badge opens the message directly in the Discord app
-                  </span>
-                </label>
-              </div>
-
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold text-white mb-2">Sound Settings</h3>
-                <label className="flex items-center gap-3 cursor-pointer mb-4">
-                  <div
-                    className={`w-10 h-5 rounded-full transition-colors relative ${
-                      messageSounds ? 'bg-discord-green' : 'bg-discord-input'
-                    }`}
-                    onClick={() => setMessageSounds(!messageSounds)}
-                  >
-                    <div
-                      className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-                        messageSounds ? 'translate-x-5' : 'translate-x-0.5'
-                      }`}
-                    />
-                  </div>
-                  <span className="text-sm text-discord-text">
-                    Enable notification sounds (master toggle)
-                  </span>
-                </label>
-
-                {messageSounds && (
-                  <div className="space-y-3">
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      accept=".mp3,.wav,.ogg,.webm,.m4a"
-                      className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file || !uploadingSoundType) return;
-                        const formData = new FormData();
-                        formData.append('file', file);
-                        try {
-                          const res = await fetch(`/api/sounds/${uploadingSoundType}`, { method: 'POST', body: formData });
-                          const data = await res.json();
-                          if (res.ok && data.url) {
-                            setSoundSettings((prev) => ({
-                              ...prev,
-                              [uploadingSoundType]: { ...prev[uploadingSoundType], useCustom: true, customSoundUrl: data.url },
-                            }));
-                          }
-                        } catch { /* ignore */ }
-                        setUploadingSoundType(null);
-                        e.target.value = '';
-                      }}
-                    />
-                    {([
-                      ['highlight', 'Highlighted User'],
-                      ['contractAlert', 'Contract Alert'],
-                      ['keywordAlert', 'Keyword Match'],
-                    ] as [SoundType, string][]).map(([type, label]) => {
-                      const sc = soundSettings[type];
-                      return (
-                        <div key={type} className="px-3 py-3 bg-discord-dark rounded space-y-2.5">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Volume2 size={14} className="text-discord-text-muted" />
-                              <span className="text-sm text-discord-text font-medium">{label}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => previewSound(type, sc)}
-                                className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-discord-text transition-colors"
-                                title="Preview sound"
-                              >
-                                <Play size={14} />
-                              </button>
-                              <div
-                                className={`w-9 h-[18px] rounded-full transition-colors relative cursor-pointer ${
-                                  sc.enabled ? 'bg-discord-green' : 'bg-discord-input'
-                                }`}
-                                onClick={() => setSoundSettings((prev) => ({
-                                  ...prev,
-                                  [type]: { ...prev[type], enabled: !prev[type].enabled },
-                                }))}
-                              >
-                                <div
-                                  className={`absolute top-[2px] w-[14px] h-[14px] bg-white rounded-full transition-transform ${
-                                    sc.enabled ? 'translate-x-[18px]' : 'translate-x-[2px]'
-                                  }`}
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          {sc.enabled && (
-                            <>
-                              <div className="flex items-center gap-3">
-                                <span className="text-[11px] text-discord-text-muted w-12 shrink-0">Volume</span>
-                                <input
-                                  type="range"
-                                  min={0}
-                                  max={100}
-                                  value={sc.volume}
-                                  onChange={(e) => setSoundSettings((prev) => ({
-                                    ...prev,
-                                    [type]: { ...prev[type], volume: Number(e.target.value) },
-                                  }))}
-                                  className="flex-1 h-1.5 accent-discord-blurple cursor-pointer"
-                                />
-                                <span className="text-[11px] text-discord-text-muted w-8 text-right">{sc.volume}%</span>
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                <span className="text-[11px] text-discord-text-muted">Sound:</span>
-                                <button
-                                  onClick={() => setSoundSettings((prev) => ({
-                                    ...prev,
-                                    [type]: { ...prev[type], useCustom: false },
-                                  }))}
-                                  className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
-                                    !sc.useCustom
-                                      ? 'bg-discord-blurple text-white'
-                                      : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'
-                                  }`}
-                                >
-                                  Built-in
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    if (sc.customSoundUrl) {
-                                      setSoundSettings((prev) => ({
-                                        ...prev,
-                                        [type]: { ...prev[type], useCustom: true },
-                                      }));
-                                    } else {
-                                      setUploadingSoundType(type);
-                                      fileInputRef.current?.click();
-                                    }
-                                  }}
-                                  className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
-                                    sc.useCustom
-                                      ? 'bg-discord-blurple text-white'
-                                      : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'
-                                  }`}
-                                >
-                                  Custom
-                                </button>
-                                {sc.useCustom && sc.customSoundUrl && (
-                                  <button
-                                    onClick={() => {
-                                      setUploadingSoundType(type);
-                                      fileInputRef.current?.click();
-                                    }}
-                                    className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-discord-text transition-colors"
-                                    title="Upload new sound"
-                                  >
-                                    <Upload size={12} />
-                                  </button>
-                                )}
-                                {sc.useCustom && sc.customSoundUrl && (
-                                  <button
-                                    onClick={async () => {
-                                      await fetch(`/api/sounds/${type}`, { method: 'DELETE' });
-                                      setSoundSettings((prev) => ({
-                                        ...prev,
-                                        [type]: { ...prev[type], useCustom: false, customSoundUrl: undefined },
-                                      }));
-                                    }}
-                                    className="text-discord-text-muted hover:text-discord-red transition-colors"
-                                    title="Remove custom sound"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-                                )}
-                              </div>
-                              {sc.useCustom && sc.customSoundUrl && (
-                                <div className="text-[10px] text-discord-text-muted truncate">
-                                  {sc.customSoundUrl.split('/').pop()}
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold text-white mb-2">Keyword Alerts</h3>
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <div
-                    className={`w-10 h-5 rounded-full transition-colors relative ${
-                      keywordAlertsEnabled ? 'bg-discord-green' : 'bg-discord-input'
-                    }`}
-                    onClick={() => setKeywordAlertsEnabled(!keywordAlertsEnabled)}
-                  >
-                    <div
-                      className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-                        keywordAlertsEnabled ? 'translate-x-5' : 'translate-x-0.5'
-                      }`}
-                    />
-                  </div>
-                  <span className="text-sm text-discord-text">
-                    Enable keyword/regex pattern matching alerts
-                  </span>
-                </label>
-              </div>
-
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold text-white mb-2">Badge Click Action</h3>
-                <p className="text-sm text-discord-text-muted mb-3">
-                  What happens when you click a keyword match or contract badge on a message.
-                </p>
-                <div className="flex gap-1.5">
-                  {([
-                    ['discord', 'Open in Discord'],
-                    ['platform', 'Open in Platform'],
-                    ['both', 'Discord + Platform'],
-                  ] as [BadgeClickAction, string][]).map(([action, label]) => (
-                    <button
-                      key={action}
-                      onClick={() => setBadgeClickAction(action)}
-                      className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-                        badgeClickAction === action
-                          ? 'bg-discord-blurple text-white'
-                          : 'bg-discord-dark text-discord-text-muted hover:text-discord-text'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[11px] text-discord-text-muted mt-2">
-                  {badgeClickAction === 'discord' && 'Always opens the original message in Discord.'}
-                  {badgeClickAction === 'platform' && 'Opens the contract in your configured trading platform if one is detected, otherwise falls back to Discord.'}
-                  {badgeClickAction === 'both' && 'Opens the message in Discord and also opens the contract in your trading platform (if detected).'}
-                </p>
-              </div>
-
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold text-white mb-2">Desktop Notifications</h3>
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <div
-                    className={`w-10 h-5 rounded-full transition-colors relative ${
-                      desktopNotifications ? 'bg-discord-green' : 'bg-discord-input'
-                    }`}
-                    onClick={() => {
-                      const newVal = !desktopNotifications;
-                      setDesktopNotifications(newVal);
-                      if (newVal) requestNotificationPermission();
-                    }}
-                  >
-                    <div
-                      className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-                        desktopNotifications ? 'translate-x-5' : 'translate-x-0.5'
-                      }`}
-                    />
-                  </div>
-                  <span className="text-sm text-discord-text">
-                    Show browser notifications for highlighted users and keyword matches (when tab is not focused)
-                  </span>
-                </label>
-              </div>
-
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold text-white mb-2">Contract Click Action</h3>
-                <p className="text-sm text-discord-text-muted mb-3">
-                  What happens when you click a contract address in chat.
-                </p>
-                <div className="flex gap-1.5 mb-3">
-                  {([
-                    ['copy', 'Copy Address'],
-                    ['copy_open', 'Copy + Open'],
-                    ['open', 'Open Only'],
-                  ] as [ContractClickAction, string][]).map(([action, label]) => (
-                    <button
-                      key={action}
-                      onClick={() => setContractClickAction(action)}
-                      className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-                        contractClickAction === action
-                          ? 'bg-discord-blurple text-white'
-                          : 'bg-discord-dark text-discord-text-muted hover:text-discord-text'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold text-white mb-2">Trading Platform</h3>
-                <p className="text-sm text-discord-text-muted mb-3">
-                  Choose which trading platform opens when you click a contract address.
-                </p>
-                <div className="space-y-3">
-                  <div className="px-3 py-2.5 bg-discord-dark rounded">
-                    <label className="text-[11px] text-discord-text-muted mb-1.5 block">SOL Platform</label>
-                    <div className="flex gap-1.5">
-                      {(['axiom', 'padre', 'bloom', 'gmgn', 'custom'] as SolPlatform[]).map((p) => (
-                        <button
-                          key={p}
-                          onClick={() => setSolPlatform(p)}
-                          className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-                            solPlatform === p
-                              ? 'bg-discord-blurple text-white'
-                              : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'
-                          }`}
-                        >
-                          {p === 'axiom' ? 'Axiom' : p === 'padre' ? 'Padre' : p === 'bloom' ? 'Bloom' : p === 'gmgn' ? 'GMGN' : 'Custom'}
-                        </button>
-                      ))}
-                    </div>
-                    {solPlatform === 'custom' && (
-                      <input
-                        type="text"
-                        value={customSolUrl}
-                        onChange={(e) => setCustomSolUrl(e.target.value)}
-                        placeholder="https://example.com/token/{address}"
-                        className="w-full mt-2 bg-discord-sidebar border-none rounded px-2 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple font-mono"
-                      />
-                    )}
-                  </div>
-                  <div className="px-3 py-2.5 bg-discord-dark rounded">
-                    <label className="text-[11px] text-discord-text-muted mb-1.5 block">EVM Platform</label>
-                    <div className="flex gap-1.5">
-                      {(['gmgn', 'bloom', 'custom'] as EvmPlatform[]).map((p) => (
-                        <button
-                          key={p}
-                          onClick={() => setEvmPlatform(p)}
-                          className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-                            evmPlatform === p
-                              ? 'bg-discord-blurple text-white'
-                              : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'
-                          }`}
-                        >
-                          {p === 'gmgn' ? 'GMGN' : p === 'bloom' ? 'Bloom' : 'Custom'}
-                        </button>
-                      ))}
-                    </div>
-                    {evmPlatform === 'custom' && (
-                      <input
-                        type="text"
-                        value={customEvmUrl}
-                        onChange={(e) => setCustomEvmUrl(e.target.value)}
-                        placeholder="https://example.com/token/{address}"
-                        className="w-full mt-2 bg-discord-sidebar border-none rounded px-2 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple font-mono"
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
-
-
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold text-white mb-2">Auto-Open Highlighted Contracts</h3>
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <div
-                    className={`w-10 h-5 rounded-full transition-colors relative ${
-                      autoOpenHighlightedContracts ? 'bg-discord-green' : 'bg-discord-input'
-                    }`}
-                    onClick={() => setAutoOpenHighlightedContracts(!autoOpenHighlightedContracts)}
-                  >
-                    <div
-                      className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-                        autoOpenHighlightedContracts ? 'translate-x-5' : 'translate-x-0.5'
-                      }`}
-                    />
-                  </div>
-                  <span className="text-sm text-discord-text">
-                    Automatically open a new tab when a highlighted user posts a contract address
-                  </span>
-                </label>
-              </div>
-
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold text-white mb-2">Pushover Notifications</h3>
-                <p className="text-sm text-discord-text-muted mb-3">
-                  Send push notifications via <a href="https://pushover.net" target="_blank" rel="noopener noreferrer" className="text-discord-text-link hover:underline">Pushover</a> when a highlighted user posts a contract address.
-                </p>
-                <label className="flex items-center gap-3 cursor-pointer mb-4">
-                  <div
-                    className={`w-10 h-5 rounded-full transition-colors relative ${
-                      pushoverEnabled ? 'bg-discord-green' : 'bg-discord-input'
-                    }`}
-                    onClick={() => setPushoverEnabled(!pushoverEnabled)}
-                  >
-                    <div
-                      className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-                        pushoverEnabled ? 'translate-x-5' : 'translate-x-0.5'
-                      }`}
-                    />
-                  </div>
-                  <span className="text-sm text-discord-text">Enable Pushover notifications</span>
-                </label>
-                {pushoverEnabled && (
-                  <div className="space-y-3">
-                    <div className="px-3 py-2 bg-discord-dark rounded">
-                      <label className="text-[11px] text-discord-text-muted mb-1 block">Application API Token</label>
-                      <input
-                        type="password"
-                        value={pushoverAppToken}
-                        onChange={(e) => setPushoverAppToken(e.target.value)}
-                        placeholder="azGDORePK8gMaC0QOYAMyEEuzJnyUi"
-                        className="w-full bg-discord-sidebar border-none rounded px-2 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple font-mono"
-                        autoComplete="off"
-                        data-1p-ignore
-                        data-lpignore="true"
-                        data-form-type="other"
-                      />
-                    </div>
-                    <div className="px-3 py-2 bg-discord-dark rounded">
-                      <label className="text-[11px] text-discord-text-muted mb-1 block">User Key</label>
-                      <input
-                        type="password"
-                        value={pushoverUserKey}
-                        onChange={(e) => setPushoverUserKey(e.target.value)}
-                        placeholder="uQiRzpo4DXghDmr9QzzfQu27cmVRsG"
-                        className="w-full bg-discord-sidebar border-none rounded px-2 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple font-mono"
-                        autoComplete="off"
-                        data-1p-ignore
-                        data-lpignore="true"
-                        data-form-type="other"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold text-white mb-2">Address Colors</h3>
-                <p className="text-sm text-discord-text-muted mb-3">
-                  Customize highlight colors for detected contract addresses by chain type.
-                </p>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 px-3 py-2 bg-discord-dark rounded">
-                    <input
-                      type="color"
-                      value={evmAddressColor}
-                      onChange={(e) => setEvmAddressColor(e.target.value)}
-                      className="w-6 h-6 rounded cursor-pointer border border-discord-divider bg-transparent shrink-0"
-                    />
-                    <span className="text-sm text-discord-text flex-1">EVM (0x…)</span>
-                    <input
-                      type="text"
-                      value={evmAddressColor}
-                      onChange={(e) => setEvmAddressColor(e.target.value)}
-                      className="w-24 bg-discord-sidebar border-none rounded px-2 py-1 text-xs text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple font-mono"
-                    />
-                    {evmAddressColor !== '#fee75c' && (
-                      <button
-                        onClick={() => setEvmAddressColor('#fee75c')}
-                        className="text-[11px] text-discord-text-muted hover:text-white"
-                      >
-                        Reset
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 px-3 py-2 bg-discord-dark rounded">
-                    <input
-                      type="color"
-                      value={solAddressColor}
-                      onChange={(e) => setSolAddressColor(e.target.value)}
-                      className="w-6 h-6 rounded cursor-pointer border border-discord-divider bg-transparent shrink-0"
-                    />
-                    <span className="text-sm text-discord-text flex-1">SOL</span>
-                    <input
-                      type="text"
-                      value={solAddressColor}
-                      onChange={(e) => setSolAddressColor(e.target.value)}
-                      className="w-24 bg-discord-sidebar border-none rounded px-2 py-1 text-xs text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple font-mono"
-                    />
-                    {solAddressColor !== '#14f195' && (
-                      <button
-                        onClick={() => setSolAddressColor('#14f195')}
-                        className="text-[11px] text-discord-text-muted hover:text-white"
-                      >
-                        Reset
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-sm font-semibold text-white mb-2">Global Highlighted Users</h3>
-                <p className="text-sm text-discord-text-muted mb-3">
-                  These users will be highlighted in all rooms.
-                </p>
-                <div className="flex gap-2 mb-4">
-                  <input
-                    type="text"
-                    value={newUserId}
-                    onChange={(e) => setNewUserId(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && addGlobalUser()}
-                    placeholder="Discord User ID"
-                    className="flex-1 bg-discord-dark border-none rounded px-3 py-2 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple"
-                    autoComplete="off"
-                    data-1p-ignore
-                    data-lpignore="true"
-                    data-form-type="other"
-                  />
-                  <button
-                    onClick={addGlobalUser}
-                    className="px-3 py-2 bg-discord-blurple hover:bg-discord-blurple-hover rounded text-sm text-white transition-colors"
-                  >
-                    <Plus size={16} />
-                  </button>
-                </div>
-                <div className="space-y-1">
-                  {globalUsers.length === 0 && (
-                    <p className="text-sm text-discord-text-muted text-center py-4">
-                      No global highlighted users.
-                    </p>
-                  )}
-                  {globalUsers.map((uid) => (
-                    <div
-                      key={uid}
-                      className="flex items-center justify-between px-3 py-2 bg-discord-dark rounded"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-sm text-discord-text font-mono">{uid}</span>
-                        {userNameMap.has(uid) && (
-                          <span className="text-[11px] text-discord-text-muted">{userNameMap.get(uid)}</span>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => removeGlobalUser(uid)}
-                        className="text-discord-text-muted hover:text-discord-red shrink-0"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <h3 className="text-sm font-semibold text-white mb-2">Enabled Guilds</h3>
-                <p className="text-sm text-discord-text-muted mb-3">
-                  Only enabled guilds will appear in the channel picker when creating rooms. All guilds are off by default.
-                </p>
-                <div className="relative mb-3">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-discord-text-muted" />
-                  <input
-                    type="text"
-                    value={guildSearch}
-                    onChange={(e) => setGuildSearch(e.target.value)}
-                    placeholder="Search guilds..."
-                    className="w-full bg-discord-dark border-none rounded px-3 py-2 pl-9 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple"
-                  />
-                </div>
-                <div className="text-[11px] text-discord-text-muted mb-2">
-                  {enabledGuilds.length} of {guilds.length} guilds enabled
-                </div>
-                <div className="space-y-1 max-h-[250px] overflow-y-auto">
-                  {guilds
-                    .filter((g) => !guildSearch || g.name.toLowerCase().includes(guildSearch.toLowerCase()))
-                    .sort((a, b) => {
-                      const aEnabled = enabledGuilds.includes(a.id) ? 0 : 1;
-                      const bEnabled = enabledGuilds.includes(b.id) ? 0 : 1;
-                      return aEnabled - bEnabled;
-                    })
-                    .map((guild) => {
-                      const enabled = enabledGuilds.includes(guild.id);
-                      return (
-                        <button
-                          key={guild.id}
-                          onClick={() => {
-                            setEnabledGuilds((prev) =>
-                              enabled ? prev.filter((id) => id !== guild.id) : [...prev, guild.id]
-                            );
-                          }}
-                          className={`w-full flex items-center gap-3 px-3 py-2 rounded text-sm text-left transition-colors ${
-                            enabled
-                              ? 'bg-discord-green/10 text-discord-text'
-                              : 'bg-discord-dark/50 text-discord-text-muted'
-                          }`}
-                        >
-                          <div
-                            className={`w-4 h-4 rounded-sm border flex items-center justify-center shrink-0 transition-colors ${
-                              enabled
-                                ? 'bg-discord-green border-discord-green'
-                                : 'border-discord-channel-icon bg-transparent'
-                            }`}
-                          >
-                            {enabled && (
-                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                                <path d="M2 5L4 7L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                              </svg>
-                            )}
-                          </div>
-                          <Users size={14} className="shrink-0 opacity-60" />
-                          <span className="truncate flex-1">{guild.name}</span>
-                          <span className="text-[11px] text-discord-text-muted shrink-0">
-                            {guild.channels.length} ch
-                          </span>
-                        </button>
-                      );
-                    })}
-                  {guilds.length === 0 && (
-                    <p className="text-sm text-discord-text-muted text-center py-2">Loading guilds...</p>
-                  )}
-                  {guilds.length > 0 && guilds.filter((g) => !guildSearch || g.name.toLowerCase().includes(guildSearch.toLowerCase())).length === 0 && (
-                    <p className="text-sm text-discord-text-muted text-center py-2">No guilds match your search.</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <h3 className="text-sm font-semibold text-white mb-2">Guild Message Colors</h3>
-                <p className="text-sm text-discord-text-muted mb-3">
-                  Set a background color for messages from each enabled guild to visually distinguish them in mixed rooms.
-                </p>
-                <div className="space-y-2">
-                  {guilds.filter((g) => enabledGuilds.includes(g.id)).map((guild) => (
-                    <div key={guild.id} className="flex items-center gap-3 px-3 py-2 bg-discord-dark rounded">
-                      <input
-                        type="color"
-                        value={guildColors[guild.id] || '#313338'}
-                        onChange={(e) => setGuildColors((prev) => ({ ...prev, [guild.id]: e.target.value }))}
-                        className="w-6 h-6 rounded cursor-pointer border border-discord-divider bg-transparent shrink-0"
-                      />
-                      <span className="text-sm text-discord-text flex-1 truncate">{guild.name}</span>
-                      <input
-                        type="text"
-                        value={guildColors[guild.id] || ''}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setGuildColors((prev) => {
-                            if (!val) { const { [guild.id]: _, ...rest } = prev; return rest; }
-                            return { ...prev, [guild.id]: val };
-                          });
-                        }}
-                        placeholder="default"
-                        className="w-24 bg-discord-sidebar border-none rounded px-2 py-1 text-xs text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple font-mono"
-                      />
-                      {guildColors[guild.id] && (
-                        <button
-                          onClick={() => setGuildColors((prev) => { const { [guild.id]: _, ...rest } = prev; return rest; })}
-                          className="text-discord-text-muted hover:text-white"
-                        >
-                          <X size={14} />
-                        </button>
+                {roomKeywordPatterns.map((kw, idx) => (
+                  <div key={idx} className="flex items-center justify-between px-3 py-2 bg-discord-dark rounded">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {(kw.matchMode === 'regex' || (!kw.matchMode && kw.isRegex)) && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-400/20 text-orange-400 font-semibold shrink-0">
+                          REGEX
+                        </span>
+                      )}
+                      {kw.matchMode === 'exact' && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-discord-blurple/20 text-discord-blurple font-semibold shrink-0">
+                          EXACT
+                        </span>
+                      )}
+                      <span className="text-sm text-discord-text font-mono truncate">{kw.pattern}</span>
+                      {kw.label && (
+                        <span className="text-[11px] text-discord-text-muted">({kw.label})</span>
                       )}
                     </div>
-                  ))}
-                  {enabledGuilds.length === 0 && (
-                    <p className="text-sm text-discord-text-muted text-center py-2">Enable some guilds above first.</p>
-                  )}
-                </div>
+                    <button
+                      onClick={() => setRoomKeywordPatterns((prev) => prev.filter((_, i) => i !== idx))}
+                      className="text-discord-text-muted hover:text-discord-red shrink-0"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
               </div>
             </>
           )}
+
         </div>
 
         {/* Footer */}
@@ -1582,10 +655,10 @@ export default function RoomConfig() {
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || (tab !== 'global' && !name.trim())}
+            disabled={saving || !name.trim()}
             className="px-4 py-2 bg-discord-blurple hover:bg-discord-blurple-hover disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm text-white font-medium transition-colors"
           >
-            {saving ? 'Saving...' : tab === 'global' ? 'Save Settings' : editingRoom ? 'Update Room' : 'Create Room'}
+            {saving ? 'Saving...' : editingRoom ? 'Update Room' : 'Create Room'}
           </button>
         </div>
       </div>

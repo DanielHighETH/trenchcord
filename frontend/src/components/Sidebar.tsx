@@ -172,8 +172,12 @@ export default function Sidebar() {
       {/* Footer */}
       <div className="h-[52px] bg-discord-darker/30 px-2 flex items-center shrink-0">
         <button
-          onClick={() => openConfigModal(undefined, 'global')}
-          className="flex items-center gap-2 text-sm text-discord-text-muted hover:text-white transition-colors w-full px-2 py-1 rounded hover:bg-discord-hover/50"
+          onClick={() => setActiveView('settings')}
+          className={`flex items-center gap-2 text-sm transition-colors w-full px-2 py-1 rounded ${
+            activeView === 'settings'
+              ? 'bg-discord-hover text-white'
+              : 'text-discord-text-muted hover:text-white hover:bg-discord-hover/50'
+          }`}
         >
           <Settings size={16} />
           <span>Settings</span>
