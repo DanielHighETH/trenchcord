@@ -46,6 +46,7 @@ export default function RoomConfig() {
   const [tab, setTab] = useState<'channels' | 'users' | 'filter' | 'keywords'>('channels');
   const [roomKeywordPatterns, setRoomKeywordPatterns] = useState<KeywordPattern[]>([]);
   const [highlightMode, setHighlightMode] = useState<HighlightMode>('background');
+  const [highlightedUserColors, setHighlightedUserColors] = useState<Record<string, string>>({});
   const [newKeywordPattern, setNewKeywordPattern] = useState('');
   const [newKeywordMatchMode, setNewKeywordMatchMode] = useState<KeywordMatchMode>('includes');
   const [newKeywordLabel, setNewKeywordLabel] = useState('');
@@ -69,6 +70,7 @@ export default function RoomConfig() {
       setRoomColor(editingRoom.color ?? '');
       setRoomKeywordPatterns([...(editingRoom.keywordPatterns ?? [])]);
       setHighlightMode(editingRoom.highlightMode ?? 'background');
+      setHighlightedUserColors({ ...(editingRoom.highlightedUserColors ?? {}) });
     } else {
       setName('');
       setSelectedChannels([]);
@@ -78,6 +80,7 @@ export default function RoomConfig() {
       setRoomColor('');
       setRoomKeywordPatterns([]);
       setHighlightMode('background');
+      setHighlightedUserColors({});
     }
     setSearch('');
     setNewUserId('');
@@ -117,6 +120,11 @@ export default function RoomConfig() {
 
   const removeHighlightedUser = (userId: string) => {
     setHighlightedUsers((prev) => prev.filter((u) => u !== userId));
+    setHighlightedUserColors((prev) => {
+      const next = { ...prev };
+      delete next[userId];
+      return next;
+    });
   };
 
   const addFilteredUser = () => {
@@ -135,7 +143,7 @@ export default function RoomConfig() {
     setSaving(true);
     try {
       if (editingRoom) {
-        await updateRoom(editingRoom.id, { name, channels: selectedChannels, highlightedUsers, filteredUsers, filterEnabled, color: roomColor || null, keywordPatterns: roomKeywordPatterns, highlightMode });
+        await updateRoom(editingRoom.id, { name, channels: selectedChannels, highlightedUsers, filteredUsers, filterEnabled, color: roomColor || null, keywordPatterns: roomKeywordPatterns, highlightMode, highlightedUserColors });
       } else {
         if (!name.trim()) return;
         await createRoom(name.trim(), selectedChannels, highlightedUsers, roomColor || null, filteredUsers, filterEnabled);
@@ -542,17 +550,35 @@ export default function RoomConfig() {
                     className="flex items-center justify-between px-3 py-2 bg-discord-dark rounded"
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-sm text-discord-text font-mono">{uid}</span>
+                      <span className="text-sm font-mono" style={{ color: highlightedUserColors[uid] || '#f2f3f5' }}>{uid}</span>
                       {userNameMap.has(uid) && (
                         <span className="text-[11px] text-discord-text-muted">{userNameMap.get(uid)}</span>
                       )}
                     </div>
-                    <button
-                      onClick={() => removeHighlightedUser(uid)}
-                      className="text-discord-text-muted hover:text-discord-red shrink-0"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <input
+                        type="color"
+                        value={highlightedUserColors[uid] || '#5865f2'}
+                        onChange={(e) => setHighlightedUserColors((prev) => ({ ...prev, [uid]: e.target.value }))}
+                        className="w-6 h-6 rounded cursor-pointer border border-discord-divider bg-transparent p-0"
+                        title="Highlight color"
+                      />
+                      {highlightedUserColors[uid] && (
+                        <button
+                          onClick={() => setHighlightedUserColors((prev) => { const next = { ...prev }; delete next[uid]; return next; })}
+                          className="text-[10px] text-discord-text-muted hover:text-discord-text"
+                          title="Reset to default"
+                        >
+                          Reset
+                        </button>
+                      )}
+                      <button
+                        onClick={() => removeHighlightedUser(uid)}
+                        className="text-discord-text-muted hover:text-discord-red shrink-0"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

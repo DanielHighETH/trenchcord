@@ -33,6 +33,7 @@ export default function ChatView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
   const isDMView = activeRoomId?.startsWith('dm:') ?? false;
   const dmChannelId = isDMView ? activeRoomId!.slice(3) : null;
@@ -218,6 +219,7 @@ export default function ChatView() {
     requestAnimationFrame(scrollToEnd);
     clearFocusFilter();
     closeSearch();
+    setSelectedUserId(null);
   }, [activeRoomId, clearFocusFilter, scrollToEnd, closeSearch]);
 
   useEffect(() => {
@@ -447,6 +449,7 @@ export default function ChatView() {
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto"
         onScroll={checkNearBottom}
+        onClick={(e) => { if (e.target === e.currentTarget || e.target === contentRef.current) setSelectedUserId(null); }}
       >
         <div ref={contentRef}>
           {roomMessages.length === 0 && (
@@ -464,6 +467,7 @@ export default function ChatView() {
             const isCompact = sameAuthor && timeDiff < 5 * 60 * 1000 && prev?.channelId === msg.channelId;
 
             const guildColor = msg.guildId ? config?.guildColors?.[msg.guildId] : undefined;
+            const highlightColor = activeRoom?.highlightedUserColors?.[msg.author.id];
 
             return (
               <div key={msg.id} id={`msg-${msg.id}`} className="transition-colors duration-500">
@@ -472,6 +476,7 @@ export default function ChatView() {
                   isCompact={isCompact}
                   guildColor={guildColor}
                   highlightMode={activeRoom?.highlightMode ?? 'background'}
+                  highlightColor={highlightColor}
                   disableEmbeds={embedDisabledChannels.has(msg.channelId)}
                   evmAddressColor={config?.evmAddressColor ?? '#fee75c'}
                   solAddressColor={config?.solAddressColor ?? '#14f195'}
@@ -482,6 +487,8 @@ export default function ChatView() {
                   onHideUser={hideUser}
                   onFocus={handleFocus}
                   isFocused={focusFilter !== null && focusFilter.guildId === msg.guildId && focusFilter.channelId === msg.channelId}
+                  isAuthorSelected={selectedUserId === msg.author.id}
+                  onSelectUser={(userId) => setSelectedUserId((prev) => prev === userId ? null : userId)}
                 />
               </div>
             );

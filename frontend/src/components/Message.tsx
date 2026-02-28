@@ -15,6 +15,7 @@ interface MessageProps {
   isCompact: boolean;
   guildColor?: string;
   highlightMode?: HighlightMode;
+  highlightColor?: string;
   disableEmbeds?: boolean;
   evmAddressColor?: string;
   solAddressColor?: string;
@@ -25,6 +26,8 @@ interface MessageProps {
   onHideUser?: (guildId: string | null, channelId: string, userId: string, displayName: string) => void;
   onFocus?: (guildId: string | null, channelId: string, guildName: string | null, channelName: string) => void;
   isFocused?: boolean;
+  isAuthorSelected?: boolean;
+  onSelectUser?: (userId: string) => void;
 }
 
 function getAvatarUrl(userId: string, avatar: string | null, discriminator?: string): string {
@@ -450,7 +453,7 @@ function ReactionPills({ reactions }: { reactions: FrontendMessage['reactions'] 
   );
 }
 
-export default function Message({ message, isCompact, guildColor, highlightMode = 'background', disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, openInDiscordApp, badgeClickAction, onHideUser, onFocus, isFocused }: MessageProps) {
+export default function Message({ message, isCompact, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, openInDiscordApp, badgeClickAction, onHideUser, onFocus, isFocused, isAuthorSelected, onSelectUser }: MessageProps) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const addrColors: AddressColors = { evm: evmAddressColor ?? '#fee75c', sol: solAddressColor ?? '#14f195' };
   const templates: ContractLinkTemplates = contractLinkTemplates ?? DEFAULT_LINK_TEMPLATES;
@@ -466,19 +469,37 @@ export default function Message({ message, isCompact, guildColor, highlightMode 
 
   const handleNameClick = (e: React.MouseEvent) => {
     e.preventDefault();
+    onSelectUser?.(message.author.id);
     const rect = (e.target as HTMLElement).getBoundingClientRect();
     setContextMenu({ x: rect.left, y: rect.bottom + 4 });
   };
 
   const useUsernameHighlight = highlightMode === 'username';
   const hasKeywordMatch = (message.matchedKeywords?.length ?? 0) > 0;
-  const highlightClass = message.isHighlighted && !useUsernameHighlight
-    ? 'border-l-2 border-discord-blurple bg-discord-highlight'
+  const resolvedHighlightColor = highlightColor || '#5865f2';
+  const hasCustomColor = !!highlightColor;
+
+  const highlightClass = message.isHighlighted
+    ? useUsernameHighlight
+      ? hasCustomColor ? 'border-l-2' : 'border-l-2 border-discord-blurple'
+      : hasCustomColor ? 'border-l-2' : 'border-l-2 border-discord-blurple bg-discord-highlight'
     : hasKeywordMatch
       ? 'border-l-2 border-orange-400 bg-orange-400/5'
-      : '';
+      : isAuthorSelected
+        ? hasCustomColor ? '' : 'bg-discord-blurple/10'
+        : '';
 
-  const bgStyle = guildColor ? { backgroundColor: guildColor } : undefined;
+  const highlightInlineStyle: React.CSSProperties = {};
+  if (message.isHighlighted && hasCustomColor) {
+    highlightInlineStyle.borderColor = resolvedHighlightColor;
+    if (!useUsernameHighlight) {
+      highlightInlineStyle.backgroundColor = `${resolvedHighlightColor}15`;
+    }
+  } else if (isAuthorSelected && hasCustomColor) {
+    highlightInlineStyle.backgroundColor = `${resolvedHighlightColor}1a`;
+  }
+
+  const bgStyle = guildColor ? { backgroundColor: guildColor, ...highlightInlineStyle } : highlightInlineStyle;
 
   const discordPath = `discord.com/channels/${message.guildId ?? '@me'}/${message.channelId}/${message.id}`;
   const discordUrl = openInDiscordApp ? `discord://${discordPath}` : `https://${discordPath}`;
@@ -686,12 +707,13 @@ export default function Message({ message, isCompact, guildColor, highlightMode 
         src={getAvatarUrl(message.author.id, message.author.avatar)}
         alt=""
         className="absolute left-4 w-10 h-10 rounded-full mt-[2px] cursor-pointer"
+        onClick={() => onSelectUser?.(message.author.id)}
       />
       <div className="min-w-0">
         <div className="flex items-baseline gap-1 flex-wrap leading-[1.375rem]">
           <span
             className="font-medium text-base hover:underline cursor-pointer relative mr-1"
-            style={{ color: message.isHighlighted ? '#5865f2' : '#f2f3f5' }}
+            style={{ color: (message.isHighlighted || isAuthorSelected) ? resolvedHighlightColor : '#f2f3f5' }}
             onClick={handleNameClick}
             title={`${message.author.username} (${message.author.id})`}
           >

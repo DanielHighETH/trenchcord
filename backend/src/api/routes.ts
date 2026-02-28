@@ -237,7 +237,7 @@ export function createRouter(wsServer: WsServer): Router {
   });
 
   router.put('/rooms/:id', (req, res) => {
-    const { name, channels, highlightedUsers, filteredUsers, filterEnabled, color, keywordPatterns } = req.body;
+    const { name, channels, highlightedUsers, filteredUsers, filterEnabled, color, keywordPatterns, highlightMode, highlightedUserColors } = req.body;
     const room = configStore.updateRoom(req.params.id, {
       ...(name !== undefined && { name }),
       ...(channels !== undefined && { channels }),
@@ -246,6 +246,8 @@ export function createRouter(wsServer: WsServer): Router {
       ...(filterEnabled !== undefined && { filterEnabled }),
       ...(color !== undefined && { color }),
       ...(keywordPatterns !== undefined && { keywordPatterns }),
+      ...(highlightMode !== undefined && { highlightMode }),
+      ...(highlightedUserColors !== undefined && { highlightedUserColors }),
     });
     if (!room) return res.status(404).json({ error: 'Room not found' });
     res.json(room);

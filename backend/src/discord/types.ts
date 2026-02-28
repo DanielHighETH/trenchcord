@@ -111,6 +111,7 @@ export interface Room {
   color?: string | null;
   keywordPatterns?: KeywordPattern[];
   highlightMode?: HighlightMode;
+  highlightedUserColors?: Record<string, string>;
 }
 
 export interface PushoverConfig {
