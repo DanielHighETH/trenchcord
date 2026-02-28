@@ -1,15 +1,5 @@
 {
-  "rooms": [
-    {
-      "id": "00000000-0000-0000-0000-000000000000",
-      "name": "main",
-      "channels": [],
-      "highlightedUsers": [],
-      "color": null,
-      "filteredUsers": [],
-      "filterEnabled": false
-    }
-  ],
+  "rooms": [],
   "globalHighlightedUsers": [],
   "contractDetection": true,
   "guildColors": {},

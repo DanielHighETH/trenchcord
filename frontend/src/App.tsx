@@ -8,6 +8,7 @@ import GlobalSettings from './components/GlobalSettings';
 import RoomConfig from './components/RoomConfig';
 import AlertToast from './components/AlertToast';
 import TokenSetup from './components/TokenSetup';
+import OnboardingWizard, { isOnboardingComplete } from './components/OnboardingWizard';
 
 const MOBILE_BREAKPOINT = 768;
 
@@ -56,11 +57,14 @@ export default function App() {
   const authStatus = useAppStore((s) => s.authStatus);
   const authLoading = useAppStore((s) => s.authLoading);
   const checkAuth = useAppStore((s) => s.checkAuth);
+  const rooms = useAppStore((s) => s.rooms);
   const fetchRooms = useAppStore((s) => s.fetchRooms);
   const fetchHistory = useAppStore((s) => s.fetchHistory);
   const fetchConfig = useAppStore((s) => s.fetchConfig);
   const fetchDMChannels = useAppStore((s) => s.fetchDMChannels);
   const activeView = useAppStore((s) => s.activeView);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [dataReady, setDataReady] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -68,11 +72,19 @@ export default function App() {
 
   useEffect(() => {
     if (authStatus?.configured) {
-      fetchRooms().then(() => fetchHistory());
-      fetchConfig();
-      fetchDMChannels();
+      Promise.all([
+        fetchRooms().then(() => fetchHistory()),
+        fetchConfig(),
+        fetchDMChannels(),
+      ]).then(() => setDataReady(true));
     }
   }, [authStatus?.configured, fetchRooms, fetchHistory, fetchConfig, fetchDMChannels]);
+
+  useEffect(() => {
+    if (dataReady && rooms.length === 0 && !isOnboardingComplete()) {
+      setShowOnboarding(true);
+    }
+  }, [dataReady, rooms.length]);
 
   if (isMobile) {
     return <MobileGate />;
@@ -88,6 +100,10 @@ export default function App() {
 
   if (!authStatus?.configured) {
     return <TokenSetup />;
+  }
+
+  if (showOnboarding) {
+    return <OnboardingWizard onComplete={() => setShowOnboarding(false)} />;
   }
 
   return (

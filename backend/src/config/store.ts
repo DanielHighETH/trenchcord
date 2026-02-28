@@ -102,18 +102,6 @@ class ConfigStore {
       filterEnabled: r.filterEnabled ?? false,
     }));
 
-    if (config.rooms.length === 0) {
-      config.rooms.push({
-        id: uuidv4(),
-        name: 'main',
-        channels: [],
-        highlightedUsers: [],
-        color: null,
-        filteredUsers: [],
-        filterEnabled: false,
-      } as Room);
-    }
-
     try {
       writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8');
       console.log('[Config] Created initial config.json');
