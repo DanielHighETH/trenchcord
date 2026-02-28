@@ -85,17 +85,15 @@ export function useWebSocket() {
               if (config?.desktopNotifications) {
                 showDesktopNotification(msg, 'Contract from highlighted user');
               }
+            } else if (msg.matchedKeywords && msg.matchedKeywords.length > 0 && config?.keywordAlertsEnabled) {
+              if (config?.messageSounds) playKeywordAlertSound(ss?.keywordAlert);
+              if (config?.desktopNotifications) {
+                showDesktopNotification(msg, `Keyword: ${msg.matchedKeywords.join(', ')}`);
+              }
             } else if (msg.isHighlighted) {
               if (config?.messageSounds) playHighlightSound(ss?.highlight);
               if (config?.desktopNotifications) {
                 showDesktopNotification(msg, 'Highlighted user');
-              }
-            }
-
-            if (msg.matchedKeywords && msg.matchedKeywords.length > 0) {
-              if (config?.messageSounds && config?.keywordAlertsEnabled) playKeywordAlertSound(ss?.keywordAlert);
-              if (config?.desktopNotifications && config?.keywordAlertsEnabled) {
-                showDesktopNotification(msg, `Keyword: ${msg.matchedKeywords.join(', ')}`);
               }
             }
 

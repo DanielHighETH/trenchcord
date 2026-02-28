@@ -33,7 +33,6 @@ export default function ChatView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
   const isDMView = activeRoomId?.startsWith('dm:') ?? false;
   const dmChannelId = isDMView ? activeRoomId!.slice(3) : null;
@@ -219,7 +218,6 @@ export default function ChatView() {
     requestAnimationFrame(scrollToEnd);
     clearFocusFilter();
     closeSearch();
-    setSelectedUserId(null);
   }, [activeRoomId, clearFocusFilter, scrollToEnd, closeSearch]);
 
   useEffect(() => {
@@ -449,7 +447,7 @@ export default function ChatView() {
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto"
         onScroll={checkNearBottom}
-        onClick={(e) => { if (e.target === e.currentTarget || e.target === contentRef.current) setSelectedUserId(null); }}
+        
       >
         <div ref={contentRef}>
           {roomMessages.length === 0 && (
@@ -487,8 +485,7 @@ export default function ChatView() {
                   onHideUser={hideUser}
                   onFocus={handleFocus}
                   isFocused={focusFilter !== null && focusFilter.guildId === msg.guildId && focusFilter.channelId === msg.channelId}
-                  isAuthorSelected={selectedUserId === msg.author.id}
-                  onSelectUser={(userId) => setSelectedUserId((prev) => prev === userId ? null : userId)}
+                  
                 />
               </div>
             );
