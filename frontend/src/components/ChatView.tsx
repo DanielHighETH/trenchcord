@@ -105,6 +105,19 @@ export default function ChatView() {
     }
   };
 
+  const toggleHighlightUser = async (userId: string, displayName: string) => {
+    if (!activeRoom) return;
+    const current = activeRoom.highlightedUsers ?? [];
+    const isAlready = current.includes(userId);
+    const highlightedUsers = isAlready ? current.filter((id) => id !== userId) : [...current, userId];
+    const updates: Partial<typeof activeRoom> = { highlightedUsers };
+    if (isAlready && activeRoom.highlightedUserColors?.[userId]) {
+      const { [userId]: _, ...rest } = activeRoom.highlightedUserColors;
+      updates.highlightedUserColors = rest;
+    }
+    await updateRoom(activeRoom.id, updates);
+  };
+
   const handleFocus = (guildId: string | null, channelId: string, guildName: string | null, channelName: string) => {
     if (focusFilter && focusFilter.guildId === guildId && focusFilter.channelId === channelId) {
       clearFocusFilter();
@@ -483,6 +496,8 @@ export default function ChatView() {
                   openInDiscordApp={config?.openInDiscordApp ?? false}
                   badgeClickAction={config?.badgeClickAction ?? 'discord'}
                   onHideUser={hideUser}
+                  onToggleHighlight={activeRoom ? toggleHighlightUser : undefined}
+                  isUserHighlighted={activeRoom?.highlightedUsers?.includes(msg.author.id) ?? false}
                   onFocus={handleFocus}
                   isFocused={focusFilter !== null && focusFilter.guildId === msg.guildId && focusFilter.channelId === msg.channelId}
                   

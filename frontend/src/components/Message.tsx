@@ -24,6 +24,8 @@ interface MessageProps {
   openInDiscordApp?: boolean;
   badgeClickAction?: BadgeClickAction;
   onHideUser?: (guildId: string | null, channelId: string, userId: string, displayName: string) => void;
+  onToggleHighlight?: (userId: string, displayName: string) => void;
+  isUserHighlighted?: boolean;
   onFocus?: (guildId: string | null, channelId: string, guildName: string | null, channelName: string) => void;
   isFocused?: boolean;
 }
@@ -451,7 +453,7 @@ function ReactionPills({ reactions }: { reactions: FrontendMessage['reactions'] 
   );
 }
 
-export default function Message({ message, isCompact, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, openInDiscordApp, badgeClickAction, onHideUser, onFocus, isFocused }: MessageProps) {
+export default function Message({ message, isCompact, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, openInDiscordApp, badgeClickAction, onHideUser, onToggleHighlight, isUserHighlighted, onFocus, isFocused }: MessageProps) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const addrColors: AddressColors = { evm: evmAddressColor ?? '#fee75c', sol: solAddressColor ?? '#14f195' };
   const templates: ContractLinkTemplates = contractLinkTemplates ?? DEFAULT_LINK_TEMPLATES;
@@ -475,8 +477,9 @@ export default function Message({ message, isCompact, guildColor, highlightMode 
   const hasKeywordMatch = (message.matchedKeywords?.length ?? 0) > 0;
   const resolvedHighlightColor = highlightColor || '#5865f2';
   const hasCustomColor = !!highlightColor;
+  const effectiveHighlighted = message.isHighlighted || isUserHighlighted;
 
-  const highlightClass = message.isHighlighted
+  const highlightClass = effectiveHighlighted
     ? useUsernameHighlight
       ? hasCustomColor ? 'border-l-2' : 'border-l-2 border-discord-blurple'
       : hasCustomColor ? 'border-l-2' : 'border-l-2 border-discord-blurple bg-discord-highlight'
@@ -485,7 +488,7 @@ export default function Message({ message, isCompact, guildColor, highlightMode 
       : '';
 
   const highlightInlineStyle: React.CSSProperties = {};
-  if (message.isHighlighted && hasCustomColor) {
+  if (effectiveHighlighted && hasCustomColor) {
     highlightInlineStyle.borderColor = resolvedHighlightColor;
     if (!useUsernameHighlight) {
       highlightInlineStyle.backgroundColor = `${resolvedHighlightColor}15`;
@@ -705,7 +708,7 @@ export default function Message({ message, isCompact, guildColor, highlightMode 
         <div className="flex items-baseline gap-1 flex-wrap leading-[1.375rem]">
           <span
             className="font-medium text-base hover:underline cursor-pointer relative mr-1"
-            style={{ color: message.isHighlighted ? resolvedHighlightColor : '#f2f3f5' }}
+            style={{ color: effectiveHighlighted ? resolvedHighlightColor : '#f2f3f5' }}
             onClick={handleNameClick}
             title={`${message.author.username} (${message.author.id})`}
           >
@@ -899,6 +902,8 @@ export default function Message({ message, isCompact, guildColor, highlightMode 
           guildName={message.guildName}
           openInDiscordApp={openInDiscordApp ?? false}
           position={contextMenu}
+          isHighlighted={isUserHighlighted}
+          onToggleHighlight={onToggleHighlight ? () => onToggleHighlight(message.author.id, message.author.displayName) : undefined}
           onHide={() => onHideUser?.(message.guildId, message.channelId, message.author.id, message.author.displayName)}
           onCopyId={copyUserId}
           onClose={() => setContextMenu(null)}

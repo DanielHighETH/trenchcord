@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { EyeOff, Copy, MessageSquare } from 'lucide-react';
+import { EyeOff, Copy, MessageSquare, Star, StarOff } from 'lucide-react';
 
 interface UserContextMenuProps {
   userId: string;
@@ -10,6 +10,8 @@ interface UserContextMenuProps {
   guildName: string | null;
   openInDiscordApp: boolean;
   position: { x: number; y: number };
+  isHighlighted?: boolean;
+  onToggleHighlight?: () => void;
   onHide: () => void;
   onCopyId: () => void;
   onClose: () => void;
@@ -22,6 +24,8 @@ export default function UserContextMenu({
   channelName,
   openInDiscordApp,
   position,
+  isHighlighted,
+  onToggleHighlight,
   onHide,
   onCopyId,
   onClose,
@@ -79,6 +83,16 @@ export default function UserContextMenu({
           <div className="text-[10px] text-discord-text-muted truncate">{channelLabel}</div>
         </div>
       </button>
+
+      {onToggleHighlight && (
+        <button
+          onClick={() => { onToggleHighlight(); onClose(); }}
+          className="w-full flex items-center gap-2 px-2 py-[6px] text-sm text-discord-header-secondary hover:bg-discord-blurple hover:text-white rounded-sm transition-colors text-left"
+        >
+          {isHighlighted ? <StarOff size={16} className="shrink-0" /> : <Star size={16} className="shrink-0" />}
+          <span>{isHighlighted ? 'Remove Highlight' : 'Highlight User'}</span>
+        </button>
+      )}
 
       <button
         onClick={() => { onCopyId(); onClose(); }}
