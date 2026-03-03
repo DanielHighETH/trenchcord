@@ -333,7 +333,8 @@ export function createRouter(wsServer: WsServer): Router {
   });
 
   router.post('/channel-sounds/:channelId', channelSoundUpload.single('file'), (req, res) => {
-    if (!req.params.channelId || !/^\d+$/.test(req.params.channelId)) {
+    const channelId = req.params.channelId as string;
+    if (!channelId || !/^\d+$/.test(channelId)) {
       return res.status(400).json({ error: 'Invalid channel ID' });
     }
     if (!req.file) {
@@ -344,12 +345,13 @@ export function createRouter(wsServer: WsServer): Router {
   });
 
   router.delete('/channel-sounds/:channelId', (req, res) => {
-    if (!req.params.channelId || !/^\d+$/.test(req.params.channelId)) {
+    const channelId = req.params.channelId as string;
+    if (!channelId || !/^\d+$/.test(channelId)) {
       return res.status(400).json({ error: 'Invalid channel ID' });
     }
     const extensions = ['.mp3', '.wav', '.ogg', '.webm', '.m4a'];
     for (const ext of extensions) {
-      const filePath = join(SOUNDS_DIR, `ch_${req.params.channelId}${ext}`);
+      const filePath = join(SOUNDS_DIR, `ch_${channelId}${ext}`);
       try { if (existsSync(filePath)) unlinkSync(filePath); } catch { /* ignore */ }
     }
     res.json({ success: true });

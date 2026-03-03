@@ -167,7 +167,7 @@ export const DEMO_CONFIG: AppConfig = {
     contractAlert: { enabled: true, volume: 80, useCustom: false },
     keywordAlert: { enabled: true, volume: 80, useCustom: false },
   },
-  pushover: { enabled: false, appToken: '', userKey: '' },
+  pushover: { enabled: false, appToken: '', userKey: '', priority: 0, sound: 'pushover', triggers: { highlightedUser: false, highlightedUserContract: false, contract: false, keyword: false }, filters: { userIds: [], channelIds: [], guildIds: [] } },
   contractLinkTemplates: { evm: '', sol: '', solPlatform: 'axiom', evmPlatform: 'gmgn' },
   contractClickAction: 'copy_open',
   autoOpenHighlightedContracts: false,
@@ -177,6 +177,8 @@ export const DEMO_CONFIG: AppConfig = {
   keywordAlertsEnabled: true,
   desktopNotifications: false,
   badgeClickAction: 'discord',
+  channelSounds: {},
+  userNameCache: {},
 };
 
 // ---------------------------------------------------------------------------

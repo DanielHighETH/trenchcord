@@ -13,13 +13,17 @@ import OnboardingWizard, { isOnboardingComplete } from './components/OnboardingW
 const MOBILE_BREAKPOINT = 768;
 
 function detectMobile(): boolean {
+  // User-Agent Client Hints — the modern definitive check
+  const uaData = (navigator as any).userAgentData;
+  if (uaData?.mobile) return true;
+
   if (window.innerWidth < MOBILE_BREAKPOINT) return true;
 
-  if (/iPhone|Android.*Mobile|webOS|BlackBerry|Opera Mini|IEMobile/i.test(navigator.userAgent))
-    return true;
+  if (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) return true;
 
+  // Touch-primary device with no hover capability (phones & tablets, not touch laptops)
   const coarse = window.matchMedia('(pointer: coarse) and (hover: none)').matches;
-  if (coarse && Math.min(screen.width, screen.height) < MOBILE_BREAKPOINT) return true;
+  if (coarse && navigator.maxTouchPoints > 1) return true;
 
   return false;
 }
