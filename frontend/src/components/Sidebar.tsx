@@ -21,7 +21,10 @@ export default function Sidebar() {
     <div className="w-60 bg-discord-sidebar flex flex-col h-full">
       {/* Header */}
       <div className="h-12 px-4 flex items-center shadow-[0_1px_0_rgba(0,0,0,0.2),0_1.5px_0_rgba(0,0,0,0.05),0_2px_0_rgba(0,0,0,0.05)] border-b border-discord-darker/50 shrink-0">
-        <h1 className="text-base font-semibold text-discord-header-primary truncate">Trenchcord</h1>
+        <h1 className="flex items-center gap-2 text-base font-semibold text-discord-header-primary truncate">
+          <img src="/trenchcord.png" alt="Trenchcord" className="w-6 h-6 rounded" />
+          Trenchcord
+        </h1>
         <div className="ml-auto flex items-center gap-1">
           <div
             className={`w-2 h-2 rounded-full ${connected ? 'bg-discord-green' : 'bg-discord-red'}`}

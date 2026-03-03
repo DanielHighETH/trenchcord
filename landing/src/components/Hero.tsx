@@ -43,8 +43,12 @@ export function Hero() {
   return (
     <section className="relative flex flex-col items-center pt-24 pb-16 sm:pt-28 sm:pb-20 overflow-hidden">
       <div className="relative z-10 mx-auto max-w-4xl px-6 text-center">
-        <AnimatedSection delay={0.1}>
-          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white pb-2">
+        <AnimatedSection delay={0.05}>
+          <img src="/trenchcord.png" alt="Trenchcord" className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl mx-auto shadow-lg shadow-black/30" />
+        </AnimatedSection>
+
+        <AnimatedSection delay={0.15}>
+          <h1 className="mt-5 text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white pb-2">
             Trenchcord
           </h1>
         </AnimatedSection>

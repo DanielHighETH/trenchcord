@@ -71,8 +71,9 @@ export function Navbar() {
             setMobileOpen(false);
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
-          className="text-base font-bold text-dc-text hover:text-white transition-colors"
+          className="flex items-center gap-2 text-base font-bold text-dc-text hover:text-white transition-colors"
         >
+          <img src="/trenchcord.png" alt="Trenchcord" className="w-6 h-6 rounded" />
           Trenchcord
         </a>
 
