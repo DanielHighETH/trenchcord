@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAppStore } from '../stores/appStore';
-import { Hash, Plus, Settings, Trash2, MessageCircle, FileText, HelpCircle } from 'lucide-react';
+import { Hash, Plus, Settings, Trash2, MessageCircle, FileText, HelpCircle, PanelLeftClose } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
 export default function Sidebar() {
@@ -15,10 +15,16 @@ export default function Sidebar() {
   const messages = useAppStore((s) => s.messages);
   const dmChannels = useAppStore((s) => s.dmChannels);
   const contracts = useAppStore((s) => s.contracts);
+  const collapsed = useAppStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
+  if (collapsed) {
+    return null;
+  }
+
   return (
-    <div className="w-60 bg-discord-sidebar flex flex-col h-full">
+    <div className="w-60 bg-discord-sidebar flex flex-col h-full shrink-0 transition-all duration-200">
       {/* Header */}
       <div className="h-12 px-4 flex items-center shadow-[0_1px_0_rgba(0,0,0,0.2),0_1.5px_0_rgba(0,0,0,0.05),0_2px_0_rgba(0,0,0,0.05)] border-b border-discord-darker/50 shrink-0">
         <h1 className="flex items-center gap-2 text-base font-semibold text-discord-header-primary truncate">
@@ -30,6 +36,13 @@ export default function Sidebar() {
             className={`w-2 h-2 rounded-full ${connected ? 'bg-discord-green' : 'bg-discord-red'}`}
             title={connected ? 'Connected' : 'Disconnected'}
           />
+          <button
+            onClick={toggleSidebar}
+            className="ml-1 p-1 rounded text-discord-channel-icon hover:text-discord-header-primary hover:bg-discord-hover transition-colors"
+            title="Collapse sidebar"
+          >
+            <PanelLeftClose size={16} />
+          </button>
         </div>
       </div>
 

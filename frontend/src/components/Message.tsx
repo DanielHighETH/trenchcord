@@ -555,8 +555,8 @@ export default function Message({ message, isCompact, guildColor, highlightMode 
 
   if (isCompact) {
     return (
-      <div className={`group/compact relative hover:bg-discord-hover py-[2px] pr-[48px] pl-[72px] ${highlightClass} min-h-[1.375rem]`} style={bgStyle}>
-        <span className="absolute left-0 w-[72px] text-[0.6875rem] text-discord-text-muted text-right pr-4 pt-[2px] opacity-0 group-hover/compact:opacity-100 select-none leading-[1.375rem]">
+      <div className={`group/compact relative hover:bg-discord-hover py-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} min-h-[1.375rem]`} style={bgStyle}>
+        <span className="absolute left-0 w-[52px] sm:w-[72px] text-[0.6875rem] text-discord-text-muted text-right pr-2 sm:pr-4 pt-[2px] opacity-0 group-hover/compact:opacity-100 select-none leading-[1.375rem]">
           {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
         <div className="min-w-0">
@@ -698,11 +698,11 @@ export default function Message({ message, isCompact, guildColor, highlightMode 
   }
 
   return (
-    <div className={`relative hover:bg-discord-hover mt-[1.0625rem] py-[2px] pr-[48px] pl-[72px] ${highlightClass} group`} style={bgStyle}>
+    <div className={`relative hover:bg-discord-hover mt-[1.0625rem] py-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} group`} style={bgStyle}>
       <img
         src={getAvatarUrl(message.author.id, message.author.avatar)}
         alt=""
-        className="absolute left-4 w-10 h-10 rounded-full mt-[2px]"
+        className="absolute left-2 sm:left-4 w-8 h-8 sm:w-10 sm:h-10 rounded-full mt-[2px]"
       />
       <div className="min-w-0">
         <div className="flex items-baseline gap-1 flex-wrap leading-[1.375rem]">

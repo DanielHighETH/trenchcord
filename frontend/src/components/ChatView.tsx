@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
 import Message from './Message';
-import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown } from 'lucide-react';
+import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown, PanelLeftOpen } from 'lucide-react';
 
 const SCROLL_THRESHOLD = 150;
 
@@ -22,6 +22,8 @@ export default function ChatView() {
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const updateRoom = useAppStore((s) => s.updateRoom);
+  const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const dmChannels = useAppStore((s) => s.dmChannels);
   const hideUser = useAppStore((s) => s.hideUser);
   const unhideUser = useAppStore((s) => s.unhideUser);
@@ -264,11 +266,24 @@ export default function ChatView() {
 
   if (!activeRoom && !activeDM) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-discord-main">
-        <div className="text-center text-discord-text-muted">
-          <Hash size={48} className="mx-auto mb-4 opacity-30" />
-          <p className="text-xl font-semibold mb-2">No room selected</p>
-          <p className="text-sm">Create a room and add some Discord channels to get started.</p>
+      <div className="flex-1 flex flex-col bg-discord-main">
+        {sidebarCollapsed && (
+          <div className="h-12 px-2 flex items-center border-b border-discord-dark/60 shrink-0">
+            <button
+              onClick={toggleSidebar}
+              className="p-1.5 rounded text-discord-channel-icon hover:text-discord-header-primary hover:bg-discord-hover transition-colors"
+              title="Show sidebar"
+            >
+              <PanelLeftOpen size={18} />
+            </button>
+          </div>
+        )}
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center text-discord-text-muted">
+            <Hash size={48} className="mx-auto mb-4 opacity-30" />
+            <p className="text-xl font-semibold mb-2">No room selected</p>
+            <p className="text-sm">Create a room and add some Discord channels to get started.</p>
+          </div>
         </div>
       </div>
     );
@@ -277,30 +292,39 @@ export default function ChatView() {
   return (
     <div className="flex-1 flex flex-col min-w-0 relative" style={{ backgroundColor: activeRoom?.color || '#313338' }}>
       {/* Channel header */}
-      <div className="h-12 px-4 flex items-center shadow-[0_1px_0_rgba(0,0,0,0.2),0_1.5px_0_rgba(0,0,0,0.05),0_2px_0_rgba(0,0,0,0.05)] border-b border-discord-dark/60 shrink-0 bg-transparent z-10">
-        {isDMView ? (
-          <MessageCircle size={24} className="text-discord-channel-icon mr-2 shrink-0" />
-        ) : (
-          <Hash size={24} className="text-discord-channel-icon mr-2 shrink-0" />
+      <div className="h-12 px-2 sm:px-4 flex items-center shadow-[0_1px_0_rgba(0,0,0,0.2),0_1.5px_0_rgba(0,0,0,0.05),0_2px_0_rgba(0,0,0,0.05)] border-b border-discord-dark/60 shrink-0 bg-transparent z-10 gap-1">
+        {sidebarCollapsed && (
+          <button
+            onClick={toggleSidebar}
+            className="p-1.5 -ml-0.5 mr-0.5 rounded text-discord-channel-icon hover:text-discord-header-primary hover:bg-discord-hover transition-colors shrink-0"
+            title="Show sidebar"
+          >
+            <PanelLeftOpen size={18} />
+          </button>
         )}
-        <span className="font-semibold text-base text-discord-header-primary truncate">
+        {isDMView ? (
+          <MessageCircle size={20} className="text-discord-channel-icon mr-1.5 shrink-0" />
+        ) : (
+          <Hash size={20} className="text-discord-channel-icon mr-1.5 shrink-0" />
+        )}
+        <span className="font-semibold text-sm sm:text-base text-discord-header-primary truncate">
           {isDMView ? dmRecipientNames : activeRoom!.name}
         </span>
         {!isDMView && (
-          <span className="ml-3 text-sm text-discord-header-secondary truncate">
+          <span className="ml-2 text-xs sm:text-sm text-discord-header-secondary truncate hidden sm:inline">
             {activeRoom!.channels.length} channel{activeRoom!.channels.length !== 1 ? 's' : ''}
           </span>
         )}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1 sm:gap-2 shrink-0">
           {activeRoom && activeRoom.highlightedUsers.length > 0 && (
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-discord-blurple/20 text-discord-blurple">
+            <span className="text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full bg-discord-blurple/20 text-discord-blurple hidden sm:inline-flex">
               {activeRoom.highlightedUsers.length} highlighted
             </span>
           )}
           {activeRoom && (activeRoom.filteredUsers?.length ?? 0) > 0 && (
             <button
               onClick={toggleFilter}
-              className={`flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full transition-colors ${
+              className={`flex items-center gap-1 text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full transition-colors ${
                 activeRoom.filterEnabled
                   ? 'bg-discord-green/20 text-discord-green'
                   : 'bg-discord-dark/50 text-discord-text-muted hover:text-discord-text'
@@ -308,24 +332,24 @@ export default function ChatView() {
               title={activeRoom.filterEnabled ? 'Click to disable user filter' : 'Click to enable user filter'}
             >
               <Filter size={10} />
-              {activeRoom.filteredUsers.length} filtered {activeRoom.filterEnabled ? 'ON' : 'OFF'}
+              <span className="hidden sm:inline">{activeRoom.filteredUsers.length} filtered</span> {activeRoom.filterEnabled ? 'ON' : 'OFF'}
             </button>
           )}
           {focusFilter && (
             <button
               onClick={clearFocusFilter}
-              className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-discord-blurple/20 text-discord-blurple hover:bg-discord-blurple/30 transition-colors"
+              className="flex items-center gap-1 text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full bg-discord-blurple/20 text-discord-blurple hover:bg-discord-blurple/30 transition-colors max-w-[120px] sm:max-w-none"
               title="Click to exit focus mode"
             >
-              <Eye size={10} />
-              Focus Mode — {focusFilter.guildName ? `${focusFilter.guildName} / ` : ''}#{focusFilter.channelName}
-              <X size={10} />
+              <Eye size={10} className="shrink-0" />
+              <span className="truncate">Focus</span>
+              <X size={10} className="shrink-0" />
             </button>
           )}
           {channelHiddenUsers.length > 0 && (
             <button
               onClick={() => setHiddenPanelOpen(!hiddenPanelOpen)}
-              className={`flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full transition-colors ${
+              className={`flex items-center gap-1 text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full transition-colors ${
                 hiddenPanelOpen
                   ? 'bg-discord-red/20 text-discord-red'
                   : 'bg-discord-dark/50 text-discord-text-muted hover:text-discord-text'
@@ -333,12 +357,12 @@ export default function ChatView() {
               title="View hidden users"
             >
               <EyeOff size={10} />
-              {channelHiddenUsers.length} hidden
+              <span className="hidden sm:inline">{channelHiddenUsers.length} hidden</span>
             </button>
           )}
           <button
             onClick={searchOpen ? closeSearch : openSearch}
-            className={`transition-colors ${
+            className={`p-1 transition-colors ${
               searchOpen ? 'text-white' : 'text-discord-channel-icon hover:text-discord-text'
             }`}
             title="Search messages (Ctrl+F)"
@@ -348,7 +372,7 @@ export default function ChatView() {
           {activeRoom && (
             <button
               onClick={() => openConfigModal(activeRoom)}
-              className="text-discord-channel-icon hover:text-discord-text transition-colors"
+              className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
               title="Room settings"
             >
               <Settings size={18} />

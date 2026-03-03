@@ -26,7 +26,10 @@ interface AppState {
   focusFilter: { guildId: string | null; channelId: string; guildName: string | null; channelName: string } | null;
   contracts: ContractEntry[];
   maskedTokens: MaskedToken[];
+  sidebarCollapsed: boolean;
 
+  toggleSidebar: () => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
   setConnected: (connected: boolean) => void;
   setFocusFilter: (filter: AppState['focusFilter']) => void;
   clearFocusFilter: () => void;
@@ -88,7 +91,10 @@ export const useAppStore = create<AppState>((set, get) => {
   focusFilter: null,
   contracts: [],
   maskedTokens: [],
+  sidebarCollapsed: false,
 
+  toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+  setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   setConnected: (connected) => set({ connected }),
   setFocusFilter: (filter) => set({ focusFilter: filter }),
   clearFocusFilter: () => set({ focusFilter: null }),

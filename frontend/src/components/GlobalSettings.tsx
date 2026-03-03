@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters } from '../types';
 import { PUSHOVER_SOUNDS } from '../types';
-import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell } from 'lucide-react';
+import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, PanelLeftOpen } from 'lucide-react';
 import { requestNotificationPermission } from '../utils/desktopNotification';
 import { previewSound } from '../utils/notificationSound';
 
@@ -33,6 +33,8 @@ export default function GlobalSettings() {
   const allMessages = useAppStore((s) => s.messages);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const settingsSection = useAppStore((s) => s.settingsSection);
+  const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useAppStore((s) => s.toggleSidebar);
 
   const userNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -273,8 +275,17 @@ export default function GlobalSettings() {
   return (
     <div className="flex-1 flex h-full bg-discord-dark">
       {/* Section navigation */}
-      <div className="w-60 bg-discord-sidebar/50 border-r border-discord-divider flex flex-col shrink-0">
-        <div className="px-4 pt-5 pb-3 flex items-center gap-2">
+      <div className="w-44 sm:w-60 bg-discord-sidebar/50 border-r border-discord-divider flex flex-col shrink-0">
+        <div className="px-2 sm:px-4 pt-5 pb-3 flex items-center gap-2">
+          {sidebarCollapsed && (
+            <button
+              onClick={toggleSidebar}
+              className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-white transition-colors"
+              title="Show sidebar"
+            >
+              <PanelLeftOpen size={16} />
+            </button>
+          )}
           <button
             onClick={() => guardNavigation(() => setActiveView('chat'))}
             className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-white transition-colors"
@@ -289,7 +300,7 @@ export default function GlobalSettings() {
             <button
               key={id}
               onClick={() => { if (id !== section) setSection(id); }}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded text-sm text-left transition-colors ${
+              className={`w-full flex items-center gap-2.5 px-2 sm:px-3 py-2 rounded text-sm text-left transition-colors ${
                 section === id
                   ? 'bg-discord-hover text-white'
                   : 'text-discord-text-muted hover:bg-discord-hover/50 hover:text-discord-text'
@@ -305,7 +316,7 @@ export default function GlobalSettings() {
       {/* Content area */}
       <div className="flex-1 flex flex-col min-w-0">
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl mx-auto px-8 py-6 space-y-6" data-form-type="other" data-lpignore="true" data-1p-ignore>
+          <div className="max-w-2xl mx-auto px-4 sm:px-8 py-6 space-y-6" data-form-type="other" data-lpignore="true" data-1p-ignore>
 
             {section === 'tokens' && (
               <>

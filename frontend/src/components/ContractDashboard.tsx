@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Search, ExternalLink, Copy, Check, Trash2, LayoutGrid, List, X, MessageSquare } from 'lucide-react';
+import { Search, ExternalLink, Copy, Check, Trash2, LayoutGrid, List, X, MessageSquare, PanelLeftOpen } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import { buildContractUrl } from '../utils/contractUrl';
 import ConfirmModal from './ConfirmModal';
@@ -33,6 +33,8 @@ export default function ContractDashboard() {
   const deleteContract = useAppStore((s) => s.deleteContract);
   const deleteAllContracts = useAppStore((s) => s.deleteAllContracts);
   const config = useAppStore((s) => s.config);
+  const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const [search, setSearch] = useState('');
   const [chainFilter, setChainFilter] = useState<'all' | 'evm' | 'sol'>('all');
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null);
@@ -94,8 +96,17 @@ export default function ContractDashboard() {
   return (
     <div className="flex-1 flex flex-col bg-discord-bg overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-discord-border shrink-0">
-        <h2 className="text-white font-semibold text-lg">Contract Feed</h2>
+      <div className="flex items-center gap-2 sm:gap-3 px-2 sm:px-4 py-3 border-b border-discord-border shrink-0">
+        {sidebarCollapsed && (
+          <button
+            onClick={toggleSidebar}
+            className="p-1.5 rounded text-discord-channel-icon hover:text-discord-header-primary hover:bg-discord-hover transition-colors shrink-0"
+            title="Show sidebar"
+          >
+            <PanelLeftOpen size={18} />
+          </button>
+        )}
+        <h2 className="text-white font-semibold text-base sm:text-lg">Contract Feed</h2>
         <span className="text-discord-text-muted text-sm">{filtered.length} contracts</span>
         <div className="flex-1" />
         <div className="flex items-center gap-2">

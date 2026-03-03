@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useAppStore } from './stores/appStore';
+import { isDemoMode } from './demo/demoStore';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import ContractDashboard from './components/ContractDashboard';
@@ -11,6 +12,7 @@ import TokenSetup from './components/TokenSetup';
 import OnboardingWizard, { isOnboardingComplete } from './components/OnboardingWizard';
 
 const MOBILE_BREAKPOINT = 768;
+const SIDEBAR_COLLAPSE_BREAKPOINT = 640;
 
 function detectMobile(): boolean {
   // User-Agent Client Hints — the modern definitive check
@@ -79,8 +81,20 @@ export default function App() {
   const fetchConfig = useAppStore((s) => s.fetchConfig);
   const fetchDMChannels = useAppStore((s) => s.fetchDMChannels);
   const activeView = useAppStore((s) => s.activeView);
+  const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [dataReady, setDataReady] = useState(false);
+
+  useEffect(() => {
+    const checkWidth = () => {
+      if (window.innerWidth < SIDEBAR_COLLAPSE_BREAKPOINT) {
+        setSidebarCollapsed(true);
+      }
+    };
+    checkWidth();
+    window.addEventListener('resize', checkWidth);
+    return () => window.removeEventListener('resize', checkWidth);
+  }, [setSidebarCollapsed]);
 
   useEffect(() => {
     checkAuth();
@@ -102,7 +116,7 @@ export default function App() {
     }
   }, [dataReady, rooms.length]);
 
-  if (isMobile) {
+  if (isDemoMode && isMobile) {
     return <MobileGate />;
   }
 
