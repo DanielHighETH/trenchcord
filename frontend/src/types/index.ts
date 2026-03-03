@@ -30,10 +30,38 @@ export interface Room {
   highlightedUserColors?: Record<string, string>;
 }
 
+export type PushoverPriority = -2 | -1 | 0 | 1 | 2;
+
+export const PUSHOVER_SOUNDS = [
+  'pushover', 'bike', 'bugle', 'cashregister', 'classical', 'cosmic',
+  'falling', 'gamelan', 'incoming', 'intermission', 'magic', 'mechanical',
+  'pianobar', 'siren', 'spacealarm', 'tugboat', 'alien', 'climb',
+  'persistent', 'echo', 'updown', 'vibrate', 'none',
+] as const;
+
+export type PushoverSound = (typeof PUSHOVER_SOUNDS)[number];
+
+export interface PushoverTriggers {
+  highlightedUser: boolean;
+  highlightedUserContract: boolean;
+  contract: boolean;
+  keyword: boolean;
+}
+
+export interface PushoverFilters {
+  userIds: string[];
+  channelIds: string[];
+  guildIds: string[];
+}
+
 export interface PushoverConfig {
   enabled: boolean;
   appToken: string;
   userKey: string;
+  priority: PushoverPriority;
+  sound: PushoverSound;
+  triggers: PushoverTriggers;
+  filters: PushoverFilters;
 }
 
 export type SolPlatform = 'axiom' | 'padre' | 'bloom' | 'gmgn' | 'custom';
@@ -72,6 +100,7 @@ export interface AppConfig {
   hiddenUsers: Record<string, { userId: string; displayName: string }[]>;
   messageSounds: boolean;
   soundSettings: SoundSettings;
+  channelSounds: Record<string, SoundConfig>;
   pushover: PushoverConfig;
   contractLinkTemplates: ContractLinkTemplates;
   contractClickAction: ContractClickAction;

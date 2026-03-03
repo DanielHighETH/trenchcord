@@ -1,17 +1,19 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAppStore } from '../stores/appStore';
-import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig } from '../types';
-import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle } from 'lucide-react';
+import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters } from '../types';
+import { PUSHOVER_SOUNDS } from '../types';
+import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell } from 'lucide-react';
 import { requestNotificationPermission } from '../utils/desktopNotification';
 import { previewSound } from '../utils/notificationSound';
 
-type Section = 'tokens' | 'general' | 'contracts' | 'sounds' | 'keywords' | 'users' | 'guilds' | 'help';
+type Section = 'tokens' | 'general' | 'contracts' | 'sounds' | 'pushover' | 'keywords' | 'users' | 'guilds' | 'help';
 
 const SECTIONS: { id: Section; label: string; icon: typeof Key }[] = [
   { id: 'tokens', label: 'Tokens', icon: Key },
   { id: 'general', label: 'General', icon: Settings2 },
   { id: 'contracts', label: 'Contracts', icon: Zap },
   { id: 'sounds', label: 'Sounds & Notifications', icon: Volume2 },
+  { id: 'pushover', label: 'Pushover', icon: Bell },
   { id: 'keywords', label: 'Keywords', icon: Tag },
   { id: 'users', label: 'Highlighted Users', icon: Users },
   { id: 'guilds', label: 'Guilds', icon: Shield },
@@ -64,11 +66,20 @@ export default function GlobalSettings() {
     contractAlert: { ...defaultSoundConfig },
     keywordAlert: { ...defaultSoundConfig },
   });
+  const [channelSounds, setChannelSounds] = useState<Record<string, SoundConfig>>({});
   const [uploadingSoundType, setUploadingSoundType] = useState<SoundType | null>(null);
+  const [uploadingChannelId, setUploadingChannelId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const channelFileInputRef = useRef<HTMLInputElement>(null);
   const [pushoverEnabled, setPushoverEnabled] = useState(false);
   const [pushoverAppToken, setPushoverAppToken] = useState('');
   const [pushoverUserKey, setPushoverUserKey] = useState('');
+  const [pushoverPriority, setPushoverPriority] = useState<PushoverPriority>(1);
+  const [pushoverSound, setPushoverSound] = useState<PushoverSound>('siren');
+  const defaultTriggers: PushoverTriggers = { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false };
+  const defaultFilters: PushoverFilters = { userIds: [], channelIds: [], guildIds: [] };
+  const [pushoverTriggers, setPushoverTriggers] = useState<PushoverTriggers>({ ...defaultTriggers });
+  const [pushoverFilters, setPushoverFilters] = useState<PushoverFilters>({ ...defaultFilters });
   const [solPlatform, setSolPlatform] = useState<SolPlatform>('axiom');
   const [evmPlatform, setEvmPlatform] = useState<EvmPlatform>('gmgn');
   const [customSolUrl, setCustomSolUrl] = useState('');
@@ -111,9 +122,14 @@ export default function GlobalSettings() {
           keywordAlert: { ...defaultSoundConfig, ...config.soundSettings.keywordAlert },
         });
       }
+      setChannelSounds(config.channelSounds ?? {});
       setPushoverEnabled(config.pushover?.enabled ?? false);
       setPushoverAppToken(config.pushover?.appToken ?? '');
       setPushoverUserKey(config.pushover?.userKey ?? '');
+      setPushoverPriority(config.pushover?.priority ?? 1);
+      setPushoverSound(config.pushover?.sound ?? 'siren');
+      setPushoverTriggers(config.pushover?.triggers ?? { ...defaultTriggers });
+      setPushoverFilters(config.pushover?.filters ?? { ...defaultFilters });
       setSolPlatform(config.contractLinkTemplates?.solPlatform ?? 'axiom');
       setEvmPlatform(config.contractLinkTemplates?.evmPlatform ?? 'gmgn');
       setCustomSolUrl(config.contractLinkTemplates?.sol ?? '');
@@ -151,9 +167,14 @@ export default function GlobalSettings() {
         contractAlert: { ...defaultSoundConfig, ...config.soundSettings.contractAlert },
         keywordAlert: { ...defaultSoundConfig, ...config.soundSettings.keywordAlert },
       } : { highlight: defaultSoundConfig, contractAlert: defaultSoundConfig, keywordAlert: defaultSoundConfig }) ||
+      JSON.stringify(channelSounds) !== JSON.stringify(config.channelSounds ?? {}) ||
       pushoverEnabled !== (config.pushover?.enabled ?? false) ||
       pushoverAppToken !== (config.pushover?.appToken ?? '') ||
       pushoverUserKey !== (config.pushover?.userKey ?? '') ||
+      pushoverPriority !== (config.pushover?.priority ?? 1) ||
+      pushoverSound !== (config.pushover?.sound ?? 'siren') ||
+      JSON.stringify(pushoverTriggers) !== JSON.stringify(config.pushover?.triggers ?? defaultTriggers) ||
+      JSON.stringify(pushoverFilters) !== JSON.stringify(config.pushover?.filters ?? defaultFilters) ||
       solPlatform !== (config.contractLinkTemplates?.solPlatform ?? 'axiom') ||
       evmPlatform !== (config.contractLinkTemplates?.evmPlatform ?? 'gmgn') ||
       customSolUrl !== (config.contractLinkTemplates?.sol ?? '') ||
@@ -166,7 +187,7 @@ export default function GlobalSettings() {
       badgeClickAction !== (config.badgeClickAction ?? 'discord')
     );
   }, [config, globalUsers, contractDetection, guildColors, enabledGuilds, evmAddressColor, solAddressColor,
-    openInDiscordApp, messageSounds, soundSettings, pushoverEnabled, pushoverAppToken, pushoverUserKey,
+    openInDiscordApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters,
     solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, autoOpenHighlightedContracts,
     globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction]);
 
@@ -200,7 +221,8 @@ export default function GlobalSettings() {
         openInDiscordApp,
         messageSounds,
         soundSettings,
-        pushover: { enabled: pushoverEnabled, appToken: pushoverAppToken, userKey: pushoverUserKey },
+        channelSounds,
+        pushover: { enabled: pushoverEnabled, appToken: pushoverAppToken, userKey: pushoverUserKey, priority: pushoverPriority, sound: pushoverSound, triggers: pushoverTriggers, filters: pushoverFilters },
         contractLinkTemplates: { evm: customEvmUrl, sol: customSolUrl, solPlatform, evmPlatform },
         contractClickAction,
         autoOpenHighlightedContracts,
@@ -266,7 +288,7 @@ export default function GlobalSettings() {
           {SECTIONS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => { if (id !== section) guardNavigation(() => setSection(id)); }}
+              onClick={() => { if (id !== section) setSection(id); }}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded text-sm text-left transition-colors ${
                 section === id
                   ? 'bg-discord-hover text-white'
@@ -777,21 +799,289 @@ export default function GlobalSettings() {
                     </div>
 
                     <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Pushover Notifications</h4>
-                      <p className="text-sm text-discord-text-muted mb-3">
-                        Send push notifications via{' '}
-                        <a href="https://pushover.net" target="_blank" rel="noopener noreferrer" className="text-discord-text-link hover:underline">
-                          Pushover
-                        </a>{' '}
-                        when a highlighted user posts a contract address.
+                      <h4 className="text-sm font-semibold text-white mb-2">Channel Sounds</h4>
+                      <p className="text-xs text-discord-text-muted mb-3">
+                        Play a notification sound for every message in specific channels, even when no highlight or keyword matches.
                       </p>
-                      <Toggle
-                        value={pushoverEnabled}
-                        onChange={setPushoverEnabled}
-                        label="Enable Pushover notifications"
+                      <input
+                        type="file"
+                        ref={channelFileInputRef}
+                        accept=".mp3,.wav,.ogg,.webm,.m4a"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file || !uploadingChannelId) return;
+                          const formData = new FormData();
+                          formData.append('file', file);
+                          try {
+                            const res = await fetch(`/api/channel-sounds/${uploadingChannelId}`, { method: 'POST', body: formData });
+                            const data = await res.json();
+                            if (res.ok && data.url) {
+                              setChannelSounds((prev) => ({
+                                ...prev,
+                                [uploadingChannelId]: { ...(prev[uploadingChannelId] ?? { enabled: true, volume: 80, useCustom: false }), useCustom: true, customSoundUrl: data.url },
+                              }));
+                            }
+                          } catch { /* ignore */ }
+                          setUploadingChannelId(null);
+                          e.target.value = '';
+                        }}
                       />
-                      {pushoverEnabled && (
-                        <div className="space-y-3 mt-4">
+                      {(() => {
+                        const rooms = config?.rooms ?? [];
+                        const seen = new Set<string>();
+                        const channels: { id: string; name: string; guildName: string | null }[] = [];
+                        for (const room of rooms) {
+                          for (const ch of room.channels) {
+                            if (!seen.has(ch.channelId)) {
+                              seen.add(ch.channelId);
+                              channels.push({ id: ch.channelId, name: ch.channelName ?? ch.channelId, guildName: ch.guildName ?? null });
+                            }
+                          }
+                        }
+                        if (channels.length === 0) return <p className="text-xs text-discord-text-muted italic">No channels in rooms yet</p>;
+
+                        const grouped = new Map<string, typeof channels>();
+                        for (const ch of channels) {
+                          const key = ch.guildName ?? 'DMs';
+                          if (!grouped.has(key)) grouped.set(key, []);
+                          grouped.get(key)!.push(ch);
+                        }
+
+                        const enabledIds = Object.keys(channelSounds);
+
+                        return (
+                          <div className="space-y-3">
+                            {/* Channel picker */}
+                            <div className="space-y-2">
+                              {Array.from(grouped.entries()).map(([guildName, guildChannels]) => (
+                                <div key={guildName}>
+                                  <p className="text-[10px] text-discord-text-muted uppercase tracking-wider mb-1">{guildName}</p>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {guildChannels.map((ch) => {
+                                      const active = ch.id in channelSounds;
+                                      return (
+                                        <button
+                                          key={ch.id}
+                                          onClick={() => {
+                                            if (active) {
+                                              setChannelSounds((prev) => {
+                                                const next = { ...prev };
+                                                delete next[ch.id];
+                                                return next;
+                                              });
+                                            } else {
+                                              setChannelSounds((prev) => ({
+                                                ...prev,
+                                                [ch.id]: { enabled: true, volume: 80, useCustom: false },
+                                              }));
+                                            }
+                                          }}
+                                          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${active ? 'bg-discord-blurple text-white' : 'bg-discord-dark text-discord-text-muted hover:text-discord-text'}`}
+                                        >
+                                          #{ch.name}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Per-channel sound configs */}
+                            {enabledIds.length > 0 && (
+                              <div className="space-y-2 mt-2">
+                                {enabledIds.map((chId) => {
+                                  const sc = channelSounds[chId];
+                                  const chInfo = channels.find((c) => c.id === chId);
+                                  const label = chInfo ? `#${chInfo.name}` : `#${chId}`;
+                                  return (
+                                    <div key={chId} className="px-3 py-3 bg-discord-dark rounded space-y-2.5">
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                          <Volume2 size={14} className="text-discord-text-muted" />
+                                          <span className="text-sm text-discord-text font-medium">{label}</span>
+                                          {chInfo?.guildName && <span className="text-[10px] text-discord-text-muted">{chInfo.guildName}</span>}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            onClick={() => previewSound('highlight', sc)}
+                                            className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-discord-text transition-colors"
+                                            title="Preview sound"
+                                          >
+                                            <Play size={14} />
+                                          </button>
+                                          <div
+                                            className={`w-9 h-[18px] rounded-full transition-colors relative cursor-pointer ${sc.enabled ? 'bg-discord-green' : 'bg-discord-input'}`}
+                                            onClick={() => setChannelSounds((prev) => ({
+                                              ...prev,
+                                              [chId]: { ...prev[chId], enabled: !prev[chId].enabled },
+                                            }))}
+                                          >
+                                            <div className={`absolute top-[2px] w-[14px] h-[14px] bg-white rounded-full transition-transform ${sc.enabled ? 'translate-x-[18px]' : 'translate-x-[2px]'}`} />
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {sc.enabled && (
+                                        <>
+                                          <div className="flex items-center gap-3">
+                                            <span className="text-[11px] text-discord-text-muted w-12 shrink-0">Volume</span>
+                                            <input
+                                              type="range"
+                                              min={0}
+                                              max={100}
+                                              value={sc.volume}
+                                              onChange={(e) => setChannelSounds((prev) => ({
+                                                ...prev,
+                                                [chId]: { ...prev[chId], volume: Number(e.target.value) },
+                                              }))}
+                                              className="flex-1 h-1.5 accent-discord-blurple cursor-pointer"
+                                            />
+                                            <span className="text-[11px] text-discord-text-muted w-8 text-right">{sc.volume}%</span>
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-[11px] text-discord-text-muted">Sound:</span>
+                                            <button
+                                              onClick={() => setChannelSounds((prev) => ({ ...prev, [chId]: { ...prev[chId], useCustom: false } }))}
+                                              className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${!sc.useCustom ? 'bg-discord-blurple text-white' : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'}`}
+                                            >
+                                              Built-in
+                                            </button>
+                                            <button
+                                              onClick={() => {
+                                                if (sc.customSoundUrl) {
+                                                  setChannelSounds((prev) => ({ ...prev, [chId]: { ...prev[chId], useCustom: true } }));
+                                                } else {
+                                                  setUploadingChannelId(chId);
+                                                  channelFileInputRef.current?.click();
+                                                }
+                                              }}
+                                              className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${sc.useCustom ? 'bg-discord-blurple text-white' : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'}`}
+                                            >
+                                              Custom
+                                            </button>
+                                            {sc.useCustom && sc.customSoundUrl && (
+                                              <button
+                                                onClick={() => { setUploadingChannelId(chId); channelFileInputRef.current?.click(); }}
+                                                className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-discord-text transition-colors"
+                                                title="Upload new sound"
+                                              >
+                                                <Upload size={12} />
+                                              </button>
+                                            )}
+                                            {sc.useCustom && sc.customSoundUrl && (
+                                              <button
+                                                onClick={async () => {
+                                                  await fetch(`/api/channel-sounds/${chId}`, { method: 'DELETE' });
+                                                  setChannelSounds((prev) => ({
+                                                    ...prev,
+                                                    [chId]: { ...prev[chId], useCustom: false, customSoundUrl: undefined },
+                                                  }));
+                                                }}
+                                                className="text-discord-text-muted hover:text-discord-red transition-colors"
+                                                title="Remove custom sound"
+                                              >
+                                                <Trash2 size={12} />
+                                              </button>
+                                            )}
+                                          </div>
+                                          {sc.useCustom && sc.customSoundUrl && (
+                                            <div className="text-[10px] text-discord-text-muted truncate">
+                                              {sc.customSoundUrl.split('/').pop()}
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                  </div>
+                </div>
+              </>
+            )}
+
+            {section === 'pushover' && (
+              <>
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-4">Pushover</h3>
+                  <div className="space-y-4">
+                    <p className="text-sm text-discord-text-muted">
+                      Send push notifications to your phone via{' '}
+                      <a href="https://pushover.net" target="_blank" rel="noopener noreferrer" className="text-discord-text-link hover:underline">
+                        pushover.net
+                      </a>
+                      . Configure which events trigger notifications and filter by user, guild, or channel.
+                    </p>
+
+                    <details className="group bg-discord-sidebar rounded-lg">
+                      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none">
+                        <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        <span className="text-sm font-semibold text-white">Setup Guide</span>
+                      </summary>
+                      <div className="px-4 pb-4 space-y-3">
+                        <div className="space-y-2">
+                          <div className="flex items-start gap-2.5">
+                            <span className="shrink-0 w-5 h-5 rounded-full bg-discord-blurple text-white text-xs font-bold flex items-center justify-center mt-0.5">1</span>
+                            <p className="text-sm text-discord-text">
+                              Create a Pushover account at{' '}
+                              <a href="https://pushover.net" target="_blank" rel="noopener noreferrer" className="text-discord-text-link hover:underline">pushover.net</a>
+                              {' '}and install the app on your{' '}
+                              <a href="https://pushover.net/clients" target="_blank" rel="noopener noreferrer" className="text-discord-text-link hover:underline">phone</a>.
+                            </p>
+                          </div>
+                          <div className="flex items-start gap-2.5">
+                            <span className="shrink-0 w-5 h-5 rounded-full bg-discord-blurple text-white text-xs font-bold flex items-center justify-center mt-0.5">2</span>
+                            <p className="text-sm text-discord-text">
+                              Copy your <span className="font-semibold text-white">User Key</span> from the{' '}
+                              <a href="https://pushover.net" target="_blank" rel="noopener noreferrer" className="text-discord-text-link hover:underline">Pushover dashboard</a>
+                              {' '}(shown at the top of the page after logging in).
+                            </p>
+                          </div>
+                          <div className="flex items-start gap-2.5">
+                            <span className="shrink-0 w-5 h-5 rounded-full bg-discord-blurple text-white text-xs font-bold flex items-center justify-center mt-0.5">3</span>
+                            <div className="text-sm text-discord-text">
+                              <p>
+                                Create a new application at{' '}
+                                <a href="https://pushover.net/apps/build" target="_blank" rel="noopener noreferrer" className="text-discord-text-link hover:underline">pushover.net/apps/build</a>:
+                              </p>
+                              <ul className="mt-1.5 ml-1 space-y-1 text-discord-text-muted text-xs">
+                                <li className="flex items-start gap-1.5"><span className="text-discord-blurple font-bold">·</span> Name it anything (e.g. "Trenchcord")</li>
+                                <li className="flex items-start gap-1.5"><span className="text-discord-blurple font-bold">·</span> Type: Application</li>
+                                <li className="flex items-start gap-1.5"><span className="text-discord-blurple font-bold">·</span> Description and URL are optional</li>
+                              </ul>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-2.5">
+                            <span className="shrink-0 w-5 h-5 rounded-full bg-discord-blurple text-white text-xs font-bold flex items-center justify-center mt-0.5">4</span>
+                            <p className="text-sm text-discord-text">
+                              Copy the <span className="font-semibold text-white">API Token/Key</span> from your newly created application page and paste it below.
+                            </p>
+                          </div>
+                        </div>
+                        <p className="text-xs text-discord-text-muted px-1">
+                          Pushover offers a 30-day free trial, then a one-time $5 purchase per platform.
+                        </p>
+                      </div>
+                    </details>
+
+                    <Toggle
+                      value={pushoverEnabled}
+                      onChange={setPushoverEnabled}
+                      label="Enable Pushover notifications"
+                    />
+
+                    {pushoverEnabled && (
+                      <div className="space-y-4">
+                        <div className="p-4 bg-discord-sidebar rounded-lg space-y-3">
+                          <h4 className="text-sm font-semibold text-white">Credentials</h4>
                           <div className="px-3 py-2 bg-discord-dark rounded">
                             <label className="text-[11px] text-discord-text-muted mb-1 block">Application API Token</label>
                             <input
@@ -821,8 +1111,202 @@ export default function GlobalSettings() {
                             />
                           </div>
                         </div>
-                      )}
-                    </div>
+
+                        <div className="p-4 bg-discord-sidebar rounded-lg space-y-3">
+                          <h4 className="text-sm font-semibold text-white">Triggers</h4>
+                          <p className="text-xs text-discord-text-muted">Choose which events send a push notification.</p>
+                          <Toggle
+                            value={pushoverTriggers.highlightedUserContract}
+                            onChange={(v) => setPushoverTriggers((p) => ({ ...p, highlightedUserContract: v }))}
+                            label="Highlighted user posts a contract"
+                          />
+                          <Toggle
+                            value={pushoverTriggers.highlightedUser}
+                            onChange={(v) => setPushoverTriggers((p) => ({ ...p, highlightedUser: v }))}
+                            label="Highlighted user sends any message"
+                          />
+                          <Toggle
+                            value={pushoverTriggers.contract}
+                            onChange={(v) => setPushoverTriggers((p) => ({ ...p, contract: v }))}
+                            label="Any contract address detected"
+                          />
+                          <Toggle
+                            value={pushoverTriggers.keyword}
+                            onChange={(v) => setPushoverTriggers((p) => ({ ...p, keyword: v }))}
+                            label="Keyword pattern matched"
+                          />
+                        </div>
+
+                        <div className="p-4 bg-discord-sidebar rounded-lg space-y-3">
+                          <h4 className="text-sm font-semibold text-white">Filters</h4>
+                          <p className="text-xs text-discord-text-muted">Narrow down which messages trigger notifications. Empty = no filter (all match).</p>
+
+                          {/* User filter */}
+                          <div className="px-3 py-2 bg-discord-dark rounded space-y-2">
+                            <label className="text-[11px] text-discord-text-muted block">Only from these highlighted users</label>
+                            {(() => {
+                              const allHighlighted = Array.from(new Set([
+                                ...(config?.globalHighlightedUsers ?? []),
+                                ...(config?.rooms ?? []).flatMap((r) => r.highlightedUsers),
+                              ]));
+                              if (allHighlighted.length === 0) return <p className="text-xs text-discord-text-muted italic">No highlighted users configured</p>;
+                              return (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {allHighlighted.map((uid) => {
+                                    const active = pushoverFilters.userIds.includes(uid);
+                                    return (
+                                      <button
+                                        key={uid}
+                                        onClick={() => setPushoverFilters((f) => ({
+                                          ...f,
+                                          userIds: active ? f.userIds.filter((id) => id !== uid) : [...f.userIds, uid],
+                                        }))}
+                                        className={`px-2 py-1 rounded text-xs font-medium transition-colors ${active ? 'bg-discord-blurple text-white' : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'}`}
+                                      >
+                                        {userNameMap.get(uid) || uid}
+                                      </button>
+                                    );
+                                  })}
+                                  {pushoverFilters.userIds.length > 0 && (
+                                    <button
+                                      onClick={() => setPushoverFilters((f) => ({ ...f, userIds: [] }))}
+                                      className="px-2 py-1 rounded text-xs text-red-400 hover:text-red-300 transition-colors"
+                                    >
+                                      Clear
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </div>
+
+                          {/* Guild filter */}
+                          <div className="px-3 py-2 bg-discord-dark rounded space-y-2">
+                            <label className="text-[11px] text-discord-text-muted block">Only from these guilds</label>
+                            {(() => {
+                              const filtered = guilds.filter((g) => enabledGuilds.includes(g.id));
+                              if (filtered.length === 0) return <p className="text-xs text-discord-text-muted italic">No enabled guilds</p>;
+                              return (
+                              <div className="flex flex-wrap gap-1.5">
+                                {filtered.map((g) => {
+                                  const active = pushoverFilters.guildIds.includes(g.id);
+                                  return (
+                                    <button
+                                      key={g.id}
+                                      onClick={() => setPushoverFilters((f) => ({
+                                        ...f,
+                                        guildIds: active ? f.guildIds.filter((id) => id !== g.id) : [...f.guildIds, g.id],
+                                      }))}
+                                      className={`px-2 py-1 rounded text-xs font-medium transition-colors ${active ? 'bg-discord-blurple text-white' : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'}`}
+                                    >
+                                      {g.name}
+                                    </button>
+                                  );
+                                })}
+                                {pushoverFilters.guildIds.length > 0 && (
+                                  <button
+                                    onClick={() => setPushoverFilters((f) => ({ ...f, guildIds: [] }))}
+                                    className="px-2 py-1 rounded text-xs text-red-400 hover:text-red-300 transition-colors"
+                                  >
+                                    Clear
+                                  </button>
+                                )}
+                              </div>
+                              );
+                            })()}
+                          </div>
+
+                          {/* Channel filter */}
+                          <div className="px-3 py-2 bg-discord-dark rounded space-y-2">
+                            <label className="text-[11px] text-discord-text-muted block">Only from these channels</label>
+                            {(() => {
+                              const rooms = config?.rooms ?? [];
+                              const seen = new Set<string>();
+                              const channels: { id: string; name: string; guildName: string | null }[] = [];
+                              for (const room of rooms) {
+                                for (const ch of room.channels) {
+                                  if (!seen.has(ch.channelId)) {
+                                    seen.add(ch.channelId);
+                                    channels.push({ id: ch.channelId, name: ch.channelName ?? ch.channelId, guildName: ch.guildName ?? null });
+                                  }
+                                }
+                              }
+                              if (channels.length === 0) return <p className="text-xs text-discord-text-muted italic">No channels in rooms</p>;
+                              const grouped = new Map<string, typeof channels>();
+                              for (const ch of channels) {
+                                const key = ch.guildName ?? 'DMs';
+                                if (!grouped.has(key)) grouped.set(key, []);
+                                grouped.get(key)!.push(ch);
+                              }
+                              return (
+                                <div className="space-y-2">
+                                  {Array.from(grouped.entries()).map(([guildName, guildChannels]) => (
+                                    <div key={guildName}>
+                                      <p className="text-[10px] text-discord-text-muted uppercase tracking-wider mb-1">{guildName}</p>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {guildChannels.map((ch) => {
+                                          const active = pushoverFilters.channelIds.includes(ch.id);
+                                          return (
+                                            <button
+                                              key={ch.id}
+                                              onClick={() => setPushoverFilters((f) => ({
+                                                ...f,
+                                                channelIds: active ? f.channelIds.filter((id) => id !== ch.id) : [...f.channelIds, ch.id],
+                                              }))}
+                                              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${active ? 'bg-discord-blurple text-white' : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'}`}
+                                            >
+                                              #{ch.name}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  ))}
+                                  {pushoverFilters.channelIds.length > 0 && (
+                                    <button
+                                      onClick={() => setPushoverFilters((f) => ({ ...f, channelIds: [] }))}
+                                      className="px-2 py-1 rounded text-xs text-red-400 hover:text-red-300 transition-colors"
+                                    >
+                                      Clear
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+
+                        <div className="p-4 bg-discord-sidebar rounded-lg space-y-3">
+                          <h4 className="text-sm font-semibold text-white">Notification Settings</h4>
+                          <div className="px-3 py-2 bg-discord-dark rounded">
+                            <label className="text-[11px] text-discord-text-muted mb-1 block">Priority</label>
+                            <select
+                              value={pushoverPriority}
+                              onChange={(e) => setPushoverPriority(Number(e.target.value) as PushoverPriority)}
+                              className="w-full bg-discord-sidebar border-none rounded px-2 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple"
+                            >
+                              <option value={-2}>Lowest (no alert)</option>
+                              <option value={-1}>Low (no sound)</option>
+                              <option value={0}>Normal</option>
+                              <option value={1}>High (bypass quiet hours)</option>
+                              <option value={2}>Emergency (repeats until acknowledged)</option>
+                            </select>
+                          </div>
+                          <div className="px-3 py-2 bg-discord-dark rounded">
+                            <label className="text-[11px] text-discord-text-muted mb-1 block">Sound</label>
+                            <select
+                              value={pushoverSound}
+                              onChange={(e) => setPushoverSound(e.target.value as PushoverSound)}
+                              className="w-full bg-discord-sidebar border-none rounded px-2 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple capitalize"
+                            >
+                              {PUSHOVER_SOUNDS.map((s) => (
+                                <option key={s} value={s}>{s === 'none' ? 'None (silent)' : s}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </>
@@ -1181,7 +1665,7 @@ export default function GlobalSettings() {
                         </div>
                         <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
                           <p className="font-medium text-white text-xs mb-1">Pushover</p>
-                          <p className="text-xs text-discord-text-muted">Push notifications to your phone via Pushover when highlighted users post contracts. Configure in Settings &gt; Sounds.</p>
+                          <p className="text-xs text-discord-text-muted">Push notifications to your phone via Pushover when highlighted users post contracts. Configure in Settings &gt; Pushover.</p>
                         </div>
                       </div>
                     </details>

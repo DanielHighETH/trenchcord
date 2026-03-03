@@ -12,10 +12,51 @@ import { buildContractUrl, detectEvmChainFromContent, extractEvmChainFromGmgnLin
 import { processDiscordMessage } from './utils/messageProcessor.js';
 import { sendPushover } from './utils/pushover.js';
 import { contractLog } from './utils/contractLog.js';
-import type { DiscordMessage } from './discord/types.js';
+import type { DiscordMessage, PushoverConfig, FrontendMessage } from './discord/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3001;
+
+function checkPushover(cfg: PushoverConfig, msg: FrontendMessage, evmChainHint: string | null): void {
+  if (!cfg.enabled || !cfg.appToken || !cfg.userKey) return;
+
+  const t = cfg.triggers ?? { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false };
+  const f = cfg.filters ?? { userIds: [], channelIds: [], guildIds: [] };
+
+  const triggered =
+    (t.highlightedUserContract && msg.isHighlighted && msg.hasContractAddress) ||
+    (t.highlightedUser && msg.isHighlighted) ||
+    (t.contract && msg.hasContractAddress) ||
+    (t.keyword && msg.matchedKeywords && msg.matchedKeywords.length > 0);
+
+  if (!triggered) return;
+
+  if (f.userIds.length > 0 && !f.userIds.includes(msg.author.id)) return;
+  if (f.channelIds.length > 0 && !f.channelIds.includes(msg.channelId)) return;
+  if (f.guildIds.length > 0 && msg.guildId && !f.guildIds.includes(msg.guildId)) return;
+
+  let title: string;
+  let message: string;
+  let url: string | undefined;
+  let urlTitle: string | undefined;
+
+  if (msg.hasContractAddress) {
+    const fullCfg = configStore.getConfig();
+    const addr = msg.contractAddresses[0];
+    url = buildContractUrl(addr, fullCfg.contractLinkTemplates, evmChainHint ?? undefined);
+    urlTitle = 'Open in Explorer';
+    title = `Contract Alert: ${msg.author.displayName}`;
+    message = `${msg.author.displayName} posted ${addr} in #${msg.channelName}`;
+  } else if (msg.matchedKeywords && msg.matchedKeywords.length > 0) {
+    title = `Keyword: ${msg.matchedKeywords[0]}`;
+    message = `${msg.author.displayName} in #${msg.channelName}: ${msg.content.slice(0, 120)}`;
+  } else {
+    title = `${msg.author.displayName}`;
+    message = `Message in #${msg.channelName}: ${msg.content.slice(0, 120)}`;
+  }
+
+  sendPushover(cfg, { title, message, url, urlTitle });
+}
 
 function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer): void {
   gw.on('ready', (user) => {
@@ -32,18 +73,7 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer): void {
     const frontendMsg = processDiscordMessage(gw, rawMsg, rawMsg._channelName, rawMsg._guildName, roomKeywords);
     const evmChainHint = detectEvmChainFromContent(rawMsg.content, rawMsg.embeds);
 
-    if (frontendMsg.isHighlighted && frontendMsg.hasContractAddress) {
-      const cfg = configStore.getConfig();
-      const addr = frontendMsg.contractAddresses[0];
-      const url = buildContractUrl(addr, cfg.contractLinkTemplates, evmChainHint ?? undefined);
-
-      sendPushover(cfg.pushover, {
-        title: `Contract Alert: ${frontendMsg.author.displayName}`,
-        message: `${frontendMsg.author.displayName} posted ${addr} in #${frontendMsg.channelName}`,
-        url,
-        urlTitle: 'Open in Explorer',
-      });
-    }
+    checkPushover(configStore.getConfig().pushover, frontendMsg, evmChainHint);
 
     const roomIds = rooms.map((r) => r.id);
     if (isDM) {

@@ -14,10 +14,24 @@
     "contractAlert": { "enabled": true, "volume": 80, "useCustom": false },
     "keywordAlert": { "enabled": true, "volume": 80, "useCustom": false }
   },
+  "channelSounds": {},
   "pushover": {
     "enabled": false,
     "appToken": "",
-    "userKey": ""
+    "userKey": "",
+    "priority": 1,
+    "sound": "siren",
+    "triggers": {
+      "highlightedUser": false,
+      "highlightedUserContract": true,
+      "contract": false,
+      "keyword": false
+    },
+    "filters": {
+      "userIds": [],
+      "channelIds": [],
+      "guildIds": []
+    }
   },
   "contractLinkTemplates": {
     "evm": "https://gmgn.ai/base/token/{address}",

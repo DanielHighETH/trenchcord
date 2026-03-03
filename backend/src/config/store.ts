@@ -28,7 +28,13 @@ const DEFAULT_CONFIG: AppConfig = {
     contractAlert: { ...DEFAULT_SOUND_CONFIG },
     keywordAlert: { ...DEFAULT_SOUND_CONFIG },
   },
-  pushover: { enabled: false, appToken: '', userKey: '' },
+  channelSounds: {},
+  pushover: {
+    enabled: false, appToken: '', userKey: '',
+    priority: 1 as const, sound: 'siren' as const,
+    triggers: { highlightedUser: false, highlightedUserContract: true, contract: false, keyword: false },
+    filters: { userIds: [], channelIds: [], guildIds: [] },
+  },
   contractLinkTemplates: {
     evm: 'https://gmgn.ai/base/token/{address}',
     sol: 'https://axiom.trade/t/{address}?chain=sol',
@@ -124,7 +130,7 @@ class ConfigStore {
     return this.config;
   }
 
-  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction'>>): AppConfig {
+  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction'>>): AppConfig {
     Object.assign(this.config, partial);
     this.save();
     return this.config;

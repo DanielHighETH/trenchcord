@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
-import { playHighlightSound, playContractAlertSound, playKeywordAlertSound } from '../utils/notificationSound';
+import { playHighlightSound, playContractAlertSound, playKeywordAlertSound, playSound } from '../utils/notificationSound';
 import { buildContractUrl } from '../utils/contractUrl';
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { isDemoMode } from '../demo/demoStore';
@@ -73,8 +73,10 @@ export function useWebSocket() {
 
             const ss = config?.soundSettings;
 
+            let eventSoundPlayed = false;
+
             if (msg.isHighlighted && msg.hasContractAddress) {
-              if (config?.messageSounds) playContractAlertSound(ss?.contractAlert);
+              if (config?.messageSounds) { playContractAlertSound(ss?.contractAlert); eventSoundPlayed = true; }
               if (config?.autoOpenHighlightedContracts && msg.contractAddresses.length > 0) {
                 const url = buildContractUrl(
                   msg.contractAddresses[0],
@@ -86,14 +88,21 @@ export function useWebSocket() {
                 showDesktopNotification(msg, 'Contract from highlighted user');
               }
             } else if (msg.matchedKeywords && msg.matchedKeywords.length > 0 && config?.keywordAlertsEnabled) {
-              if (config?.messageSounds) playKeywordAlertSound(ss?.keywordAlert);
+              if (config?.messageSounds) { playKeywordAlertSound(ss?.keywordAlert); eventSoundPlayed = true; }
               if (config?.desktopNotifications) {
                 showDesktopNotification(msg, `Keyword: ${msg.matchedKeywords.join(', ')}`);
               }
             } else if (msg.isHighlighted) {
-              if (config?.messageSounds) playHighlightSound(ss?.highlight);
+              if (config?.messageSounds) { playHighlightSound(ss?.highlight); eventSoundPlayed = true; }
               if (config?.desktopNotifications) {
                 showDesktopNotification(msg, 'Highlighted user');
+              }
+            }
+
+            if (!eventSoundPlayed && config?.messageSounds) {
+              const chSound = config.channelSounds?.[msg.channelId];
+              if (chSound?.enabled) {
+                playSound('highlight', chSound);
               }
             }
 

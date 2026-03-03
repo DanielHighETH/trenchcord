@@ -15,6 +15,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const SOUNDS_DIR = join(__dirname, '../../data/sounds');
 if (!existsSync(SOUNDS_DIR)) mkdirSync(SOUNDS_DIR, { recursive: true });
 
+const soundFileFilter = (_req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  const allowed = ['.mp3', '.wav', '.ogg', '.webm', '.m4a'];
+  cb(null, allowed.includes(extname(file.originalname).toLowerCase()));
+};
+
 const upload = multer({
   storage: multer.diskStorage({
     destination: SOUNDS_DIR,
@@ -23,10 +28,19 @@ const upload = multer({
       cb(null, `${soundType}${extname(file.originalname)}`);
     },
   }),
-  fileFilter: (_req, file, cb) => {
-    const allowed = ['.mp3', '.wav', '.ogg', '.webm', '.m4a'];
-    cb(null, allowed.includes(extname(file.originalname).toLowerCase()));
-  },
+  fileFilter: soundFileFilter,
+  limits: { fileSize: 2 * 1024 * 1024 },
+});
+
+const channelSoundUpload = multer({
+  storage: multer.diskStorage({
+    destination: SOUNDS_DIR,
+    filename: (_req, file, cb) => {
+      const channelId = _req.params.channelId as string;
+      cb(null, `ch_${channelId}${extname(file.originalname)}`);
+    },
+  }),
+  fileFilter: soundFileFilter,
   limits: { fileSize: 2 * 1024 * 1024 },
 });
 
@@ -313,6 +327,29 @@ export function createRouter(wsServer: WsServer): Router {
     const extensions = ['.mp3', '.wav', '.ogg', '.webm', '.m4a'];
     for (const ext of extensions) {
       const filePath = join(SOUNDS_DIR, `${soundType}${ext}`);
+      try { if (existsSync(filePath)) unlinkSync(filePath); } catch { /* ignore */ }
+    }
+    res.json({ success: true });
+  });
+
+  router.post('/channel-sounds/:channelId', channelSoundUpload.single('file'), (req, res) => {
+    if (!req.params.channelId || !/^\d+$/.test(req.params.channelId)) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No audio file provided or unsupported format' });
+    }
+    const url = `/api/sounds/${req.file.filename}`;
+    res.json({ url, filename: req.file.filename });
+  });
+
+  router.delete('/channel-sounds/:channelId', (req, res) => {
+    if (!req.params.channelId || !/^\d+$/.test(req.params.channelId)) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+    const extensions = ['.mp3', '.wav', '.ogg', '.webm', '.m4a'];
+    for (const ext of extensions) {
+      const filePath = join(SOUNDS_DIR, `ch_${req.params.channelId}${ext}`);
       try { if (existsSync(filePath)) unlinkSync(filePath); } catch { /* ignore */ }
     }
     res.json({ success: true });
