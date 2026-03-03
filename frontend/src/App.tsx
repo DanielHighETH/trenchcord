@@ -12,6 +12,18 @@ import OnboardingWizard, { isOnboardingComplete } from './components/OnboardingW
 
 const MOBILE_BREAKPOINT = 768;
 
+function detectMobile(): boolean {
+  if (window.innerWidth < MOBILE_BREAKPOINT) return true;
+
+  if (/iPhone|Android.*Mobile|webOS|BlackBerry|Opera Mini|IEMobile/i.test(navigator.userAgent))
+    return true;
+
+  const coarse = window.matchMedia('(pointer: coarse) and (hover: none)').matches;
+  if (coarse && Math.min(screen.width, screen.height) < MOBILE_BREAKPOINT) return true;
+
+  return false;
+}
+
 function MobileGate() {
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-discord-darker px-8 text-center">
@@ -46,10 +58,10 @@ function MobileGate() {
 export default function App() {
   useWebSocket();
 
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < MOBILE_BREAKPOINT);
+  const [isMobile, setIsMobile] = useState(detectMobile);
 
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    const onResize = () => setIsMobile(detectMobile());
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
