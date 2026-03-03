@@ -182,7 +182,7 @@ export function Tutorial() {
   const Content = tabContent[activeTab];
 
   return (
-    <section id="tutorial" className="relative py-20 px-6 scroll-mt-20 pb-28">
+    <section id="setup" className="relative py-20 px-6 scroll-mt-14 pb-28">
       <div className="mx-auto max-w-3xl">
         <AnimatedSection className="text-center mb-10">
           <h2 className="text-2xl sm:text-4xl font-bold text-white">

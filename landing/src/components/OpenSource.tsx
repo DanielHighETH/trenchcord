@@ -3,7 +3,7 @@ import { AnimatedSection } from './AnimatedSection';
 
 export function OpenSource() {
   return (
-    <section className="relative py-20 px-6">
+    <section id="open-source" className="relative py-20 px-6 scroll-mt-14">
       <div className="mx-auto max-w-6xl">
         <AnimatedSection className="text-center mb-8">
           <h2 className="text-2xl sm:text-4xl font-bold text-white">

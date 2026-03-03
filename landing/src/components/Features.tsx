@@ -100,7 +100,7 @@ const accentColors = {
 
 export function Features() {
   return (
-    <section id="features" className="relative py-20 px-6 bg-dc-sidebar">
+    <section id="features" className="relative py-20 px-6 bg-dc-sidebar scroll-mt-14">
       <div className="mx-auto max-w-6xl">
         <AnimatedSection className="text-center mb-12">
           <h2 className="text-2xl sm:text-4xl font-bold text-white">

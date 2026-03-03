@@ -65,10 +65,10 @@ export function Hero() {
         <AnimatedSection delay={0.4}>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <a
-              href="#tutorial"
+              href="#setup"
               onClick={(e) => {
                 e.preventDefault();
-                document.querySelector('#tutorial')?.scrollIntoView({ behavior: 'smooth' });
+                document.querySelector('#setup')?.scrollIntoView({ behavior: 'smooth' });
               }}
               className="inline-flex items-center gap-2 px-6 py-2.5 rounded bg-dc-blurple text-white font-medium text-sm hover:bg-dc-blurple-hover transition-colors"
             >

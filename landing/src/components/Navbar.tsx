@@ -5,7 +5,7 @@ import { Menu, X, Github, Hash, ExternalLink } from 'lucide-react';
 const navLinks: { label: string; href: string; external?: boolean }[] = [
   { label: 'Features', href: '#features' },
   { label: 'How It Works', href: '#how-it-works' },
-  { label: 'Setup', href: '#tutorial' },
+  { label: 'Setup', href: '#setup' },
   { label: 'Demo', href: 'https://demo.trenchcord.app', external: true },
 ];
 
@@ -18,10 +18,10 @@ export function Navbar() {
     const handleScroll = () => {
       setScrolled(window.scrollY > 20);
 
-      const sections = navLinks.map((l) => l.href.slice(1));
+      const sections = navLinks.filter((l) => !l.external).map((l) => l.href.slice(1));
 
       const nearBottom =
-        window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 100;
+        window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 300;
       if (nearBottom) {
         setActiveSection(sections[sections.length - 1]);
         return;
@@ -47,6 +47,7 @@ export function Navbar() {
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
     e.preventDefault();
     setMobileOpen(false);
+    window.history.pushState(null, '', href);
     const el = document.querySelector(href);
     el?.scrollIntoView({ behavior: 'smooth' });
   };
