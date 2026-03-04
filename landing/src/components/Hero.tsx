@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { AnimatedSection } from './AnimatedSection';
-import { Hash, AtSign } from 'lucide-react';
+import { Hash, AtSign, Server } from 'lucide-react';
 
 interface MockMsg {
   author: string;
@@ -59,8 +59,24 @@ export function Hero() {
           </p>
         </AnimatedSection>
 
+        <AnimatedSection delay={0.25}>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
+              <Server size={12} />
+              100% Self-Hosted
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/20 text-amber-400 text-xs font-semibold">
+              Your Data Never Leaves Your PC
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-dc-blurple/10 border border-dc-blurple/20 text-dc-blurple text-xs font-semibold">
+              Open Source
+            </span>
+          </div>
+        </AnimatedSection>
+
         <AnimatedSection delay={0.3}>
-          <p className="mt-3 text-sm text-dc-text-faint max-w-xl mx-auto">
+          <p className="mt-4 text-sm text-dc-text-faint max-w-xl mx-auto">
+            Runs entirely on your machine — your tokens and data never leave localhost.
             Aggregate channels, track key users, auto-detect contracts,
             and trade in one click — all from a single dashboard.
           </p>
