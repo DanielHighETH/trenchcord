@@ -139,6 +139,18 @@ export class GatewayManager extends EventEmitter {
     return null;
   }
 
+  async sendChannelMessage(channelId: string, content: string, attachments?: { filename: string; data: Buffer; contentType: string }[]): Promise<any> {
+    for (const gw of this.gateways) {
+      if (gw.getGuildForChannel(channelId) || gw.getDMChannels().some((dm) => dm.id === channelId)) {
+        return gw.sendChannelMessage(channelId, content, attachments);
+      }
+    }
+    if (this.gateways.length > 0) {
+      return this.gateways[0].sendChannelMessage(channelId, content, attachments);
+    }
+    throw new Error('No gateway available to send message');
+  }
+
   async fetchChannelMessages(channelId: string, limit = 30): Promise<DiscordMessage[]> {
     for (const gw of this.gateways) {
       if (gw.getGuildForChannel(channelId) || gw.getDMChannels().some((dm) => dm.id === channelId)) {

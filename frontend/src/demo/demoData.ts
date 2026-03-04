@@ -179,6 +179,7 @@ export const DEMO_CONFIG: AppConfig = {
   badgeClickAction: 'discord',
   channelSounds: {},
   userNameCache: {},
+  chattingEnabled: false,
 };
 
 // ---------------------------------------------------------------------------

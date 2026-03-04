@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
 import Message from './Message';
+import ChatInput from './ChatInput';
 import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown, PanelLeftOpen } from 'lucide-react';
 
 const SCROLL_THRESHOLD = 150;
@@ -35,6 +36,9 @@ export default function ChatView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [quickReplyChannelId, setQuickReplyChannelId] = useState<string | null>(null);
+
+  const chattingEnabled = config?.chattingEnabled ?? false;
 
   const isDMView = activeRoomId?.startsWith('dm:') ?? false;
   const dmChannelId = isDMView ? activeRoomId!.slice(3) : null;
@@ -119,6 +123,10 @@ export default function ChatView() {
     }
     await updateRoom(activeRoom.id, updates);
   };
+
+  const handleQuickReply = useCallback((channelId: string) => {
+    setQuickReplyChannelId(channelId);
+  }, []);
 
   const handleFocus = (guildId: string | null, channelId: string, guildName: string | null, channelName: string) => {
     if (focusFilter && focusFilter.guildId === guildId && focusFilter.channelId === channelId) {
@@ -524,7 +532,8 @@ export default function ChatView() {
                   isUserHighlighted={activeRoom?.highlightedUsers?.includes(msg.author.id) ?? false}
                   onFocus={handleFocus}
                   isFocused={focusFilter !== null && focusFilter.guildId === msg.guildId && focusFilter.channelId === msg.channelId}
-                  
+                  onQuickReply={handleQuickReply}
+                  chattingEnabled={chattingEnabled}
                 />
               </div>
             );
@@ -537,11 +546,27 @@ export default function ChatView() {
       {showScrollButton && roomMessages.length > 0 && (
         <button
           onClick={scrollToBottom}
-          className="absolute bottom-6 right-6 w-10 h-10 rounded-full bg-discord-dark border border-discord-dark flex items-center justify-center text-discord-text-muted hover:text-white hover:bg-discord-embed-bg transition-colors shadow-lg shadow-black/25"
+          className={`absolute ${chattingEnabled ? 'bottom-20' : 'bottom-6'} right-6 w-10 h-10 rounded-full bg-discord-dark border border-discord-dark flex items-center justify-center text-discord-text-muted hover:text-white hover:bg-discord-embed-bg transition-colors shadow-lg shadow-black/25`}
           title="Jump to bottom"
         >
           <ArrowDown size={18} />
         </button>
+      )}
+
+      {/* Chat input */}
+      {chattingEnabled && (
+        isDMView && dmChannelId ? (
+          <ChatInput
+            channels={[]}
+            isDM
+            dmChannelId={dmChannelId}
+          />
+        ) : activeRoom ? (
+          <ChatInput
+            channels={activeRoom.channels}
+            defaultChannelId={quickReplyChannelId ?? focusFilter?.channelId ?? null}
+          />
+        ) : null
       )}
     </div>
   );

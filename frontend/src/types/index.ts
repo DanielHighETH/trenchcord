@@ -110,6 +110,7 @@ export interface AppConfig {
   desktopNotifications: boolean;
   badgeClickAction: BadgeClickAction;
   userNameCache: Record<string, string>;
+  chattingEnabled: boolean;
 }
 
 export interface AuthStatus {

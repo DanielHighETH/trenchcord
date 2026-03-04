@@ -2,7 +2,7 @@
 
 **Your Discord, Supercharged for Trenching**
 
-Aggregate channels, track key users, auto-detect contracts, and trade in one click — all from a single dashboard. Trenchcord is a custom read-only Discord frontend that combines multiple guild channels and DMs into custom "rooms" with user highlighting, keyword alerts, and contract address detection.
+Aggregate channels, track key users, auto-detect contracts, and trade in one click — all from a single dashboard. Trenchcord is a custom Discord frontend that combines multiple guild channels and DMs into custom "rooms" with user highlighting, keyword alerts, contract address detection, and optional chat capabilities.
 
 ## Features
 
@@ -18,6 +18,7 @@ Aggregate channels, track key users, auto-detect contracts, and trade in one cli
 - **Guild Colors** — Color-code messages by guild for quick visual scanning
 - **Auto-Open Contracts** — Automatically open links when highlighted users post contracts
 - **Custom Link Templates** — Configure which trading platform links generate for contracts
+- **Quick Reply & Chat** — Send messages and files directly from the dashboard with a built-in channel selector
 
 ## Demo
 
@@ -130,6 +131,17 @@ npm run typecheck      # Type-check both backend and frontend
 - **Enter:** Click the eye icon on any message to focus on that message's channel
 - **Active:** A "Focus Mode" badge appears in the channel header showing which channel you're filtering to. Only messages from that channel are displayed
 - **Exit:** Click the X on the badge to return to the full room view
+
+### Chat / Quick Reply
+
+Send messages directly from the Trenchcord dashboard without switching to Discord:
+
+- **Enable:** Go to Settings > General and turn on "Chat / Send Messages" (disabled by default)
+- **Channel Selector:** Use the `#` icon in the message bar to pick which channel to send to. Channels are grouped by guild
+- **Quick Reply:** Click the reply icon on any message to instantly select that channel in the input bar
+- **Focus Mode:** When focus mode is active, the chat input automatically targets the focused channel
+- **File Attachments:** Attach images and files via the `+` button or paste from clipboard (up to 10 files)
+- **Warning:** Sending messages through a third-party client increases the risk of Discord detecting and flagging your account. Read-only monitoring is passive and much safer
 
 ### Contract Detection
 

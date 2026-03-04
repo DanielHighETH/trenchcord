@@ -281,7 +281,7 @@ export function createRouter(wsServer: WsServer): Router {
   });
 
   router.put('/config', (req, res) => {
-    const { globalHighlightedUsers, contractDetection, guildColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, messageSounds, soundSettings, pushover, contractLinkTemplates, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, messageSounds, soundSettings, pushover, contractLinkTemplates, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled } = req.body;
     const config = configStore.updateConfig({
       ...(globalHighlightedUsers !== undefined && { globalHighlightedUsers }),
       ...(contractDetection !== undefined && { contractDetection }),
@@ -300,6 +300,7 @@ export function createRouter(wsServer: WsServer): Router {
       ...(keywordAlertsEnabled !== undefined && { keywordAlertsEnabled }),
       ...(desktopNotifications !== undefined && { desktopNotifications }),
       ...(badgeClickAction !== undefined && { badgeClickAction }),
+      ...(chattingEnabled !== undefined && { chattingEnabled }),
     });
     res.json(config);
   });
@@ -358,6 +359,46 @@ export function createRouter(wsServer: WsServer): Router {
   });
 
   router.use('/sounds', expressStatic(SOUNDS_DIR));
+
+  // --- Send Message ---
+
+  const messageUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 25 * 1024 * 1024, files: 10 },
+  });
+
+  router.post('/send-message', messageUpload.array('files', 10), async (req, res) => {
+    const gateway = requireGateway(res);
+    if (!gateway) return;
+
+    const config = configStore.getConfig();
+    if (!config.chattingEnabled) {
+      return res.status(403).json({ error: 'Chatting is disabled. Enable it in Settings > General.' });
+    }
+
+    const { channelId, content } = req.body;
+    if (!channelId) {
+      return res.status(400).json({ error: 'channelId is required' });
+    }
+    if ((!content || !content.trim()) && (!req.files || (req.files as Express.Multer.File[]).length === 0)) {
+      return res.status(400).json({ error: 'Message content or files required' });
+    }
+
+    try {
+      const files = (req.files as Express.Multer.File[]) ?? [];
+      const attachments = files.map((f) => ({
+        filename: f.originalname,
+        data: f.buffer,
+        contentType: f.mimetype,
+      }));
+
+      const result = await gateway.sendChannelMessage(channelId, content?.trim() ?? '', attachments.length > 0 ? attachments : undefined);
+      res.json({ success: true, messageId: result.id });
+    } catch (err: any) {
+      console.error('[API] Failed to send message:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   // --- Contracts ---
 

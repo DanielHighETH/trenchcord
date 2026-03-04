@@ -48,6 +48,7 @@ const DEFAULT_CONFIG: AppConfig = {
   desktopNotifications: false,
   badgeClickAction: 'discord',
   userNameCache: {},
+  chattingEnabled: false,
 };
 
 class ConfigStore {
@@ -130,7 +131,7 @@ class ConfigStore {
     return this.config;
   }
 
-  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction'>>): AppConfig {
+  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction' | 'chattingEnabled'>>): AppConfig {
     Object.assign(this.config, partial);
     this.save();
     return this.config;

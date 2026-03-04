@@ -1,5 +1,5 @@
 import { type ReactNode, Fragment, useState } from 'react';
-import { Eye } from 'lucide-react';
+import { Eye, MessageSquareReply } from 'lucide-react';
 import type { FrontendMessage, ContractLinkTemplates, ContractClickAction, BadgeClickAction, HighlightMode } from '../types';
 import ImageLightbox from './ImageLightbox';
 import UserContextMenu from './UserContextMenu';
@@ -28,6 +28,8 @@ interface MessageProps {
   isUserHighlighted?: boolean;
   onFocus?: (guildId: string | null, channelId: string, guildName: string | null, channelName: string) => void;
   isFocused?: boolean;
+  onQuickReply?: (channelId: string) => void;
+  chattingEnabled?: boolean;
 }
 
 function getAvatarUrl(userId: string, avatar: string | null, discriminator?: string): string {
@@ -453,7 +455,7 @@ function ReactionPills({ reactions }: { reactions: FrontendMessage['reactions'] 
   );
 }
 
-export default function Message({ message, isCompact, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, openInDiscordApp, badgeClickAction, onHideUser, onToggleHighlight, isUserHighlighted, onFocus, isFocused }: MessageProps) {
+export default function Message({ message, isCompact, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, openInDiscordApp, badgeClickAction, onHideUser, onToggleHighlight, isUserHighlighted, onFocus, isFocused, onQuickReply, chattingEnabled }: MessageProps) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const addrColors: AddressColors = { evm: evmAddressColor ?? '#fee75c', sol: solAddressColor ?? '#14f195' };
   const templates: ContractLinkTemplates = contractLinkTemplates ?? DEFAULT_LINK_TEMPLATES;
@@ -734,6 +736,15 @@ export default function Message({ message, isCompact, guildColor, highlightMode 
           >
             <Eye size={13} />
           </button>
+          {chattingEnabled && (
+            <button
+              onClick={() => onQuickReply?.(message.channelId)}
+              className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-discord-text-muted hover:text-discord-green"
+              title="Quick reply to this channel"
+            >
+              <MessageSquareReply size={13} />
+            </button>
+          )}
           {message.hasContractAddress && (
             <span
               onClick={handleBadgeClick}

@@ -12,6 +12,7 @@ import {
   Palette,
   Zap,
   Link2,
+  Send,
 } from 'lucide-react';
 import { StaggerContainer, fadeUpVariant } from './AnimatedSection';
 import { AnimatedSection } from './AnimatedSection';
@@ -52,6 +53,12 @@ const features = [
     icon: Focus,
     title: 'Focus Mode',
     desc: 'Filter messages to a specific channel within a room.',
+    span: '',
+  },
+  {
+    icon: Send,
+    title: 'Quick Reply & Chat',
+    desc: 'Send messages and files directly from the dashboard with a built-in channel selector.',
     span: '',
   },
   {

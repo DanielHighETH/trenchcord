@@ -92,6 +92,7 @@ export default function GlobalSettings() {
   const [keywordAlertsEnabled, setKeywordAlertsEnabled] = useState(true);
   const [desktopNotifications, setDesktopNotifications] = useState(false);
   const [badgeClickAction, setBadgeClickAction] = useState<BadgeClickAction>('discord');
+  const [chattingEnabled, setChattingEnabled] = useState(false);
   const [newKeywordPattern, setNewKeywordPattern] = useState('');
   const [newKeywordMatchMode, setNewKeywordMatchMode] = useState<KeywordMatchMode>('includes');
   const [newKeywordLabel, setNewKeywordLabel] = useState('');
@@ -142,6 +143,7 @@ export default function GlobalSettings() {
       setKeywordAlertsEnabled(config.keywordAlertsEnabled ?? true);
       setDesktopNotifications(config.desktopNotifications ?? false);
       setBadgeClickAction(config.badgeClickAction ?? 'discord');
+      setChattingEnabled(config.chattingEnabled ?? false);
     }
   }, [config]);
 
@@ -186,12 +188,13 @@ export default function GlobalSettings() {
       !kpEqual(globalKeywordPatterns, config.globalKeywordPatterns ?? []) ||
       keywordAlertsEnabled !== (config.keywordAlertsEnabled ?? true) ||
       desktopNotifications !== (config.desktopNotifications ?? false) ||
-      badgeClickAction !== (config.badgeClickAction ?? 'discord')
+      badgeClickAction !== (config.badgeClickAction ?? 'discord') ||
+      chattingEnabled !== (config.chattingEnabled ?? false)
     );
   }, [config, globalUsers, contractDetection, guildColors, enabledGuilds, evmAddressColor, solAddressColor,
     openInDiscordApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters,
     solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, autoOpenHighlightedContracts,
-    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction]);
+    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -232,6 +235,7 @@ export default function GlobalSettings() {
         keywordAlertsEnabled,
         desktopNotifications,
         badgeClickAction,
+        chattingEnabled,
       });
     } finally {
       setSaving(false);
@@ -464,6 +468,23 @@ export default function GlobalSettings() {
                         {badgeClickAction === 'platform' && 'Opens the contract in your configured trading platform if one is detected, otherwise falls back to Discord.'}
                         {badgeClickAction === 'both' && 'Opens the message in Discord and also opens the contract in your trading platform (if detected).'}
                       </p>
+                    </div>
+
+                    <div className="p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-sm font-semibold text-white mb-2">Chat / Send Messages</h4>
+                      <Toggle
+                        value={chattingEnabled}
+                        onChange={setChattingEnabled}
+                        label="Enable sending messages through Trenchcord"
+                      />
+                      <div className="mt-3 p-3 rounded bg-discord-red/10 border border-discord-red/30">
+                        <p className="text-xs text-discord-red font-semibold mb-1">Warning: Increased Detection Risk</p>
+                        <p className="text-[11px] text-discord-text-muted leading-relaxed">
+                          Sending messages through this app increases the chance of your Discord account being detected and flagged.
+                          Reading messages is passive and harder to detect, but sending messages leaves a direct API footprint
+                          that Discord can associate with automated or third-party usage. Use at your own risk.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1565,6 +1586,28 @@ export default function GlobalSettings() {
                           <p className="text-xs"><span className="text-discord-blurple font-semibold">Enter:</span> <span className="text-discord-text-muted">Click the</span> <Eye size={13} className="inline text-discord-text-muted mx-0.5" /> <span className="text-discord-text-muted">eye icon on any message to focus on that message's channel.</span></p>
                           <p className="text-xs"><span className="text-discord-blurple font-semibold">Active:</span> <span className="text-discord-text-muted">A "Focus Mode" badge appears in the channel header showing which channel you're filtering to. Only messages from that channel are displayed.</span></p>
                           <p className="text-xs"><span className="text-discord-blurple font-semibold">Exit:</span> <span className="text-discord-text-muted">Click the</span> <span className="text-white font-bold mx-0.5">&times;</span> <span className="text-discord-text-muted">on the badge to return to the full room view.</span></p>
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Chat / Quick Reply */}
+                    <details className="group bg-discord-sidebar rounded-lg">
+                      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none">
+                        <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        <span className="text-sm font-semibold text-white">Chat / Quick Reply</span>
+                      </summary>
+                      <div className="px-4 pb-4 space-y-2 text-sm text-discord-text">
+                        <p className="text-discord-text-muted">Send messages directly from the Trenchcord dashboard without switching to Discord.</p>
+                        <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Enable:</span> <span className="text-discord-text-muted">Go to Settings &gt; General and turn on <strong className="text-discord-text">Chat / Send Messages</strong> (disabled by default).</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Channel Selector:</span> <span className="text-discord-text-muted">Use the <strong className="text-discord-text">#</strong> icon in the message bar to pick which channel to send to.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Quick Reply:</span> <span className="text-discord-text-muted">Click the reply icon on any message to instantly select that channel in the input bar.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Focus Mode:</span> <span className="text-discord-text-muted">When focus mode is active, the chat input automatically targets the focused channel.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Attachments:</span> <span className="text-discord-text-muted">Attach images and files via the <strong className="text-discord-text">+</strong> button or paste from clipboard (up to 10 files).</span></p>
+                        </div>
+                        <div className="px-3 py-2 bg-discord-red/10 border border-discord-red/20 rounded">
+                          <p className="text-xs text-discord-red font-semibold mb-0.5">Detection Risk</p>
+                          <p className="text-xs text-discord-text-muted">Sending messages through a third-party client increases the risk of Discord detecting and flagging your account. Read-only monitoring is passive and much safer.</p>
                         </div>
                       </div>
                     </details>

@@ -61,7 +61,8 @@ interface AppState {
   createRoom: (name: string, channels: Room['channels'], highlightedUsers: string[], color?: string | null, filteredUsers?: string[], filterEnabled?: boolean) => Promise<Room>;
   updateRoom: (id: string, data: Partial<Omit<Room, 'id'>>) => Promise<void>;
   deleteRoom: (id: string) => Promise<void>;
-  updateConfig: (data: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction'>>) => Promise<void>;
+  updateConfig: (data: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction' | 'chattingEnabled'>>) => Promise<void>;
+  sendMessage: (channelId: string, content: string, files?: File[]) => Promise<{ success: boolean; error?: string }>;
   hideUser: (guildId: string | null, channelId: string, userId: string, displayName: string) => Promise<void>;
   unhideUser: (guildId: string | null, channelId: string, userId: string) => Promise<void>;
 
@@ -408,6 +409,28 @@ export const useAppStore = create<AppState>((set, get) => {
       body: JSON.stringify(data),
     });
     await get().fetchConfig();
+  },
+
+  sendMessage: async (channelId, content, files) => {
+    try {
+      const formData = new FormData();
+      formData.append('channelId', channelId);
+      formData.append('content', content);
+      if (files) {
+        for (const file of files) {
+          formData.append('files', file);
+        }
+      }
+      const res = await fetch(`${API_BASE}/send-message`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error };
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
   },
 
   hideUser: async (guildId, channelId, userId, displayName) => {

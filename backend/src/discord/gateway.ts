@@ -418,6 +418,56 @@ export class DiscordGateway extends EventEmitter {
     return this.roleNameMap.get(roleId) ?? null;
   }
 
+  async sendChannelMessage(channelId: string, content: string, attachments?: { filename: string; data: Buffer; contentType: string }[]): Promise<any> {
+    if (attachments && attachments.length > 0) {
+      const boundary = `----FormBoundary${Date.now()}`;
+      const parts: Buffer[] = [];
+
+      const payloadJson: any = { content };
+      const payloadPart = `--${boundary}\r\nContent-Disposition: form-data; name="payload_json"\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(payloadJson)}\r\n`;
+      parts.push(Buffer.from(payloadPart));
+
+      for (let i = 0; i < attachments.length; i++) {
+        const att = attachments[i];
+        const header = `--${boundary}\r\nContent-Disposition: form-data; name="files[${i}]"; filename="${att.filename}"\r\nContent-Type: ${att.contentType}\r\n\r\n`;
+        parts.push(Buffer.from(header));
+        parts.push(att.data);
+        parts.push(Buffer.from('\r\n'));
+      }
+
+      parts.push(Buffer.from(`--${boundary}--\r\n`));
+      const body = Buffer.concat(parts);
+
+      const res = await fetch(`${REST_BASE}/channels/${channelId}/messages`, {
+        method: 'POST',
+        headers: {
+          Authorization: this.token,
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        },
+        body,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Discord API error ${res.status}: ${text}`);
+      }
+      return res.json();
+    }
+
+    const res = await fetch(`${REST_BASE}/channels/${channelId}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: this.token,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Discord API error ${res.status}: ${text}`);
+    }
+    return res.json();
+  }
+
   async fetchChannelMessages(channelId: string, limit = 30): Promise<DiscordMessage[]> {
     const url = `${REST_BASE}/channels/${channelId}/messages?limit=${limit}`;
     const res = await fetch(url, {
