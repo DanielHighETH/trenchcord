@@ -183,6 +183,7 @@ export const DEMO_CONFIG: AppConfig = {
   chattingEnabled: false,
   messageDisplay: 'default',
   compactModeAvatars: true,
+  roleColors: true,
 };
 
 // ---------------------------------------------------------------------------

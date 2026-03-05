@@ -30,6 +30,7 @@ export interface DiscordMessage {
   channel_id: string;
   guild_id?: string;
   author: DiscordUser;
+  member?: { roles: string[] };
   content: string;
   timestamp: string;
   attachments: DiscordAttachment[];
@@ -200,6 +201,7 @@ export interface AppConfig {
   chattingEnabled: boolean;
   messageDisplay: MessageDisplay;
   compactModeAvatars: boolean;
+  roleColors: boolean;
 }
 
 export interface GuildInfo {
@@ -230,6 +232,7 @@ export interface FrontendMessage {
     username: string;
     displayName: string;
     avatar: string | null;
+    roleColor?: string | null;
   };
   content: string;
   timestamp: string;

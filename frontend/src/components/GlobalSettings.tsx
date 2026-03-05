@@ -100,6 +100,7 @@ export default function GlobalSettings() {
   const [chattingEnabled, setChattingEnabled] = useState(false);
   const [messageDisplay, setMessageDisplay] = useState<MessageDisplay>('default');
   const [compactModeAvatars, setCompactModeAvatars] = useState(true);
+  const [roleColors, setRoleColors] = useState(true);
   const [newKeywordPattern, setNewKeywordPattern] = useState('');
   const [newKeywordMatchMode, setNewKeywordMatchMode] = useState<KeywordMatchMode>('includes');
   const [newKeywordLabel, setNewKeywordLabel] = useState('');
@@ -155,6 +156,7 @@ export default function GlobalSettings() {
       setChattingEnabled(config.chattingEnabled ?? false);
       setMessageDisplay(config.messageDisplay ?? 'default');
       setCompactModeAvatars(config.compactModeAvatars ?? true);
+      setRoleColors(config.roleColors ?? true);
     }
   }, [config]);
 
@@ -203,12 +205,13 @@ export default function GlobalSettings() {
       badgeClickAction !== (config.badgeClickAction ?? 'discord') ||
       chattingEnabled !== (config.chattingEnabled ?? false) ||
       messageDisplay !== (config.messageDisplay ?? 'default') ||
-      compactModeAvatars !== (config.compactModeAvatars ?? true)
+      compactModeAvatars !== (config.compactModeAvatars ?? true) ||
+      roleColors !== (config.roleColors ?? true)
     );
   }, [config, globalUsers, contractDetection, guildColors, dmColors, enabledGuilds, evmAddressColor, solAddressColor,
     openInDiscordApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters,
     solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, autoOpenHighlightedContracts,
-    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars]);
+    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -253,6 +256,7 @@ export default function GlobalSettings() {
         chattingEnabled,
         messageDisplay,
         compactModeAvatars,
+        roleColors,
       });
     } finally {
       setSaving(false);
@@ -474,6 +478,15 @@ export default function GlobalSettings() {
                           />
                         </div>
                       )}
+                    </div>
+
+                    <div className="p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-sm font-semibold text-white mb-2">Role Colors</h4>
+                      <Toggle
+                        value={roleColors}
+                        onChange={setRoleColors}
+                        label="Show Discord role colors on usernames"
+                      />
                     </div>
 
                     <div className="p-4 bg-discord-sidebar rounded-lg">

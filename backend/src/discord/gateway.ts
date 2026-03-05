@@ -33,6 +33,7 @@ export class DiscordGateway extends EventEmitter {
   private channelGuildMap: Map<string, string> = new Map();
   private channelNameMap: Map<string, string> = new Map();
   private roleNameMap: Map<string, string> = new Map();
+  private roleDataMap: Map<string, { name: string; color: number; position: number }> = new Map();
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10;
 
@@ -139,6 +140,13 @@ export class DiscordGateway extends EventEmitter {
             const roleId = role.id ?? (Array.isArray(role) ? String(role[0]) : null);
             const roleName = role.name ?? (Array.isArray(role) ? String(role[1] ?? '') : '');
             if (roleId && roleName) this.roleNameMap.set(roleId, roleName);
+            if (roleId) {
+              this.roleDataMap.set(roleId, {
+                name: roleName || '',
+                color: role.color ?? 0,
+                position: role.position ?? 0,
+              });
+            }
           }
 
           console.log(`[Gateway] Guild "${guildName}" - ${channels.length} text channels`);
@@ -209,6 +217,13 @@ export class DiscordGateway extends EventEmitter {
 
         for (const role of data.roles ?? []) {
           if (role.id && role.name) this.roleNameMap.set(role.id, role.name);
+          if (role.id) {
+            this.roleDataMap.set(role.id, {
+              name: role.name ?? '',
+              color: role.color ?? 0,
+              position: role.position ?? 0,
+            });
+          }
         }
 
         console.log(`[Gateway] GUILD_CREATE "${guildName}" - ${channels.length} text channels`);
@@ -416,6 +431,20 @@ export class DiscordGateway extends EventEmitter {
 
   getRoleName(roleId: string): string | null {
     return this.roleNameMap.get(roleId) ?? null;
+  }
+
+  getMemberRoleColor(roleIds: string[] | undefined): string | null {
+    if (!roleIds || roleIds.length === 0) return null;
+    let best: { color: number; position: number } | null = null;
+    for (const id of roleIds) {
+      const rd = this.roleDataMap.get(id);
+      if (!rd || rd.color === 0) continue;
+      if (!best || rd.position > best.position) {
+        best = { color: rd.color, position: rd.position };
+      }
+    }
+    if (!best) return null;
+    return `#${best.color.toString(16).padStart(6, '0')}`;
   }
 
   async sendChannelMessage(channelId: string, content: string, attachments?: { filename: string; data: Buffer; contentType: string }[]): Promise<any> {

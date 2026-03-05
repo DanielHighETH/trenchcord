@@ -33,6 +33,7 @@ interface MessageProps {
   isFocused?: boolean;
   onQuickReply?: (channelId: string) => void;
   chattingEnabled?: boolean;
+  roleColors?: boolean;
 }
 
 export function getAvatarUrl(userId: string, avatar: string | null, discriminator?: string): string {
@@ -458,7 +459,7 @@ function ReactionPills({ reactions }: { reactions: FrontendMessage['reactions'] 
   );
 }
 
-export default function Message({ message, isCompact, messageDisplay = 'default', compactModeAvatars = true, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, openInDiscordApp, badgeClickAction, onHideUser, onToggleHighlight, isUserHighlighted, onFocus, isFocused, onQuickReply, chattingEnabled }: MessageProps) {
+export default function Message({ message, isCompact, messageDisplay = 'default', compactModeAvatars = true, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, openInDiscordApp, badgeClickAction, onHideUser, onToggleHighlight, isUserHighlighted, onFocus, isFocused, onQuickReply, chattingEnabled, roleColors = true }: MessageProps) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const addrColors: AddressColors = { evm: evmAddressColor ?? '#fee75c', sol: solAddressColor ?? '#14f195' };
   const templates: ContractLinkTemplates = contractLinkTemplates ?? DEFAULT_LINK_TEMPLATES;
@@ -591,7 +592,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
             )}
             <span
               className="font-medium text-[0.9375rem] hover:underline cursor-pointer mr-1"
-              style={{ color: effectiveHighlighted ? resolvedHighlightColor : '#f2f3f5' }}
+              style={{ color: effectiveHighlighted ? resolvedHighlightColor : (roleColors && message.author.roleColor ? message.author.roleColor : '#f2f3f5') }}
               onClick={handleNameClick}
               title={`${message.author.username} (${message.author.id})`}
             >
@@ -921,7 +922,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
         <div className="flex items-baseline gap-1 flex-wrap leading-[1.375rem]">
           <span
             className="font-medium text-base hover:underline cursor-pointer relative mr-1"
-            style={{ color: effectiveHighlighted ? resolvedHighlightColor : '#f2f3f5' }}
+            style={{ color: effectiveHighlighted ? resolvedHighlightColor : (roleColors && message.author.roleColor ? message.author.roleColor : '#f2f3f5') }}
             onClick={handleNameClick}
             title={`${message.author.username} (${message.author.id})`}
           >

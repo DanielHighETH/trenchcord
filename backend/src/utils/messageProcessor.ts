@@ -65,6 +65,7 @@ export function processDiscordMessage(
       username: rawMsg.author.username,
       displayName: rawMsg.author.global_name ?? rawMsg.author.username,
       avatar: rawMsg.author.avatar,
+      roleColor: gateway.getMemberRoleColor(rawMsg.member?.roles) ?? null,
     },
     content: rawMsg.content,
     timestamp: rawMsg.timestamp,

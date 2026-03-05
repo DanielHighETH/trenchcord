@@ -116,6 +116,7 @@ export interface AppConfig {
   chattingEnabled: boolean;
   messageDisplay: MessageDisplay;
   compactModeAvatars: boolean;
+  roleColors: boolean;
 }
 
 export interface AuthStatus {
@@ -166,6 +167,7 @@ export interface FrontendMessage {
     username: string;
     displayName: string;
     avatar: string | null;
+    roleColor?: string | null;
   };
   content: string;
   timestamp: string;

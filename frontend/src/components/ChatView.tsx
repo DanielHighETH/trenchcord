@@ -538,6 +538,7 @@ export default function ChatView() {
                   isFocused={focusFilter !== null && focusFilter.guildId === msg.guildId && focusFilter.channelId === msg.channelId}
                   onQuickReply={handleQuickReply}
                   chattingEnabled={chattingEnabled}
+                  roleColors={config?.roleColors ?? true}
                 />
               </div>
             );

@@ -139,6 +139,14 @@ export class GatewayManager extends EventEmitter {
     return null;
   }
 
+  getMemberRoleColor(roleIds: string[] | undefined): string | null {
+    for (const gw of this.gateways) {
+      const color = gw.getMemberRoleColor(roleIds);
+      if (color) return color;
+    }
+    return null;
+  }
+
   async sendChannelMessage(channelId: string, content: string, attachments?: { filename: string; data: Buffer; contentType: string }[]): Promise<any> {
     for (const gw of this.gateways) {
       if (gw.getGuildForChannel(channelId) || gw.getDMChannels().some((dm) => dm.id === channelId)) {
