@@ -4,6 +4,7 @@ import type { FrontendMessage, ContractLinkTemplates, ContractClickAction, Badge
 import ImageLightbox from './ImageLightbox';
 import UserContextMenu from './UserContextMenu';
 import { buildContractUrl, DEFAULT_LINK_TEMPLATES } from '../utils/contractUrl';
+import { colorWithExtraAlpha } from './ColorPickerWithAlpha';
 
 interface AddressColors {
   evm: string;
@@ -32,7 +33,7 @@ interface MessageProps {
   chattingEnabled?: boolean;
 }
 
-function getAvatarUrl(userId: string, avatar: string | null, discriminator?: string): string {
+export function getAvatarUrl(userId: string, avatar: string | null, discriminator?: string): string {
   if (avatar) {
     return `https://cdn.discordapp.com/avatars/${userId}/${avatar}.webp?size=80`;
   }
@@ -246,7 +247,7 @@ function applyInlineFormatting(
             <span
               key={`contract-${addr}-${i}`}
               className="px-1 rounded text-[13px] font-mono cursor-pointer inline-flex items-center gap-1 transition-opacity hover:opacity-80"
-              style={{ backgroundColor: `${color}20`, color }}
+              style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}
               title={contractClickTitle(clickAction, addr)}
               onClick={() => handleContractClick(addr, clickAction, linkTemplates)}
             >
@@ -277,7 +278,7 @@ function renderInlineMarkdown(content: string, contractAddresses: string[], ment
         <span
           key={`code-contract-${i}`}
           className="px-1 rounded text-[13px] font-mono cursor-pointer inline-flex items-center gap-1 transition-opacity hover:opacity-80"
-          style={{ backgroundColor: `${color}20`, color }}
+          style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}
           title={contractClickTitle(clickAction, matchedAddr)}
           onClick={() => handleContractClick(matchedAddr, clickAction, linkTemplates)}
         >
@@ -493,7 +494,7 @@ export default function Message({ message, isCompact, guildColor, highlightMode 
   if (effectiveHighlighted && hasCustomColor) {
     highlightInlineStyle.borderColor = resolvedHighlightColor;
     if (!useUsernameHighlight) {
-      highlightInlineStyle.backgroundColor = `${resolvedHighlightColor}15`;
+      highlightInlineStyle.backgroundColor = colorWithExtraAlpha(resolvedHighlightColor, 0.082);
     }
   }
 
@@ -700,11 +701,11 @@ export default function Message({ message, isCompact, guildColor, highlightMode 
   }
 
   return (
-    <div className={`relative hover:bg-discord-hover mt-[1.0625rem] py-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} group`} style={bgStyle}>
+    <div className={`relative hover:bg-discord-hover pt-[1.0625rem] pb-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} group`} style={bgStyle}>
       <img
         src={getAvatarUrl(message.author.id, message.author.avatar)}
         alt=""
-        className="absolute left-2 sm:left-4 w-8 h-8 sm:w-10 sm:h-10 rounded-full mt-[2px]"
+        className="absolute left-2 sm:left-4 top-[1.1875rem] w-8 h-8 sm:w-10 sm:h-10 rounded-full"
       />
       <div className="min-w-0">
         <div className="flex items-baseline gap-1 flex-wrap leading-[1.375rem]">

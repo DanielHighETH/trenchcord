@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAppStore } from '../stores/appStore';
-import { Hash, Plus, Settings, Trash2, MessageCircle, FileText, HelpCircle, PanelLeftClose } from 'lucide-react';
+import { Hash, Plus, Settings, Trash2, FileText, HelpCircle, PanelLeftClose } from 'lucide-react';
+import { getAvatarUrl } from './Message';
 import ConfirmModal from './ConfirmModal';
 
 export default function Sidebar() {
@@ -175,7 +176,30 @@ export default function Sidebar() {
                     }`}
                     onClick={() => setActiveRoom(dmRoomId)}
                   >
-                    <MessageCircle size={20} className="shrink-0 opacity-70" />
+                    {dm && dm.recipients.length === 1 ? (
+                      <img
+                        src={getAvatarUrl(dm.recipients[0].id, dm.recipients[0].avatar)}
+                        alt=""
+                        className="w-6 h-6 rounded-full shrink-0"
+                      />
+                    ) : dm && dm.recipients.length > 1 ? (
+                      <div className="relative w-6 h-6 shrink-0">
+                        <img
+                          src={getAvatarUrl(dm.recipients[0].id, dm.recipients[0].avatar)}
+                          alt=""
+                          className="absolute top-0 left-0 w-[18px] h-[18px] rounded-full ring-2 ring-discord-sidebar"
+                        />
+                        <img
+                          src={getAvatarUrl(dm.recipients[1].id, dm.recipients[1].avatar)}
+                          alt=""
+                          className="absolute bottom-0 right-0 w-[18px] h-[18px] rounded-full ring-2 ring-discord-sidebar"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-6 h-6 rounded-full bg-discord-dark flex items-center justify-center shrink-0">
+                        <span className="text-[10px] font-semibold text-discord-text-muted">DM</span>
+                      </div>
+                    )}
                     <span className="text-base leading-5 truncate flex-1">{recipientNames}</span>
                     {msgCount > 0 && (
                       <span className="text-[10px] text-discord-text-muted">{msgCount}</span>

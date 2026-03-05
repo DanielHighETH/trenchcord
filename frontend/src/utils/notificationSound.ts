@@ -1,7 +1,7 @@
 import type { SoundConfig, SoundType } from '../types';
 
 let audioCtx: AudioContext | null = null;
-const customAudioCache = new Map<string, HTMLAudioElement>();
+const audioCache = new Map<string, HTMLAudioElement>();
 
 function getAudioContext(): AudioContext {
   if (!audioCtx) audioCtx = new AudioContext();
@@ -36,12 +36,12 @@ function playTones(tones: [number, number, number][], type: OscillatorType = 'tr
   }
 }
 
-function playCustomSound(url: string, volume: number) {
+function playAudioFile(url: string, volume: number) {
   try {
-    let audio = customAudioCache.get(url);
+    let audio = audioCache.get(url);
     if (!audio) {
       audio = new Audio(url);
-      customAudioCache.set(url, audio);
+      audioCache.set(url, audio);
     }
     audio.volume = Math.max(0, Math.min(1, volume));
     audio.currentTime = 0;
@@ -49,6 +49,25 @@ function playCustomSound(url: string, volume: number) {
   } catch {
     // Audio not supported
   }
+}
+
+export const PRESET_SOUNDS = [
+  { id: 'ping', label: 'Ping', file: '/sounds/ping.wav' },
+  { id: 'double-ping', label: 'Double Ping', file: '/sounds/double-ping.wav' },
+  { id: 'rising-chime', label: 'Rising Chime', file: '/sounds/rising-chime.wav' },
+  { id: 'falling-chime', label: 'Falling Chime', file: '/sounds/falling-chime.wav' },
+  { id: 'pop', label: 'Pop', file: '/sounds/pop.wav' },
+  { id: 'alert', label: 'Alert', file: '/sounds/alert.wav' },
+  { id: 'bell', label: 'Bell', file: '/sounds/bell.wav' },
+  { id: 'chirp', label: 'Chirp', file: '/sounds/chirp.wav' },
+  { id: 'deep', label: 'Deep', file: '/sounds/deep.wav' },
+  { id: 'sparkle', label: 'Sparkle', file: '/sounds/sparkle.wav' },
+] as const;
+
+export type PresetSoundId = (typeof PRESET_SOUNDS)[number]['id'];
+
+export function getPresetUrl(presetId: string): string | undefined {
+  return PRESET_SOUNDS.find((p) => p.id === presetId)?.file;
 }
 
 const BUILT_IN_SOUNDS: Record<SoundType, { tones: [number, number, number][]; type: OscillatorType; baseVolume: number }> = {
@@ -75,8 +94,16 @@ export function playSound(soundType: SoundType, soundConfig?: SoundConfig) {
   const volumeFraction = (soundConfig?.volume ?? 80) / 100;
 
   if (soundConfig?.useCustom && soundConfig.customSoundUrl) {
-    playCustomSound(soundConfig.customSoundUrl, volumeFraction);
+    playAudioFile(soundConfig.customSoundUrl, volumeFraction);
     return;
+  }
+
+  if (soundConfig?.presetSound) {
+    const url = getPresetUrl(soundConfig.presetSound);
+    if (url) {
+      playAudioFile(url, volumeFraction);
+      return;
+    }
   }
 
   const builtin = BUILT_IN_SOUNDS[soundType];
@@ -99,10 +126,23 @@ export function previewSound(soundType: SoundType, soundConfig: SoundConfig) {
   const volumeFraction = soundConfig.volume / 100;
 
   if (soundConfig.useCustom && soundConfig.customSoundUrl) {
-    playCustomSound(soundConfig.customSoundUrl, volumeFraction);
+    playAudioFile(soundConfig.customSoundUrl, volumeFraction);
     return;
+  }
+
+  if (soundConfig.presetSound) {
+    const url = getPresetUrl(soundConfig.presetSound);
+    if (url) {
+      playAudioFile(url, volumeFraction);
+      return;
+    }
   }
 
   const builtin = BUILT_IN_SOUNDS[soundType];
   playTones(builtin.tones, builtin.type, builtin.baseVolume * volumeFraction);
+}
+
+export function previewPreset(presetId: string, volume = 80) {
+  const url = getPresetUrl(presetId);
+  if (url) playAudioFile(url, volume / 100);
 }

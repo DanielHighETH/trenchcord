@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { ChannelRef, KeywordPattern, KeywordMatchMode, HighlightMode } from '../types';
 import { X, Search, Plus, Trash2, Hash, MessageCircle, Users, Filter, AlertTriangle, Palette } from 'lucide-react';
+import ColorPickerWithAlpha from './ColorPickerWithAlpha';
 
 export default function RoomConfig() {
   const configModalOpen = useAppStore((s) => s.configModalOpen);
@@ -259,18 +260,12 @@ export default function RoomConfig() {
                   Room Background Color
                 </label>
                 <div className="flex items-center gap-3">
-                  <input
-                    type="color"
+                  <ColorPickerWithAlpha
                     value={roomColor || '#313338'}
-                    onChange={(e) => setRoomColor(e.target.value)}
-                    className="w-8 h-8 rounded cursor-pointer border border-discord-divider bg-transparent"
-                  />
-                  <input
-                    type="text"
-                    value={roomColor}
-                    onChange={(e) => setRoomColor(e.target.value)}
-                    placeholder="#313338 (default)"
-                    className="flex-1 bg-discord-dark border-none rounded px-3 py-2 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple font-mono"
+                    onChange={(c) => setRoomColor(c)}
+                    defaultColor="#313338"
+                    size="md"
+                    showTextInput
                   />
                   {roomColor && (
                     <button
@@ -340,27 +335,12 @@ export default function RoomConfig() {
                           ?? guildId;
                         return (
                           <div key={guildId} className="flex items-center gap-2.5 px-2 py-1.5 rounded bg-discord-dark/50">
-                            <input
-                              type="color"
+                            <ColorPickerWithAlpha
                               value={guildColors[guildId] || '#313338'}
-                              onChange={(e) => {
-                                updateConfig({ guildColors: { ...guildColors, [guildId]: e.target.value } });
-                              }}
-                              className="w-5 h-5 rounded cursor-pointer border border-discord-divider bg-transparent shrink-0"
+                              onChange={(c) => updateConfig({ guildColors: { ...guildColors, [guildId]: c } })}
+                              defaultColor="#313338"
                             />
                             <span className="text-sm text-discord-text flex-1 truncate">{guildName}</span>
-                            <input
-                              type="text"
-                              value={guildColors[guildId] || ''}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                const next = { ...guildColors };
-                                if (!val) { delete next[guildId]; } else { next[guildId] = val; }
-                                updateConfig({ guildColors: next });
-                              }}
-                              placeholder="default"
-                              className="w-20 bg-discord-dark border-none rounded px-2 py-1 text-[11px] text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple font-mono"
-                            />
                             {guildColors[guildId] && (
                               <button
                                 onClick={() => {
@@ -556,12 +536,10 @@ export default function RoomConfig() {
                       )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <input
-                        type="color"
+                      <ColorPickerWithAlpha
                         value={highlightedUserColors[uid] || '#5865f2'}
-                        onChange={(e) => setHighlightedUserColors((prev) => ({ ...prev, [uid]: e.target.value }))}
-                        className="w-6 h-6 rounded cursor-pointer border border-discord-divider bg-transparent p-0"
-                        title="Highlight color"
+                        onChange={(c) => setHighlightedUserColors((prev) => ({ ...prev, [uid]: c }))}
+                        defaultColor="#5865f2"
                       />
                       {highlightedUserColors[uid] && (
                         <button

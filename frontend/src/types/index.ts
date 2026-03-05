@@ -83,6 +83,7 @@ export interface SoundConfig {
   volume: number;
   useCustom: boolean;
   customSoundUrl?: string;
+  presetSound?: string;
 }
 
 export type SoundSettings = Record<SoundType, SoundConfig>;

@@ -4,7 +4,8 @@ import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, K
 import { PUSHOVER_SOUNDS } from '../types';
 import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, PanelLeftOpen } from 'lucide-react';
 import { requestNotificationPermission } from '../utils/desktopNotification';
-import { previewSound } from '../utils/notificationSound';
+import { previewSound, previewPreset, PRESET_SOUNDS } from '../utils/notificationSound';
+import ColorPickerWithAlpha from './ColorPickerWithAlpha';
 
 type Section = 'tokens' | 'general' | 'contracts' | 'sounds' | 'pushover' | 'keywords' | 'users' | 'guilds' | 'help';
 
@@ -602,37 +603,25 @@ export default function GlobalSettings() {
                       </p>
                       <div className="space-y-3">
                         <div className="flex items-center gap-3 px-3 py-2 bg-discord-dark rounded">
-                          <input
-                            type="color"
+                          <ColorPickerWithAlpha
                             value={evmAddressColor}
-                            onChange={(e) => setEvmAddressColor(e.target.value)}
-                            className="w-6 h-6 rounded cursor-pointer border border-discord-divider bg-transparent shrink-0"
+                            onChange={(c) => setEvmAddressColor(c)}
+                            defaultColor="#fee75c"
+                            showTextInput
                           />
                           <span className="text-sm text-discord-text flex-1">EVM (0x...)</span>
-                          <input
-                            type="text"
-                            value={evmAddressColor}
-                            onChange={(e) => setEvmAddressColor(e.target.value)}
-                            className="w-24 bg-discord-sidebar border-none rounded px-2 py-1 text-xs text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple font-mono"
-                          />
                           {evmAddressColor !== '#fee75c' && (
                             <button onClick={() => setEvmAddressColor('#fee75c')} className="text-[11px] text-discord-text-muted hover:text-white">Reset</button>
                           )}
                         </div>
                         <div className="flex items-center gap-3 px-3 py-2 bg-discord-dark rounded">
-                          <input
-                            type="color"
+                          <ColorPickerWithAlpha
                             value={solAddressColor}
-                            onChange={(e) => setSolAddressColor(e.target.value)}
-                            className="w-6 h-6 rounded cursor-pointer border border-discord-divider bg-transparent shrink-0"
+                            onChange={(c) => setSolAddressColor(c)}
+                            defaultColor="#14f195"
+                            showTextInput
                           />
                           <span className="text-sm text-discord-text flex-1">SOL</span>
-                          <input
-                            type="text"
-                            value={solAddressColor}
-                            onChange={(e) => setSolAddressColor(e.target.value)}
-                            className="w-24 bg-discord-sidebar border-none rounded px-2 py-1 text-xs text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple font-mono"
-                          />
                           {solAddressColor !== '#14f195' && (
                             <button onClick={() => setSolAddressColor('#14f195')} className="text-[11px] text-discord-text-muted hover:text-white">Reset</button>
                           )}
@@ -759,68 +748,99 @@ export default function GlobalSettings() {
                                       <span className="text-[11px] text-discord-text-muted w-8 text-right">{sc.volume}%</span>
                                     </div>
 
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[11px] text-discord-text-muted">Sound:</span>
-                                      <button
-                                        onClick={() => setSoundSettings((prev) => ({
-                                          ...prev,
-                                          [type]: { ...prev[type], useCustom: false },
-                                        }))}
-                                        className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
-                                          !sc.useCustom
-                                            ? 'bg-discord-blurple text-white'
-                                            : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'
-                                        }`}
-                                      >
-                                        Built-in
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          if (sc.customSoundUrl) {
-                                            setSoundSettings((prev) => ({ ...prev, [type]: { ...prev[type], useCustom: true } }));
-                                          } else {
-                                            setUploadingSoundType(type);
-                                            fileInputRef.current?.click();
-                                          }
-                                        }}
-                                        className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
-                                          sc.useCustom
-                                            ? 'bg-discord-blurple text-white'
-                                            : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'
-                                        }`}
-                                      >
-                                        Custom
-                                      </button>
-                                      {sc.useCustom && sc.customSoundUrl && (
+                                    <div className="space-y-2">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[11px] text-discord-text-muted">Sound:</span>
                                         <button
-                                          onClick={() => { setUploadingSoundType(type); fileInputRef.current?.click(); }}
-                                          className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-discord-text transition-colors"
-                                          title="Upload new sound"
+                                          onClick={() => setSoundSettings((prev) => ({
+                                            ...prev,
+                                            [type]: { ...prev[type], useCustom: false, presetSound: undefined },
+                                          }))}
+                                          className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+                                            !sc.useCustom && !sc.presetSound
+                                              ? 'bg-discord-blurple text-white'
+                                              : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'
+                                          }`}
                                         >
-                                          <Upload size={12} />
+                                          Default
                                         </button>
-                                      )}
-                                      {sc.useCustom && sc.customSoundUrl && (
                                         <button
-                                          onClick={async () => {
-                                            await fetch(`/api/sounds/${type}`, { method: 'DELETE' });
-                                            setSoundSettings((prev) => ({
-                                              ...prev,
-                                              [type]: { ...prev[type], useCustom: false, customSoundUrl: undefined },
-                                            }));
+                                          onClick={() => setSoundSettings((prev) => ({
+                                            ...prev,
+                                            [type]: { ...prev[type], useCustom: false, presetSound: prev[type].presetSound || 'ping' },
+                                          }))}
+                                          className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+                                            !sc.useCustom && sc.presetSound
+                                              ? 'bg-discord-blurple text-white'
+                                              : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'
+                                          }`}
+                                        >
+                                          Preset
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            if (sc.customSoundUrl) {
+                                              setSoundSettings((prev) => ({ ...prev, [type]: { ...prev[type], useCustom: true, presetSound: undefined } }));
+                                            } else {
+                                              setUploadingSoundType(type);
+                                              fileInputRef.current?.click();
+                                            }
                                           }}
-                                          className="text-discord-text-muted hover:text-discord-red transition-colors"
-                                          title="Remove custom sound"
+                                          className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+                                            sc.useCustom
+                                              ? 'bg-discord-blurple text-white'
+                                              : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'
+                                          }`}
                                         >
-                                          <Trash2 size={12} />
+                                          Custom
                                         </button>
+                                      </div>
+                                      {!sc.useCustom && sc.presetSound && (
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {PRESET_SOUNDS.map((preset) => (
+                                            <button
+                                              key={preset.id}
+                                              onClick={() => {
+                                                setSoundSettings((prev) => ({ ...prev, [type]: { ...prev[type], presetSound: preset.id } }));
+                                                previewPreset(preset.id, sc.volume);
+                                              }}
+                                              className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${sc.presetSound === preset.id ? 'bg-discord-blurple text-white' : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'}`}
+                                            >
+                                              {preset.label}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      )}
+                                      {sc.useCustom && (
+                                        <div className="flex items-center gap-2">
+                                          {sc.customSoundUrl && (
+                                            <span className="text-[10px] text-discord-text-muted truncate">{sc.customSoundUrl.split('/').pop()}</span>
+                                          )}
+                                          <button
+                                            onClick={() => { setUploadingSoundType(type); fileInputRef.current?.click(); }}
+                                            className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-discord-text transition-colors"
+                                            title="Upload sound"
+                                          >
+                                            <Upload size={12} />
+                                          </button>
+                                          {sc.customSoundUrl && (
+                                            <button
+                                              onClick={async () => {
+                                                await fetch(`/api/sounds/${type}`, { method: 'DELETE' });
+                                                setSoundSettings((prev) => ({
+                                                  ...prev,
+                                                  [type]: { ...prev[type], useCustom: false, customSoundUrl: undefined },
+                                                }));
+                                              }}
+                                              className="text-discord-text-muted hover:text-discord-red transition-colors"
+                                              title="Remove custom sound"
+                                            >
+                                              <Trash2 size={12} />
+                                            </button>
+                                          )}
+                                        </div>
                                       )}
                                     </div>
-                                    {sc.useCustom && sc.customSoundUrl && (
-                                      <div className="text-[10px] text-discord-text-muted truncate">
-                                        {sc.customSoundUrl.split('/').pop()}
-                                      </div>
-                                    )}
                                   </>
                                 )}
                               </div>
@@ -972,57 +992,81 @@ export default function GlobalSettings() {
                                             />
                                             <span className="text-[11px] text-discord-text-muted w-8 text-right">{sc.volume}%</span>
                                           </div>
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-[11px] text-discord-text-muted">Sound:</span>
-                                            <button
-                                              onClick={() => setChannelSounds((prev) => ({ ...prev, [chId]: { ...prev[chId], useCustom: false } }))}
-                                              className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${!sc.useCustom ? 'bg-discord-blurple text-white' : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'}`}
-                                            >
-                                              Built-in
-                                            </button>
-                                            <button
-                                              onClick={() => {
-                                                if (sc.customSoundUrl) {
-                                                  setChannelSounds((prev) => ({ ...prev, [chId]: { ...prev[chId], useCustom: true } }));
-                                                } else {
-                                                  setUploadingChannelId(chId);
-                                                  channelFileInputRef.current?.click();
-                                                }
-                                              }}
-                                              className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${sc.useCustom ? 'bg-discord-blurple text-white' : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'}`}
-                                            >
-                                              Custom
-                                            </button>
-                                            {sc.useCustom && sc.customSoundUrl && (
+                                          <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-[11px] text-discord-text-muted">Sound:</span>
                                               <button
-                                                onClick={() => { setUploadingChannelId(chId); channelFileInputRef.current?.click(); }}
-                                                className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-discord-text transition-colors"
-                                                title="Upload new sound"
+                                                onClick={() => setChannelSounds((prev) => ({ ...prev, [chId]: { ...prev[chId], useCustom: false, presetSound: undefined } }))}
+                                                className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${!sc.useCustom && !sc.presetSound ? 'bg-discord-blurple text-white' : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'}`}
                                               >
-                                                <Upload size={12} />
+                                                Default
                                               </button>
-                                            )}
-                                            {sc.useCustom && sc.customSoundUrl && (
                                               <button
-                                                onClick={async () => {
-                                                  await fetch(`/api/channel-sounds/${chId}`, { method: 'DELETE' });
-                                                  setChannelSounds((prev) => ({
-                                                    ...prev,
-                                                    [chId]: { ...prev[chId], useCustom: false, customSoundUrl: undefined },
-                                                  }));
+                                                onClick={() => setChannelSounds((prev) => ({ ...prev, [chId]: { ...prev[chId], useCustom: false, presetSound: prev[chId].presetSound || 'ping' } }))}
+                                                className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${!sc.useCustom && sc.presetSound ? 'bg-discord-blurple text-white' : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'}`}
+                                              >
+                                                Preset
+                                              </button>
+                                              <button
+                                                onClick={() => {
+                                                  if (sc.customSoundUrl) {
+                                                    setChannelSounds((prev) => ({ ...prev, [chId]: { ...prev[chId], useCustom: true, presetSound: undefined } }));
+                                                  } else {
+                                                    setUploadingChannelId(chId);
+                                                    channelFileInputRef.current?.click();
+                                                  }
                                                 }}
-                                                className="text-discord-text-muted hover:text-discord-red transition-colors"
-                                                title="Remove custom sound"
+                                                className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${sc.useCustom ? 'bg-discord-blurple text-white' : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'}`}
                                               >
-                                                <Trash2 size={12} />
+                                                Custom
                                               </button>
+                                            </div>
+                                            {!sc.useCustom && sc.presetSound && (
+                                              <div className="flex flex-wrap gap-1.5">
+                                                {PRESET_SOUNDS.map((preset) => (
+                                                  <button
+                                                    key={preset.id}
+                                                    onClick={() => {
+                                                      setChannelSounds((prev) => ({ ...prev, [chId]: { ...prev[chId], presetSound: preset.id } }));
+                                                      previewPreset(preset.id, sc.volume);
+                                                    }}
+                                                    className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${sc.presetSound === preset.id ? 'bg-discord-blurple text-white' : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'}`}
+                                                  >
+                                                    {preset.label}
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            )}
+                                            {sc.useCustom && (
+                                              <div className="flex items-center gap-2">
+                                                {sc.customSoundUrl && (
+                                                  <span className="text-[10px] text-discord-text-muted truncate">{sc.customSoundUrl.split('/').pop()}</span>
+                                                )}
+                                                <button
+                                                  onClick={() => { setUploadingChannelId(chId); channelFileInputRef.current?.click(); }}
+                                                  className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-discord-text transition-colors"
+                                                  title="Upload sound"
+                                                >
+                                                  <Upload size={12} />
+                                                </button>
+                                                {sc.customSoundUrl && (
+                                                  <button
+                                                    onClick={async () => {
+                                                      await fetch(`/api/channel-sounds/${chId}`, { method: 'DELETE' });
+                                                      setChannelSounds((prev) => ({
+                                                        ...prev,
+                                                        [chId]: { ...prev[chId], useCustom: false, customSoundUrl: undefined },
+                                                      }));
+                                                    }}
+                                                    className="text-discord-text-muted hover:text-discord-red transition-colors"
+                                                    title="Remove custom sound"
+                                                  >
+                                                    <Trash2 size={12} />
+                                                  </button>
+                                                )}
+                                              </div>
                                             )}
                                           </div>
-                                          {sc.useCustom && sc.customSoundUrl && (
-                                            <div className="text-[10px] text-discord-text-muted truncate">
-                                              {sc.customSoundUrl.split('/').pop()}
-                                            </div>
-                                          )}
                                         </>
                                       )}
                                     </div>
@@ -1853,26 +1897,12 @@ export default function GlobalSettings() {
                       <div className="space-y-2">
                         {guilds.filter((g) => enabledGuilds.includes(g.id)).map((guild) => (
                           <div key={guild.id} className="flex items-center gap-3 px-3 py-2 bg-discord-dark rounded">
-                            <input
-                              type="color"
+                            <ColorPickerWithAlpha
                               value={guildColors[guild.id] || '#313338'}
-                              onChange={(e) => setGuildColors((prev) => ({ ...prev, [guild.id]: e.target.value }))}
-                              className="w-6 h-6 rounded cursor-pointer border border-discord-divider bg-transparent shrink-0"
+                              onChange={(c) => setGuildColors((prev) => ({ ...prev, [guild.id]: c }))}
+                              defaultColor="#313338"
                             />
                             <span className="text-sm text-discord-text flex-1 truncate">{guild.name}</span>
-                            <input
-                              type="text"
-                              value={guildColors[guild.id] || ''}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setGuildColors((prev) => {
-                                  if (!val) { const { [guild.id]: _, ...rest } = prev; return rest; }
-                                  return { ...prev, [guild.id]: val };
-                                });
-                              }}
-                              placeholder="default"
-                              className="w-24 bg-discord-sidebar border-none rounded px-2 py-1 text-xs text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple font-mono"
-                            />
                             {guildColors[guild.id] && (
                               <button
                                 onClick={() => setGuildColors((prev) => { const { [guild.id]: _, ...rest } = prev; return rest; })}

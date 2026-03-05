@@ -4,6 +4,7 @@ import { useAppStore } from '../stores/appStore';
 import { buildContractUrl } from '../utils/contractUrl';
 import ConfirmModal from './ConfirmModal';
 import type { ContractEntry } from '../types';
+import { colorWithExtraAlpha } from './ColorPickerWithAlpha';
 
 const EVM_CHAIN_LABELS: Record<string, string> = {
   eth: 'ETH', bsc: 'BNB', base: 'BASE', arb: 'ARB',
@@ -263,7 +264,7 @@ function ContractRow({
     <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-discord-hover/30 transition-colors group">
       <span
         className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 uppercase"
-        style={{ backgroundColor: `${color}20`, color }}
+        style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}
       >
         {chainLabel}
       </span>
@@ -362,7 +363,7 @@ function ContractCard({
       <div className="flex items-center gap-2">
         <span
           className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase"
-          style={{ backgroundColor: `${color}20`, color }}
+          style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}
         >
           {chainLabel}
         </span>
