@@ -25,7 +25,10 @@ export default function GlobalSettings() {
   const config = useAppStore((s) => s.config);
   const updateConfig = useAppStore((s) => s.updateConfig);
   const guilds = useAppStore((s) => s.guilds);
+  const rooms = useAppStore((s) => s.rooms);
+  const dmChannels = useAppStore((s) => s.dmChannels);
   const fetchGuilds = useAppStore((s) => s.fetchGuilds);
+  const fetchDMChannels = useAppStore((s) => s.fetchDMChannels);
   const fetchConfig = useAppStore((s) => s.fetchConfig);
   const maskedTokens = useAppStore((s) => s.maskedTokens);
   const fetchMaskedTokens = useAppStore((s) => s.fetchMaskedTokens);
@@ -57,6 +60,7 @@ export default function GlobalSettings() {
   const [newUserId, setNewUserId] = useState('');
   const [contractDetection, setContractDetection] = useState(true);
   const [guildColors, setGuildColors] = useState<Record<string, string>>({});
+  const [dmColors, setDmColors] = useState<Record<string, string>>({});
   const [enabledGuilds, setEnabledGuilds] = useState<string[]>([]);
   const [guildSearch, setGuildSearch] = useState('');
   const [evmAddressColor, setEvmAddressColor] = useState('#fee75c');
@@ -107,15 +111,17 @@ export default function GlobalSettings() {
 
   useEffect(() => {
     fetchGuilds();
+    fetchDMChannels();
     fetchConfig();
     fetchMaskedTokens();
-  }, [fetchGuilds, fetchConfig, fetchMaskedTokens]);
+  }, [fetchGuilds, fetchDMChannels, fetchConfig, fetchMaskedTokens]);
 
   useEffect(() => {
     if (config) {
       setGlobalUsers(config.globalHighlightedUsers);
       setContractDetection(config.contractDetection);
       setGuildColors(config.guildColors ?? {});
+      setDmColors(config.dmColors ?? {});
       setEnabledGuilds(config.enabledGuilds ?? []);
       setEvmAddressColor(config.evmAddressColor ?? '#fee75c');
       setSolAddressColor(config.solAddressColor ?? '#14f195');
@@ -166,6 +172,7 @@ export default function GlobalSettings() {
       !arraysEqual(globalUsers, config.globalHighlightedUsers) ||
       contractDetection !== config.contractDetection ||
       !objEqual(guildColors, config.guildColors ?? {}) ||
+      !objEqual(dmColors, config.dmColors ?? {}) ||
       !arraysEqual(enabledGuilds, config.enabledGuilds ?? []) ||
       evmAddressColor !== (config.evmAddressColor ?? '#fee75c') ||
       solAddressColor !== (config.solAddressColor ?? '#14f195') ||
@@ -198,7 +205,7 @@ export default function GlobalSettings() {
       messageDisplay !== (config.messageDisplay ?? 'default') ||
       compactModeAvatars !== (config.compactModeAvatars ?? true)
     );
-  }, [config, globalUsers, contractDetection, guildColors, enabledGuilds, evmAddressColor, solAddressColor,
+  }, [config, globalUsers, contractDetection, guildColors, dmColors, enabledGuilds, evmAddressColor, solAddressColor,
     openInDiscordApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters,
     solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, autoOpenHighlightedContracts,
     globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars]);
@@ -227,6 +234,7 @@ export default function GlobalSettings() {
         globalHighlightedUsers: globalUsers,
         contractDetection,
         guildColors,
+        dmColors,
         enabledGuilds,
         evmAddressColor,
         solAddressColor,
@@ -1964,6 +1972,47 @@ export default function GlobalSettings() {
                         )}
                       </div>
                     </div>
+
+                    {(() => {
+                      const dmChannelIdsInRooms = [...new Set(
+                        rooms.flatMap((r) => r.channels.filter((c) => !c.guildId).map((c) => c.channelId))
+                      )];
+                      if (dmChannelIdsInRooms.length === 0) return null;
+                      return (
+                        <div className="p-4 bg-discord-sidebar rounded-lg">
+                          <h4 className="text-sm font-semibold text-white mb-2">DM Message Colors</h4>
+                          <p className="text-sm text-discord-text-muted mb-3">
+                            Set a background color for messages from each DM that is added to a room.
+                          </p>
+                          <div className="space-y-2">
+                            {dmChannelIdsInRooms.map((channelId) => {
+                              const dm = dmChannels.find((d) => d.id === channelId);
+                              const dmName = dm
+                                ? dm.recipients.map((r) => r.global_name || r.username).join(', ')
+                                : channelId;
+                              return (
+                                <div key={channelId} className="flex items-center gap-3 px-3 py-2 bg-discord-dark rounded">
+                                  <ColorPickerWithAlpha
+                                    value={dmColors[channelId] || '#313338'}
+                                    onChange={(c) => setDmColors((prev) => ({ ...prev, [channelId]: c }))}
+                                    defaultColor="#313338"
+                                  />
+                                  <span className="text-sm text-discord-text flex-1 truncate">{dmName}</span>
+                                  {dmColors[channelId] && (
+                                    <button
+                                      onClick={() => setDmColors((prev) => { const { [channelId]: _, ...rest } = prev; return rest; })}
+                                      className="text-discord-text-muted hover:text-white"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </>

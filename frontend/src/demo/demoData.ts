@@ -156,6 +156,7 @@ export const DEMO_CONFIG: AppConfig = {
     [GUILD_DEGEN]: '#2d3832',
     [GUILD_NFT]: '#382d42',
   },
+  dmColors: {},
   enabledGuilds: [GUILD_ALPHA, GUILD_DEGEN, GUILD_NFT],
   evmAddressColor: '#fee75c',
   solAddressColor: '#14f195',

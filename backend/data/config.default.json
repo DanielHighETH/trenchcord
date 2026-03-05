@@ -3,6 +3,7 @@
   "globalHighlightedUsers": [],
   "contractDetection": true,
   "guildColors": {},
+  "dmColors": {},
   "enabledGuilds": [],
   "evmAddressColor": "#fee75c",
   "solAddressColor": "#14f195",

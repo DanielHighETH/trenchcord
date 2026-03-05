@@ -95,6 +95,7 @@ export interface AppConfig {
   globalHighlightedUsers: string[];
   contractDetection: boolean;
   guildColors: Record<string, string>;
+  dmColors: Record<string, string>;
   enabledGuilds: string[];
   evmAddressColor: string;
   solAddressColor: string;

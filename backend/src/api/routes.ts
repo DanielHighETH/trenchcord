@@ -281,11 +281,12 @@ export function createRouter(wsServer: WsServer): Router {
   });
 
   router.put('/config', (req, res) => {
-    const { globalHighlightedUsers, contractDetection, guildColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, messageSounds, soundSettings, pushover, contractLinkTemplates, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, messageSounds, soundSettings, pushover, contractLinkTemplates, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars } = req.body;
     const config = configStore.updateConfig({
       ...(globalHighlightedUsers !== undefined && { globalHighlightedUsers }),
       ...(contractDetection !== undefined && { contractDetection }),
       ...(guildColors !== undefined && { guildColors }),
+      ...(dmColors !== undefined && { dmColors }),
       ...(enabledGuilds !== undefined && { enabledGuilds }),
       ...(hiddenUsers !== undefined && { hiddenUsers }),
       ...(evmAddressColor !== undefined && { evmAddressColor }),

@@ -360,6 +360,53 @@ export default function RoomConfig() {
                 );
               })()}
 
+              {/* DM message colors */}
+              {(() => {
+                const roomDmChannelIds = selectedChannels.filter((c) => !c.guildId).map((c) => c.channelId);
+                if (roomDmChannelIds.length === 0) return null;
+                const dmColors = config?.dmColors ?? {};
+                return (
+                  <div className="mb-4 border border-discord-divider rounded p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2 flex items-center gap-1.5">
+                      <Palette size={12} />
+                      DM Message Colors
+                    </div>
+                    <p className="text-xs text-discord-text-muted mb-2">
+                      Color-code messages by DM. Changes apply globally.
+                    </p>
+                    <div className="space-y-1.5">
+                      {roomDmChannelIds.map((channelId) => {
+                        const dm = dmChannels.find((d) => d.id === channelId);
+                        const dmName = dm
+                          ? dm.recipients.map((r) => r.global_name || r.username).join(', ')
+                          : selectedChannels.find((c) => c.channelId === channelId)?.channelName ?? channelId;
+                        return (
+                          <div key={channelId} className="flex items-center gap-2.5 px-2 py-1.5 rounded bg-discord-dark/50">
+                            <ColorPickerWithAlpha
+                              value={dmColors[channelId] || '#313338'}
+                              onChange={(c) => updateConfig({ dmColors: { ...dmColors, [channelId]: c } })}
+                              defaultColor="#313338"
+                            />
+                            <span className="text-sm text-discord-text flex-1 truncate">{dmName}</span>
+                            {dmColors[channelId] && (
+                              <button
+                                onClick={() => {
+                                  const { [channelId]: _, ...rest } = dmColors;
+                                  updateConfig({ dmColors: rest });
+                                }}
+                                className="text-discord-text-muted hover:text-white shrink-0"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Search */}
               <div className="relative mb-4">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-discord-text-muted" />

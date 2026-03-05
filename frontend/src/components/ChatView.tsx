@@ -509,7 +509,9 @@ export default function ChatView() {
               : Infinity;
             const isCompact = sameAuthor && timeDiff < 5 * 60 * 1000 && prev?.channelId === msg.channelId;
 
-            const guildColor = msg.guildId ? config?.guildColors?.[msg.guildId] : undefined;
+            const guildColor = msg.guildId
+              ? config?.guildColors?.[msg.guildId]
+              : config?.dmColors?.[msg.channelId];
             const highlightColor = activeRoom?.highlightedUserColors?.[msg.author.id];
 
             return (
