@@ -1,6 +1,6 @@
 import { type ReactNode, Fragment, useState } from 'react';
 import { Eye, MessageSquareReply } from 'lucide-react';
-import type { FrontendMessage, ContractLinkTemplates, ContractClickAction, BadgeClickAction, HighlightMode } from '../types';
+import type { FrontendMessage, ContractLinkTemplates, ContractClickAction, BadgeClickAction, HighlightMode, MessageDisplay } from '../types';
 import ImageLightbox from './ImageLightbox';
 import UserContextMenu from './UserContextMenu';
 import { buildContractUrl, DEFAULT_LINK_TEMPLATES } from '../utils/contractUrl';
@@ -14,6 +14,8 @@ interface AddressColors {
 interface MessageProps {
   message: FrontendMessage;
   isCompact: boolean;
+  messageDisplay?: MessageDisplay;
+  compactModeAvatars?: boolean;
   guildColor?: string;
   highlightMode?: HighlightMode;
   highlightColor?: string;
@@ -456,7 +458,7 @@ function ReactionPills({ reactions }: { reactions: FrontendMessage['reactions'] 
   );
 }
 
-export default function Message({ message, isCompact, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, openInDiscordApp, badgeClickAction, onHideUser, onToggleHighlight, isUserHighlighted, onFocus, isFocused, onQuickReply, chattingEnabled }: MessageProps) {
+export default function Message({ message, isCompact, messageDisplay = 'default', compactModeAvatars = true, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, openInDiscordApp, badgeClickAction, onHideUser, onToggleHighlight, isUserHighlighted, onFocus, isFocused, onQuickReply, chattingEnabled }: MessageProps) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const addrColors: AddressColors = { evm: evmAddressColor ?? '#fee75c', sol: solAddressColor ?? '#14f195' };
   const templates: ContractLinkTemplates = contractLinkTemplates ?? DEFAULT_LINK_TEMPLATES;
@@ -555,6 +557,214 @@ export default function Message({ message, isCompact, guildColor, highlightMode 
       {message.guildName ? `${message.guildName}` : ''}{message.guildName ? ' / ' : ''}#{message.channelName}
     </a>
   );
+
+  if (messageDisplay === 'compact') {
+    return (
+      <div className={`group/compact relative hover:bg-discord-hover py-[1px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} min-h-[1.375rem]`} style={bgStyle}>
+        <span className={`absolute left-0 w-[52px] sm:w-[72px] text-[0.6875rem] text-discord-text-muted text-right pr-2 sm:pr-4 pt-[1px] select-none leading-[1.375rem] ${isCompact ? 'opacity-0 group-hover/compact:opacity-100' : ''}`}>
+          {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </span>
+        <div className="min-w-0">
+          {message.referencedMessage && (
+            <div
+              className="flex items-center gap-1 text-xs text-discord-text-muted mb-0.5 cursor-pointer hover:text-discord-text-normal max-w-full overflow-hidden"
+              onClick={() => {
+                const el = document.getElementById(`msg-${message.referencedMessage!.id}`);
+                if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('bg-discord-hover'); setTimeout(() => el.classList.remove('bg-discord-hover'), 2000); }
+              }}
+            >
+              <div className="w-8 h-3 border-l-2 border-t-2 border-discord-text-muted/30 rounded-tl ml-1 shrink-0" />
+              <span className="font-medium text-discord-text-muted shrink-0">{message.referencedMessage.author}</span>
+              <span className="truncate opacity-70">
+                {renderInlineMarkdown(message.referencedMessage.content, [], message.referencedMessage.mentions ?? {}, addrColors)}
+              </span>
+            </div>
+          )}
+
+          <div className="text-[0.9375rem] text-discord-text-normal leading-[1.375rem] break-words">
+            {!isCompact && compactModeAvatars && (
+              <img
+                src={getAvatarUrl(message.author.id, message.author.avatar)}
+                alt=""
+                className="inline-block w-5 h-5 rounded-full mr-1 align-text-bottom"
+              />
+            )}
+            <span
+              className="font-medium text-[0.9375rem] hover:underline cursor-pointer mr-1"
+              style={{ color: effectiveHighlighted ? resolvedHighlightColor : '#f2f3f5' }}
+              onClick={handleNameClick}
+              title={`${message.author.username} (${message.author.id})`}
+            >
+              {message.author.displayName}
+              {copied && (
+                <span className="absolute -top-6 left-0 text-[10px] bg-discord-dark text-discord-green px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap pointer-events-none">
+                  ID copied!
+                </span>
+              )}
+            </span>
+            {channelBadge}
+            {' '}
+            {message.hasContractAddress && (
+              <>
+                <span
+                  onClick={handleBadgeClick}
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-discord-yellow/20 text-discord-yellow font-semibold cursor-pointer hover:bg-discord-yellow/30 transition-colors"
+                  title={badgeAct === 'platform' ? 'Open in trading platform' : badgeAct === 'both' ? 'Open in Discord + platform' : 'Open in Discord'}
+                >
+                  CONTRACT
+                </span>
+                {' '}
+              </>
+            )}
+            {hasKeywordMatch && (
+              <>
+                <span
+                  onClick={handleBadgeClick}
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-orange-400/20 text-orange-400 font-semibold cursor-pointer hover:bg-orange-400/30 transition-colors"
+                  title={badgeAct === 'platform' && message.hasContractAddress ? 'Open in trading platform' : badgeAct === 'both' && message.hasContractAddress ? 'Open in Discord + platform' : 'Open in Discord'}
+                >
+                  {message.matchedKeywords!.join(', ')}
+                </span>
+                {' '}
+              </>
+            )}
+            {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct)}
+          </div>
+
+          {message.attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-1">
+              {message.attachments.map((att) =>
+                att.content_type?.startsWith('image/') ? (
+                  <img
+                    key={att.id}
+                    src={att.proxy_url}
+                    alt={att.filename}
+                    className="max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => setLightboxSrc(att.proxy_url)}
+                  />
+                ) : (
+                  <a
+                    key={att.id}
+                    href={att.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-discord-text-link hover:underline text-sm"
+                  >
+                    {att.filename}
+                  </a>
+                )
+              )}
+            </div>
+          )}
+
+          {message.embeds.length > 0 && !disableEmbeds && (
+            <div className="flex flex-col gap-2 mt-1">
+              {message.embeds.map((embed, i) => (
+                <div
+                  key={i}
+                  className="border-l-4 rounded bg-discord-embed-bg p-3 max-w-[520px]"
+                  style={{ borderColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : '#1e1f22' }}
+                >
+                  {embed.author?.name && (
+                    <div className="flex items-center gap-2 mb-1">
+                      {embed.author.icon_url && (
+                        <img src={embed.author.icon_url} alt="" className="w-6 h-6 rounded-full" />
+                      )}
+                      {embed.author.url ? (
+                        <a href={embed.author.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-white hover:underline">
+                          {renderInlineMarkdown(embed.author.name, [], {})}
+                        </a>
+                      ) : (
+                        <span className="text-sm font-medium text-white">
+                          {renderInlineMarkdown(embed.author.name, [], {})}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {embed.title && (
+                    <div className="font-semibold text-sm">
+                      {embed.url ? (
+                        <a href={embed.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-discord-text-link">
+                          {renderInlineMarkdown(embed.title, [], {})}
+                        </a>
+                      ) : <span className="text-white">{renderInlineMarkdown(embed.title, [], {})}</span>}
+                    </div>
+                  )}
+                  {embed.description && (
+                    <div className="text-[13px] text-discord-text mt-1 leading-[1.125rem]">
+                      {renderEmbedDescription(embed.description)}
+                    </div>
+                  )}
+                  {embed.fields && embed.fields.length > 0 && (
+                    <div className="grid gap-y-1 gap-x-2 mt-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
+                      {embed.fields.map((field, fi) => (
+                        <div key={fi} className={field.inline ? '' : 'col-span-full'}>
+                          <div className="text-xs font-semibold text-white mb-0.5">
+                            {renderInlineMarkdown(field.name, [], {})}
+                          </div>
+                          <div className="text-[13px] text-discord-text leading-[1.125rem]">
+                            {renderEmbedDescription(field.value)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {embed.thumbnail && !embed.image && (
+                    <img
+                      src={embed.thumbnail.url}
+                      alt=""
+                      className="max-w-[80px] max-h-[80px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => setLightboxSrc(embed.thumbnail!.url)}
+                    />
+                  )}
+                  {embed.image && (
+                    <img
+                      src={embed.image.url}
+                      alt=""
+                      className="max-w-[400px] max-h-[300px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => setLightboxSrc(embed.image!.url)}
+                    />
+                  )}
+                  {embed.footer?.text && (
+                    <div className="flex items-center gap-2 mt-2 text-xs text-discord-text-muted">
+                      {embed.footer.icon_url && (
+                        <img src={embed.footer.icon_url} alt="" className="w-5 h-5 rounded-full" />
+                      )}
+                      <span>{embed.footer.text}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <ReactionPills reactions={message.reactions} />
+        </div>
+
+        {lightboxSrc && (
+          <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+        )}
+
+        {contextMenu && (
+          <UserContextMenu
+            userId={message.author.id}
+            displayName={message.author.displayName}
+            guildId={message.guildId}
+            channelId={message.channelId}
+            channelName={message.channelName}
+            guildName={message.guildName}
+            openInDiscordApp={openInDiscordApp ?? false}
+            position={contextMenu}
+            isHighlighted={isUserHighlighted}
+            onToggleHighlight={onToggleHighlight ? () => onToggleHighlight(message.author.id, message.author.displayName) : undefined}
+            onHide={() => onHideUser?.(message.guildId, message.channelId, message.author.id, message.author.displayName)}
+            onCopyId={copyUserId}
+            onClose={() => setContextMenu(null)}
+          />
+        )}
+      </div>
+    );
+  }
 
   if (isCompact) {
     return (

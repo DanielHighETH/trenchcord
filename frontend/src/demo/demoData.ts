@@ -180,6 +180,8 @@ export const DEMO_CONFIG: AppConfig = {
   channelSounds: {},
   userNameCache: {},
   chattingEnabled: false,
+  messageDisplay: 'default',
+  compactModeAvatars: true,
 };
 
 // ---------------------------------------------------------------------------

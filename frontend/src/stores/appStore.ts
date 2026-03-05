@@ -61,7 +61,7 @@ interface AppState {
   createRoom: (name: string, channels: Room['channels'], highlightedUsers: string[], color?: string | null, filteredUsers?: string[], filterEnabled?: boolean) => Promise<Room>;
   updateRoom: (id: string, data: Partial<Omit<Room, 'id'>>) => Promise<void>;
   deleteRoom: (id: string) => Promise<void>;
-  updateConfig: (data: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction' | 'chattingEnabled'>>) => Promise<void>;
+  updateConfig: (data: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars'>>) => Promise<void>;
   sendMessage: (channelId: string, content: string, files?: File[]) => Promise<{ success: boolean; error?: string }>;
   hideUser: (guildId: string | null, channelId: string, userId: string, displayName: string) => Promise<void>;
   unhideUser: (guildId: string | null, channelId: string, userId: string) => Promise<void>;

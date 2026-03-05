@@ -281,7 +281,7 @@ export function createRouter(wsServer: WsServer): Router {
   });
 
   router.put('/config', (req, res) => {
-    const { globalHighlightedUsers, contractDetection, guildColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, messageSounds, soundSettings, pushover, contractLinkTemplates, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, messageSounds, soundSettings, pushover, contractLinkTemplates, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars } = req.body;
     const config = configStore.updateConfig({
       ...(globalHighlightedUsers !== undefined && { globalHighlightedUsers }),
       ...(contractDetection !== undefined && { contractDetection }),
@@ -301,6 +301,8 @@ export function createRouter(wsServer: WsServer): Router {
       ...(desktopNotifications !== undefined && { desktopNotifications }),
       ...(badgeClickAction !== undefined && { badgeClickAction }),
       ...(chattingEnabled !== undefined && { chattingEnabled }),
+      ...(messageDisplay !== undefined && { messageDisplay }),
+      ...(compactModeAvatars !== undefined && { compactModeAvatars }),
     });
     res.json(config);
   });

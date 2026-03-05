@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAppStore } from '../stores/appStore';
-import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters } from '../types';
+import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay } from '../types';
 import { PUSHOVER_SOUNDS } from '../types';
 import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, PanelLeftOpen } from 'lucide-react';
 import { requestNotificationPermission } from '../utils/desktopNotification';
@@ -94,6 +94,8 @@ export default function GlobalSettings() {
   const [desktopNotifications, setDesktopNotifications] = useState(false);
   const [badgeClickAction, setBadgeClickAction] = useState<BadgeClickAction>('discord');
   const [chattingEnabled, setChattingEnabled] = useState(false);
+  const [messageDisplay, setMessageDisplay] = useState<MessageDisplay>('default');
+  const [compactModeAvatars, setCompactModeAvatars] = useState(true);
   const [newKeywordPattern, setNewKeywordPattern] = useState('');
   const [newKeywordMatchMode, setNewKeywordMatchMode] = useState<KeywordMatchMode>('includes');
   const [newKeywordLabel, setNewKeywordLabel] = useState('');
@@ -145,6 +147,8 @@ export default function GlobalSettings() {
       setDesktopNotifications(config.desktopNotifications ?? false);
       setBadgeClickAction(config.badgeClickAction ?? 'discord');
       setChattingEnabled(config.chattingEnabled ?? false);
+      setMessageDisplay(config.messageDisplay ?? 'default');
+      setCompactModeAvatars(config.compactModeAvatars ?? true);
     }
   }, [config]);
 
@@ -190,12 +194,14 @@ export default function GlobalSettings() {
       keywordAlertsEnabled !== (config.keywordAlertsEnabled ?? true) ||
       desktopNotifications !== (config.desktopNotifications ?? false) ||
       badgeClickAction !== (config.badgeClickAction ?? 'discord') ||
-      chattingEnabled !== (config.chattingEnabled ?? false)
+      chattingEnabled !== (config.chattingEnabled ?? false) ||
+      messageDisplay !== (config.messageDisplay ?? 'default') ||
+      compactModeAvatars !== (config.compactModeAvatars ?? true)
     );
   }, [config, globalUsers, contractDetection, guildColors, enabledGuilds, evmAddressColor, solAddressColor,
     openInDiscordApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters,
     solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, autoOpenHighlightedContracts,
-    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled]);
+    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -237,6 +243,8 @@ export default function GlobalSettings() {
         desktopNotifications,
         badgeClickAction,
         chattingEnabled,
+        messageDisplay,
+        compactModeAvatars,
       });
     } finally {
       setSaving(false);
@@ -422,6 +430,44 @@ export default function GlobalSettings() {
                   <h3 className="text-lg font-semibold text-white mb-4">General</h3>
 
                   <div className="space-y-5">
+                    <div className="p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-sm font-semibold text-white mb-2">Message Display</h4>
+                      <p className="text-sm text-discord-text-muted mb-3">
+                        Choose how messages are displayed in chat.
+                      </p>
+                      <div className="flex gap-1.5">
+                        {([
+                          ['default', 'Cozy'],
+                          ['compact', 'Compact'],
+                        ] as [MessageDisplay, string][]).map(([mode, label]) => (
+                          <button
+                            key={mode}
+                            onClick={() => setMessageDisplay(mode)}
+                            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                              messageDisplay === mode
+                                ? 'bg-discord-blurple text-white'
+                                : 'bg-discord-dark text-discord-text-muted hover:text-discord-text'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-discord-text-muted mt-2">
+                        {messageDisplay === 'default' && 'Cozy mode shows avatars and full message headers.'}
+                        {messageDisplay === 'compact' && 'Compact mode shows timestamps on the left with inline usernames for a denser chat view.'}
+                      </p>
+                      {messageDisplay === 'compact' && (
+                        <div className="mt-3 pt-3 border-t border-discord-divider">
+                          <Toggle
+                            value={compactModeAvatars}
+                            onChange={setCompactModeAvatars}
+                            label="Show avatars in compact mode"
+                          />
+                        </div>
+                      )}
+                    </div>
+
                     <div className="p-4 bg-discord-sidebar rounded-lg">
                       <h4 className="text-sm font-semibold text-white mb-2">Contract Detection</h4>
                       <Toggle

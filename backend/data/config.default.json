@@ -41,5 +41,7 @@
   },
   "contractClickAction": "copy_open",
   "autoOpenHighlightedContracts": true,
-  "badgeClickAction": "discord"
+  "badgeClickAction": "discord",
+  "messageDisplay": "default",
+  "compactModeAvatars": true
 }

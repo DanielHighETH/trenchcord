@@ -91,6 +91,7 @@ export interface ChannelRef {
 }
 
 export type HighlightMode = 'background' | 'username';
+export type MessageDisplay = 'default' | 'compact';
 
 export type KeywordMatchMode = 'includes' | 'exact' | 'regex';
 
@@ -196,6 +197,8 @@ export interface AppConfig {
   badgeClickAction: BadgeClickAction;
   userNameCache: Record<string, string>;
   chattingEnabled: boolean;
+  messageDisplay: MessageDisplay;
+  compactModeAvatars: boolean;
 }
 
 export interface GuildInfo {

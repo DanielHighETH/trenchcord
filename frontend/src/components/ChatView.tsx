@@ -517,6 +517,8 @@ export default function ChatView() {
                 <Message
                   message={msg}
                   isCompact={isCompact}
+                  messageDisplay={config?.messageDisplay ?? 'default'}
+                  compactModeAvatars={config?.compactModeAvatars ?? true}
                   guildColor={guildColor}
                   highlightMode={activeRoom?.highlightMode ?? 'background'}
                   highlightColor={highlightColor}
