@@ -5,6 +5,7 @@ import { Features } from './components/Features';
 import { OpenSource } from './components/OpenSource';
 import { HowItWorks } from './components/HowItWorks';
 import { Tutorial } from './components/Tutorial';
+import { Changelog } from './components/Changelog';
 import { Footer } from './components/Footer';
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
       <OpenSource />
       <HowItWorks />
       <Tutorial />
+      <Changelog />
       <Footer />
     </div>
   );

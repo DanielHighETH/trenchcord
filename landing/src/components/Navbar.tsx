@@ -6,6 +6,7 @@ const navLinks: { label: string; href: string; external?: boolean }[] = [
   { label: 'Features', href: '#features' },
   { label: 'How It Works', href: '#how-it-works' },
   { label: 'Setup', href: '#setup' },
+  { label: 'Changelog', href: '#changelog' },
   { label: 'Demo', href: 'https://demo.trenchcord.app', external: true },
 ];
 
