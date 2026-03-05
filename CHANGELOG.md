@@ -5,6 +5,15 @@ All notable changes to Trenchcord are documented here.
 ## 2026-03-05
 
 ### Added
+- **Hosted web app mode** — Trenchcord can now run as a multi-user web app, no installation required
+- **Supabase integration** — PostgreSQL database with Row Level Security for per-user data isolation
+- **User authentication** — sign up and log in with Email/Password or Discord OAuth
+- **Encrypted token storage** — Discord tokens encrypted at rest with AES-256-GCM
+- **Per-user Discord gateways** — each user gets their own gateway connection with automatic idle management
+- **Profile page** — view account info, login method, and sign out (hosted mode)
+- **Sound file storage** — user sounds stored in Supabase Storage for hosted deployments
+- **Security hardening** — helmet headers, API rate limiting, CORS restrictions, JWT-authenticated WebSockets, error message sanitization
+- **In-memory caching** — server-side cache for config, rooms, and tokens to minimize database round-trips
 - **Role colors** — usernames now display their highest Discord role color
 - **Compact mode** — denser message layout for power users
 - **Custom DM colors** — personalize DM channel name colors

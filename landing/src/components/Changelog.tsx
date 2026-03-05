@@ -11,6 +11,13 @@ const CHANGELOG: ChangelogEntry[] = [
   {
     date: '2026-03-05',
     added: [
+      '**Hosted web app mode** — Trenchcord can now run as a multi-user web app, no installation required',
+      '**User authentication** — sign up and log in with Email/Password or Discord OAuth',
+      '**Encrypted token storage** — Discord tokens encrypted at rest with AES-256-GCM',
+      '**Per-user Discord gateways** — each user gets their own gateway connection with idle management',
+      '**Profile page** — view account info, login method, and sign out',
+      '**Security hardening** — helmet headers, rate limiting, CORS, JWT WebSockets, error sanitization',
+      '**In-memory caching** — server-side cache to minimize database round-trips',
       '**Role colors** — usernames now display their highest Discord role color',
       '**Compact mode** — denser message layout for power users',
       '**Custom DM colors** — personalize DM channel name colors',

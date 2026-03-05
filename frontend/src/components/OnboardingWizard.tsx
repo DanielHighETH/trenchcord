@@ -16,15 +16,19 @@ const TIPS = [
   { icon: Search, title: 'Keywords', desc: 'Set keyword patterns to catch important messages with regex or simple matching.' },
 ];
 
-export function isOnboardingComplete(): boolean {
-  return localStorage.getItem(ONBOARDING_KEY) === 'true';
+function onboardingKey(userId?: string): string {
+  return userId ? `${ONBOARDING_KEY}_${userId}` : ONBOARDING_KEY;
 }
 
-export function markOnboardingComplete(): void {
-  localStorage.setItem(ONBOARDING_KEY, 'true');
+export function isOnboardingComplete(userId?: string): boolean {
+  return localStorage.getItem(onboardingKey(userId)) === 'true';
 }
 
-export default function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
+export function markOnboardingComplete(userId?: string): void {
+  localStorage.setItem(onboardingKey(userId), 'true');
+}
+
+export default function OnboardingWizard({ onComplete, userId }: { onComplete: () => void; userId?: string }) {
   const guilds = useAppStore((s) => s.guilds);
   const config = useAppStore((s) => s.config);
   const fetchGuilds = useAppStore((s) => s.fetchGuilds);
@@ -109,7 +113,7 @@ export default function OnboardingWizard({ onComplete }: { onComplete: () => voi
       setSaving(false);
       setStep('done');
     } else if (step === 'done') {
-      markOnboardingComplete();
+      markOnboardingComplete(userId);
       onComplete();
     }
   };
@@ -120,7 +124,7 @@ export default function OnboardingWizard({ onComplete }: { onComplete: () => voi
   };
 
   const handleSkip = () => {
-    markOnboardingComplete();
+    markOnboardingComplete(userId);
     onComplete();
   };
 

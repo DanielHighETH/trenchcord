@@ -4,6 +4,7 @@ import { playHighlightSound, playContractAlertSound, playKeywordAlertSound, play
 import { buildContractUrl } from '../utils/contractUrl';
 import { showDesktopNotification } from '../utils/desktopNotification';
 import { isDemoMode } from '../demo/demoStore';
+import { isHostedMode, getSupabase } from '../lib/supabase';
 import { buildStreamMessage, STREAM_POOL } from '../demo/demoData';
 import type { WsIncoming, Alert, FrontendMessage, ContractEntry } from '../types';
 
@@ -37,6 +38,9 @@ export function useWebSocket() {
   const updateReaction = useAppStore((s) => s.updateReaction);
   const addContract = useAppStore((s) => s.addContract);
   const updateContractChain = useAppStore((s) => s.updateContractChain);
+  const fetchGuilds = useAppStore((s) => s.fetchGuilds);
+  const fetchDMChannels = useAppStore((s) => s.fetchDMChannels);
+  const fetchHistory = useAppStore((s) => s.fetchHistory);
 
   useDemoStream();
 
@@ -46,8 +50,15 @@ export function useWebSocket() {
     let disposed = false;
     let reconnectTimer: ReturnType<typeof setTimeout>;
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    let wsUrl: string;
+    if (import.meta.env.VITE_API_URL) {
+      const apiUrl = new URL(import.meta.env.VITE_API_URL);
+      const wsProtocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+      wsUrl = `${wsProtocol}//${apiUrl.host}/ws`;
+    } else {
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+    }
 
     function connect() {
       if (disposed) return;
@@ -55,10 +66,20 @@ export function useWebSocket() {
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
-      ws.onopen = () => {
+      ws.onopen = async () => {
         if (disposed) { ws.close(); return; }
         console.log('[WS] Connected');
         setConnected(true);
+
+        if (isHostedMode) {
+          try {
+            const { data } = await getSupabase().auth.getSession();
+            if (data.session?.access_token) {
+              ws.send(JSON.stringify({ type: 'auth', token: data.session.access_token }));
+            }
+          } catch {}
+        }
+
         ws.send(JSON.stringify({ type: 'subscribe_all' }));
       };
 
@@ -128,6 +149,10 @@ export function useWebSocket() {
           } else if (incoming.type === 'chain_update') {
             const { address, evmChain } = incoming.data as { address: string; evmChain: string };
             updateContractChain(address, evmChain);
+          } else if (incoming.type === 'gateway_ready') {
+            fetchGuilds();
+            fetchDMChannels();
+            fetchHistory();
           }
         } catch {
           // ignore malformed
@@ -153,5 +178,5 @@ export function useWebSocket() {
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, [addMessage, updateMessage, addAlert, setConnected, updateReaction, addContract, updateContractChain]);
+  }, [addMessage, updateMessage, addAlert, setConnected, updateReaction, addContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory]);
 }

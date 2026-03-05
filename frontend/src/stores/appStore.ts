@@ -1,18 +1,32 @@
 import { create } from 'zustand';
 import type { Room, FrontendMessage, Alert, AppConfig, GuildInfo, DMChannel, ContractEntry, FrontendReaction, AuthStatus, MaskedToken } from '../types';
 import { isDemoMode, createDemoOverrides } from '../demo/demoStore';
+import { isHostedMode, getAccessToken } from '../lib/supabase';
 
-const API_BASE = '/api';
+const API_BASE = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api';
 const MAX_MESSAGES_PER_ROOM = 1000;
 const MAX_ALERTS = 50;
 const MAX_CONTRACTS = 2000;
+
+async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  if (isHostedMode) {
+    const token = await getAccessToken();
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+  }
+  return fetch(input, { ...init, headers });
+}
 
 interface AppState {
   authStatus: AuthStatus | null;
   authLoading: boolean;
   rooms: Room[];
   activeRoomId: string | null;
-  activeView: 'chat' | 'contracts' | 'settings';
+  activeView: 'chat' | 'contracts' | 'settings' | 'profile';
   settingsSection: string | null;
   messages: Record<string, FrontendMessage[]>;
   alerts: Alert[];
@@ -34,7 +48,7 @@ interface AppState {
   setFocusFilter: (filter: AppState['focusFilter']) => void;
   clearFocusFilter: () => void;
   setActiveRoom: (roomId: string | null) => void;
-  setActiveView: (view: 'chat' | 'contracts' | 'settings', settingsSection?: string) => void;
+  setActiveView: (view: 'chat' | 'contracts' | 'settings' | 'profile', settingsSection?: string) => void;
   addMessage: (message: FrontendMessage, roomIds: string[]) => void;
   updateMessage: (update: { messageId: string; channelId: string; embeds?: FrontendMessage['embeds']; content?: string; attachments?: FrontendMessage['attachments'] }) => void;
   addAlert: (alert: Alert) => void;
@@ -104,7 +118,7 @@ export const useAppStore = create<AppState>((set, get) => {
     if (demo) return demo.checkAuth();
     try {
       set({ authLoading: true });
-      const res = await fetch(`${API_BASE}/auth/status`);
+      const res = await apiFetch(`${API_BASE}/auth/status`);
       const status: AuthStatus = await res.json();
       set({ authStatus: status, authLoading: false });
     } catch {
@@ -115,7 +129,7 @@ export const useAppStore = create<AppState>((set, get) => {
   submitToken: async (token: string) => {
     if (demo) return demo.submitToken();
     try {
-      const res = await fetch(`${API_BASE}/auth/token`, {
+      const res = await apiFetch(`${API_BASE}/auth/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token }),
@@ -132,7 +146,7 @@ export const useAppStore = create<AppState>((set, get) => {
   fetchMaskedTokens: async () => {
     if (demo) return demo.fetchMaskedTokens();
     try {
-      const res = await fetch(`${API_BASE}/auth/tokens`);
+      const res = await apiFetch(`${API_BASE}/auth/tokens`);
       if (!res.ok) return;
       const data = await res.json();
       set({ maskedTokens: data.tokens ?? [] });
@@ -142,7 +156,7 @@ export const useAppStore = create<AppState>((set, get) => {
   addToken: async (token: string) => {
     if (demo) return demo.addToken();
     try {
-      const res = await fetch(`${API_BASE}/auth/tokens/add`, {
+      const res = await apiFetch(`${API_BASE}/auth/tokens/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token }),
@@ -160,7 +174,7 @@ export const useAppStore = create<AppState>((set, get) => {
   removeToken: async (index: number) => {
     if (demo) return demo.removeToken();
     try {
-      const res = await fetch(`${API_BASE}/auth/tokens/${index}`, { method: 'DELETE' });
+      const res = await apiFetch(`${API_BASE}/auth/tokens/${index}`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) return { success: false, error: data.error };
       await get().fetchMaskedTokens();
@@ -276,7 +290,7 @@ export const useAppStore = create<AppState>((set, get) => {
   deleteContract: async (messageId, address) => {
     if (demo) return demo.deleteContract(messageId, address);
     try {
-      const res = await fetch(`${API_BASE}/contracts/${messageId}/${encodeURIComponent(address)}`, { method: 'DELETE' });
+      const res = await apiFetch(`${API_BASE}/contracts/${messageId}/${encodeURIComponent(address)}`, { method: 'DELETE' });
       if (!res.ok) return;
       set((state) => ({
         contracts: state.contracts.filter((c) => !(c.messageId === messageId && c.address === address)),
@@ -289,7 +303,7 @@ export const useAppStore = create<AppState>((set, get) => {
   deleteAllContracts: async () => {
     if (demo) return demo.deleteAllContracts();
     try {
-      const res = await fetch(`${API_BASE}/contracts`, { method: 'DELETE' });
+      const res = await apiFetch(`${API_BASE}/contracts`, { method: 'DELETE' });
       if (!res.ok) return;
       set({ contracts: [] });
     } catch (err) {
@@ -299,18 +313,21 @@ export const useAppStore = create<AppState>((set, get) => {
 
   fetchRooms: async () => {
     if (demo) return demo.fetchRooms();
-    const res = await fetch(`${API_BASE}/rooms`);
-    const rooms: Room[] = await res.json();
-    set({ rooms });
-    if (rooms.length > 0 && !get().activeRoomId) {
-      set({ activeRoomId: rooms[0].id });
-    }
+    try {
+      const res = await apiFetch(`${API_BASE}/rooms`);
+      if (!res.ok) return;
+      const rooms: Room[] = await res.json();
+      set({ rooms });
+      if (rooms.length > 0 && !get().activeRoomId) {
+        set({ activeRoomId: rooms[0].id });
+      }
+    } catch {}
   },
 
   fetchHistory: async () => {
     if (demo) return demo.fetchHistory();
     try {
-      const res = await fetch(`${API_BASE}/history`);
+      const res = await apiFetch(`${API_BASE}/history`);
       if (!res.ok) return;
       const history: Record<string, FrontendMessage[]> = await res.json();
       set((state) => {
@@ -337,29 +354,38 @@ export const useAppStore = create<AppState>((set, get) => {
 
   fetchGuilds: async () => {
     if (demo) return demo.fetchGuilds();
-    const res = await fetch(`${API_BASE}/guilds`);
-    const guilds: GuildInfo[] = await res.json();
-    set({ guilds });
+    try {
+      const res = await apiFetch(`${API_BASE}/guilds`);
+      if (!res.ok) return;
+      const guilds: GuildInfo[] = await res.json();
+      set({ guilds });
+    } catch {}
   },
 
   fetchDMChannels: async () => {
     if (demo) return demo.fetchDMChannels();
-    const res = await fetch(`${API_BASE}/dm-channels`);
-    const dmChannels: DMChannel[] = await res.json();
-    set({ dmChannels });
+    try {
+      const res = await apiFetch(`${API_BASE}/dm-channels`);
+      if (!res.ok) return;
+      const dmChannels: DMChannel[] = await res.json();
+      set({ dmChannels });
+    } catch {}
   },
 
   fetchConfig: async () => {
     if (demo) return demo.fetchConfig();
-    const res = await fetch(`${API_BASE}/config`);
-    const config: AppConfig = await res.json();
-    set({ config });
+    try {
+      const res = await apiFetch(`${API_BASE}/config`);
+      if (!res.ok) return;
+      const config: AppConfig = await res.json();
+      set({ config });
+    } catch {}
   },
 
   fetchContracts: async () => {
     if (demo) return demo.fetchContracts();
     try {
-      const res = await fetch(`${API_BASE}/contracts`);
+      const res = await apiFetch(`${API_BASE}/contracts`);
       if (!res.ok) return;
       const contracts: ContractEntry[] = await res.json();
       set({ contracts });
@@ -370,7 +396,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
   createRoom: async (name, channels, highlightedUsers, color, filteredUsers, filterEnabled) => {
     if (demo) return demo.createRoom(name, channels, highlightedUsers, color, filteredUsers, filterEnabled);
-    const res = await fetch(`${API_BASE}/rooms`, {
+    const res = await apiFetch(`${API_BASE}/rooms`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, channels, highlightedUsers, color: color ?? null, filteredUsers: filteredUsers ?? [], filterEnabled: filterEnabled ?? false }),
@@ -382,7 +408,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
   updateRoom: async (id, data) => {
     if (demo) return demo.updateRoom(id, data);
-    await fetch(`${API_BASE}/rooms/${id}`, {
+    await apiFetch(`${API_BASE}/rooms/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -392,7 +418,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
   deleteRoom: async (id) => {
     if (demo) return demo.deleteRoom(id);
-    await fetch(`${API_BASE}/rooms/${id}`, { method: 'DELETE' });
+    await apiFetch(`${API_BASE}/rooms/${id}`, { method: 'DELETE' });
     const state = get();
     if (state.activeRoomId === id) {
       const remaining = state.rooms.filter((r) => r.id !== id);
@@ -403,7 +429,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
   updateConfig: async (data) => {
     if (demo) return demo.updateConfig(data);
-    await fetch(`${API_BASE}/config`, {
+    await apiFetch(`${API_BASE}/config`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -421,7 +447,7 @@ export const useAppStore = create<AppState>((set, get) => {
           formData.append('files', file);
         }
       }
-      const res = await fetch(`${API_BASE}/send-message`, {
+      const res = await apiFetch(`${API_BASE}/send-message`, {
         method: 'POST',
         body: formData,
       });

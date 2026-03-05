@@ -2,7 +2,13 @@ import { configStore } from '../config/store.js';
 import { detectContractAddresses } from './contract.js';
 import { matchKeywords } from './keywordMatcher.js';
 import type { GatewayManager } from '../discord/gatewayManager.js';
-import type { FrontendMessage, DiscordMessage, KeywordPattern } from '../discord/types.js';
+import type { FrontendMessage, DiscordMessage, KeywordPattern, AppConfig } from '../discord/types.js';
+
+export interface MessageProcessorContext {
+  config: AppConfig;
+  isHighlighted: boolean;
+  cacheUserName: (discordUserId: string, displayName: string) => void;
+}
 
 export function processDiscordMessage(
   gateway: GatewayManager,
@@ -10,9 +16,11 @@ export function processDiscordMessage(
   channelName?: string,
   guildName?: string | null,
   roomKeywordPatterns?: KeywordPattern[],
+  ctx?: MessageProcessorContext,
 ): FrontendMessage {
-  const config = configStore.getConfig();
-  const isHighlighted = configStore.isUserHighlighted(rawMsg.author.id);
+  const config = ctx?.config ?? configStore.getConfig();
+  const isHighlighted = ctx?.isHighlighted ?? configStore.isUserHighlighted(rawMsg.author.id);
+  const cacheUserName = ctx?.cacheUserName ?? ((id: string, name: string) => configStore.cacheUserName(id, name));
 
   let contractResult = { hasContract: false, addresses: [] as string[] };
   if (config.contractDetection) {
@@ -52,7 +60,7 @@ export function processDiscordMessage(
   const resolvedGuildName = guildName !== undefined ? guildName : (guildId ? gateway.getGuildName(guildId) : null);
 
   const displayName = rawMsg.author.global_name ?? rawMsg.author.username;
-  configStore.cacheUserName(rawMsg.author.id, displayName);
+  cacheUserName(rawMsg.author.id, displayName);
 
   return {
     id: rawMsg.id,

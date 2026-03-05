@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAppStore } from '../stores/appStore';
-import { Hash, Plus, Settings, Trash2, FileText, HelpCircle, PanelLeftClose } from 'lucide-react';
+import { Hash, Plus, Settings, Trash2, FileText, HelpCircle, PanelLeftClose, User } from 'lucide-react';
+import { isHostedMode } from '../lib/supabase';
 import { getAvatarUrl } from './Message';
 import ConfirmModal from './ConfirmModal';
 
@@ -225,6 +226,19 @@ export default function Sidebar() {
           <Settings size={18} className={activeView === 'settings' ? 'text-discord-text' : ''} />
           <span>Settings</span>
         </button>
+        {isHostedMode && (
+          <button
+            onClick={() => setActiveView('profile')}
+            className={`p-1.5 rounded transition-colors ${
+              activeView === 'profile'
+                ? 'text-discord-header-primary bg-discord-hover-light'
+                : 'text-discord-header-secondary hover:text-discord-header-primary hover:bg-discord-hover'
+            }`}
+            title="Profile"
+          >
+            <User size={16} />
+          </button>
+        )}
         <button
           onClick={() => setActiveView('settings', 'help')}
           className="p-1.5 rounded text-discord-header-secondary hover:text-discord-header-primary hover:bg-discord-hover transition-colors"
