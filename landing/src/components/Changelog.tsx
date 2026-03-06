@@ -9,6 +9,15 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2026-03-06',
+    added: [
+      '**Mobile responsivity** — improved mobile-friendly layouts and touch interactions across the app',
+    ],
+    fixed: [
+      'Backend environment configuration',
+    ],
+  },
+  {
     date: '2026-03-05',
     added: [
       '**Hosted web app mode** — Trenchcord can now run as a multi-user web app, no installation required',

@@ -4,6 +4,8 @@
 
 Aggregate channels, track key users, auto-detect contracts, and trade in one click — all from a single dashboard. Trenchcord is a custom Discord frontend that combines multiple guild channels and DMs into custom "rooms" with user highlighting, keyword alerts, contract address detection, and optional chat capabilities.
 
+**Use the hosted app at [app.trenchcord.app](https://app.trenchcord.app)** — no setup required — or [self-host](#installation) it on your own machine.
+
 ## Features
 
 - **Custom Rooms** — Aggregate channels from multiple servers into unified rooms
@@ -20,9 +22,22 @@ Aggregate channels, track key users, auto-detect contracts, and trade in one cli
 - **Custom Link Templates** — Configure which trading platform links generate for contracts
 - **Quick Reply & Chat** — Send messages and files directly from the dashboard with a built-in channel selector
 
-## Demo
+## Use Online
 
-Want to see Trenchcord in action before installing? Check out the live demo at **[demo.trenchcord.app](https://demo.trenchcord.app)** — no setup required.
+The fastest way to get started — no installation, no setup. Just sign up and go:
+
+1. Go to **[app.trenchcord.app](https://app.trenchcord.app)**
+2. Create an account (email/password or Discord OAuth)
+3. Add your Discord token — it's encrypted with AES-256-GCM before being stored
+4. Start monitoring
+
+### Demo
+
+Want to try Trenchcord without connecting a token? Check out the live demo at **[demo.trenchcord.app](https://demo.trenchcord.app)**.
+
+## Self-Host
+
+Prefer to run everything on your own machine? When self-hosting, there is **no database** — your tokens and all configuration are stored locally in a simple JSON file. Nothing ever leaves your PC.
 
 ## How It Works
 
@@ -233,16 +248,27 @@ trenchcord/
 └── README.md
 ```
 
+## Security
+
+Trenchcord takes token security seriously:
+
+- **AES-256-GCM Encryption** — In hosted mode, every Discord token is encrypted at rest using AES-256-GCM before being stored in the database. Tokens are never stored, logged, or transmitted in plain text. [View the encryption source code](https://github.com/DanielHighETH/trenchcord/blob/main/backend/src/auth/encryption.ts).
+- **Server Hardening** — Helmet security headers, API rate limiting, strict CORS policies, and JWT-authenticated WebSockets protect every request.
+- **Self-Hosted = No Database** — When self-hosting, there is no database at all. Your tokens and configuration live in a local JSON file on your machine — nothing ever leaves your PC.
+- **Open Source & Auditable** — The entire codebase is open source. Don't just trust it — inspect every line yourself.
+
 ## Configuration
 
-All configuration is managed through the frontend UI and stored in `backend/data/config.json`. This file is auto-created from `backend/data/config.default.json` on first run. It stores your Discord tokens, rooms, highlighted users, contract detection settings, and more. The file is gitignored and never leaves your machine.
+**Self-hosted:** All configuration is managed through the frontend UI and stored in `backend/data/config.json`. This file is auto-created from `backend/data/config.default.json` on first run. It stores your Discord tokens, rooms, highlighted users, contract detection settings, and more. The file is gitignored and never leaves your machine.
+
+**Hosted (app.trenchcord.app):** Configuration is stored per-user in a PostgreSQL database (Supabase) with Row Level Security. Each user can only access their own data. Discord tokens are encrypted with AES-256-GCM before storage.
 
 ## Disclaimer
 
-Trenchcord is an independent project and is not affiliated with Discord Inc. Using self-bots is against Discord's Terms of Service. This tool is for personal and educational use only. Use at your own risk. Never share your token or deploy this publicly.
+Trenchcord is an independent project and is not affiliated with Discord Inc. Using self-bots is against Discord's Terms of Service. This tool is for personal and educational use only. Use at your own risk.
 
 ## Open Source
 
 Trenchcord is fully open source. Inspect the code, build on top of it, add your own features, and share with the community.
 
-[View on GitHub](https://github.com/DanielHighETH/trenchcord) · [Live Demo](https://demo.trenchcord.app) · [Website](https://trenchcord.app)
+[Website](https://trenchcord.app) · [Launch App](https://app.trenchcord.app) · [Live Demo](https://demo.trenchcord.app) · [GitHub](https://github.com/DanielHighETH/trenchcord) · [Twitter / X](https://x.com/trenchcordapp)

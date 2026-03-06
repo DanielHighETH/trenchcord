@@ -2,6 +2,14 @@
 
 All notable changes to Trenchcord are documented here.
 
+## 2026-03-06
+
+### Added
+- **Mobile responsivity** — improved mobile-friendly layouts and touch interactions across the app
+
+### Fixed
+- Backend environment configuration
+
 ## 2026-03-05
 
 ### Added
