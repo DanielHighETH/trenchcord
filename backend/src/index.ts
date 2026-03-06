@@ -1,6 +1,9 @@
-import 'dotenv/config';
+import { config as dotenvConfig } from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+const __envDir = path.dirname(fileURLToPath(import.meta.url));
+dotenvConfig({ path: path.resolve(__envDir, '../.env'), override: true });
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -20,7 +23,7 @@ import { sendPushover } from './utils/pushover.js';
 import type { DiscordMessage, PushoverConfig, FrontendMessage, ContractLinkTemplates } from './discord/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PORT = 3001;
+const PORT = parseInt(process.env.PORT ?? '3001', 10);
 const LOCAL_USER_ID = 'local';
 
 const gatewayPool = new UserGatewayPool();

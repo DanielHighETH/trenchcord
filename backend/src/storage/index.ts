@@ -4,14 +4,12 @@ import { SupabaseStorageProvider } from './supabase.js';
 
 export type { StorageProvider } from './interface.js';
 
-const mode = process.env.TRENCHCORD_MODE ?? 'local';
-
 let _provider: StorageProvider | null = null;
 
 export function getStorageProvider(): StorageProvider {
   if (_provider) return _provider;
 
-  if (mode === 'hosted') {
+  if (isHostedMode()) {
     _provider = new SupabaseStorageProvider();
   } else {
     _provider = new JsonStorageProvider();
@@ -25,5 +23,5 @@ export function setStorageProvider(provider: StorageProvider): void {
 }
 
 export function isHostedMode(): boolean {
-  return mode === 'hosted';
+  return (process.env.TRENCHCORD_MODE ?? 'local') === 'hosted';
 }
