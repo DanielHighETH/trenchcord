@@ -391,7 +391,7 @@ export default function ChatView() {
 
       {/* Search bar */}
       {searchOpen && (
-        <div className="px-4 py-2 border-b border-discord-dark/60 bg-discord-embed-bg shrink-0 flex items-center gap-2">
+        <div className="px-2 sm:px-4 py-2 border-b border-discord-dark/60 bg-discord-embed-bg shrink-0 flex items-center gap-2">
           <Search size={16} className="text-discord-text-muted shrink-0" />
           <input
             ref={searchInputRef}
@@ -448,7 +448,7 @@ export default function ChatView() {
 
       {/* Hidden users panel */}
       {hiddenPanelOpen && channelHiddenUsers.length > 0 && (
-        <div className="border-b border-discord-dark/60 bg-discord-embed-bg px-4 py-3 shrink-0">
+        <div className="border-b border-discord-dark/60 bg-discord-embed-bg px-3 sm:px-4 py-3 shrink-0">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted">
               Hidden Users
@@ -464,13 +464,13 @@ export default function ChatView() {
             {channelHiddenUsers.map((entry) => (
               <div
                 key={`${entry.guildId}:${entry.channelId}:${entry.userId}`}
-                className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded bg-discord-sidebar/60"
+                className="flex items-center justify-between gap-2 px-2 sm:px-2.5 py-1.5 rounded bg-discord-sidebar/60"
               >
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center gap-2 min-w-0 flex-wrap">
                   <EyeOff size={12} className="shrink-0 text-discord-red/70" />
                   <span className="text-sm text-white font-medium truncate">{entry.displayName}</span>
-                  <span className="text-[11px] text-discord-text-muted font-mono">{entry.userId}</span>
-                  <span className="text-[10px] text-discord-text-muted truncate">
+                  <span className="text-[11px] text-discord-text-muted font-mono hidden sm:inline">{entry.userId}</span>
+                  <span className="text-[10px] text-discord-text-muted truncate hidden sm:inline">
                     {entry.guildName ? `${entry.guildName} / ` : ''}#{entry.channelName}
                   </span>
                 </div>

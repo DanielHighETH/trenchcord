@@ -286,22 +286,61 @@ export default function GlobalSettings() {
   };
 
   const Toggle = ({ value, onChange, label }: { value: boolean; onChange: (v: boolean) => void; label: string }) => (
-    <label className="flex items-center gap-3 cursor-pointer">
+    <label className="flex items-start gap-3 cursor-pointer">
       <div
-        className={`w-10 h-5 rounded-full transition-colors relative ${value ? 'bg-discord-green' : 'bg-discord-input'}`}
+        className={`w-10 h-5 rounded-full transition-colors relative shrink-0 mt-0.5 ${value ? 'bg-discord-green' : 'bg-discord-input'}`}
         onClick={() => onChange(!value)}
       >
         <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${value ? 'translate-x-5' : 'translate-x-0.5'}`} />
       </div>
-      <span className="text-sm text-discord-text">{label}</span>
+      <span className="text-xs sm:text-sm text-discord-text leading-snug">{label}</span>
     </label>
   );
 
   return (
-    <div className="flex-1 flex h-full bg-discord-dark">
-      {/* Section navigation */}
-      <div className="w-44 sm:w-60 bg-discord-sidebar/50 border-r border-discord-divider flex flex-col shrink-0">
-        <div className="px-2 sm:px-4 pt-5 pb-3 flex items-center gap-2">
+    <div className="flex-1 flex flex-col md:flex-row h-full w-full min-w-0 bg-discord-dark">
+      {/* Mobile header + horizontal nav */}
+      <div className="md:hidden shrink-0 border-b border-discord-divider bg-discord-sidebar/50">
+        <div className="px-3 pt-3 pb-2 flex items-center gap-2">
+          {sidebarCollapsed && (
+            <button
+              onClick={toggleSidebar}
+              className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-white transition-colors"
+              title="Show sidebar"
+            >
+              <PanelLeftOpen size={16} />
+            </button>
+          )}
+          <button
+            onClick={() => guardNavigation(() => setActiveView('chat'))}
+            className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-white transition-colors"
+            title="Back to chat"
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <h2 className="text-sm font-semibold text-white uppercase tracking-wide">Settings</h2>
+        </div>
+        <nav className="flex overflow-x-auto px-2 pb-2 gap-1 scrollbar-none">
+          {SECTIONS.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => { if (id !== section) setSection(id); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${
+                section === id
+                  ? 'bg-discord-blurple text-white'
+                  : 'bg-discord-dark/50 text-discord-text-muted hover:text-discord-text'
+              }`}
+            >
+              <Icon size={13} className="shrink-0" />
+              {label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* Desktop sidebar nav */}
+      <div className="hidden md:flex w-60 bg-discord-sidebar/50 border-r border-discord-divider flex-col shrink-0">
+        <div className="px-4 pt-5 pb-3 flex items-center gap-2">
           {sidebarCollapsed && (
             <button
               onClick={toggleSidebar}
@@ -325,7 +364,7 @@ export default function GlobalSettings() {
             <button
               key={id}
               onClick={() => { if (id !== section) setSection(id); }}
-              className={`w-full flex items-center gap-2.5 px-2 sm:px-3 py-2 rounded text-sm text-left transition-colors ${
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded text-sm text-left transition-colors ${
                 section === id
                   ? 'bg-discord-hover text-white'
                   : 'text-discord-text-muted hover:bg-discord-hover/50 hover:text-discord-text'
@@ -339,32 +378,32 @@ export default function GlobalSettings() {
       </div>
 
       {/* Content area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl mx-auto px-4 sm:px-8 py-6 space-y-6" data-form-type="other" data-lpignore="true" data-1p-ignore>
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="w-full max-w-2xl mx-auto px-3 sm:px-6 md:px-8 py-3 sm:py-6 space-y-5 sm:space-y-6" data-form-type="other" data-lpignore="true" data-1p-ignore>
 
             {section === 'tokens' && (
               <>
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-1">Discord Tokens</h3>
-                  <p className="text-sm text-discord-text-muted mb-4">
+                  <h3 className="text-base sm:text-base sm:text-lg font-semibold text-white mb-1">Discord Tokens</h3>
+                  <p className="text-xs sm:text-sm text-discord-text-muted mb-3 sm:mb-4">
                     Manage your Discord authentication tokens. Multiple tokens allow monitoring across different accounts.
                   </p>
 
                   {maskedTokens.length > 0 && (
                     <div className="space-y-1.5 mb-4">
                       {maskedTokens.map((t) => (
-                        <div key={t.index} className="flex items-center justify-between px-3 py-2.5 bg-discord-sidebar rounded">
-                          <div className="flex items-center gap-2 min-w-0">
+                        <div key={t.index} className="flex items-center justify-between gap-2 px-2 sm:px-3 py-2 sm:py-2.5 bg-discord-sidebar rounded">
+                          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
                             <Key size={14} className="shrink-0 text-discord-blurple" />
-                            <span className="text-sm text-discord-text font-mono tracking-wider truncate">{t.masked}</span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-discord-blurple/20 text-discord-blurple font-semibold shrink-0">
-                              TOKEN {t.index + 1}
+                            <span className="text-xs sm:text-sm text-discord-text font-mono tracking-wider truncate">{t.masked}</span>
+                            <span className="text-[10px] px-1 sm:px-1.5 py-0.5 rounded bg-discord-blurple/20 text-discord-blurple font-semibold shrink-0">
+                              #{t.index + 1}
                             </span>
                           </div>
                           <button
                             onClick={async () => { await removeToken(t.index); }}
-                            className="text-discord-text-muted hover:text-discord-red shrink-0 ml-2"
+                            className="text-discord-text-muted hover:text-discord-red shrink-0"
                             title="Remove token"
                           >
                             <Trash2 size={14} />
@@ -397,7 +436,7 @@ export default function GlobalSettings() {
                         }}
                         placeholder="Paste Discord token..."
                         name="trenchcord-token-field"
-                        className="w-full bg-discord-sidebar border-none rounded px-3 py-2 pr-9 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple font-mono"
+                        className="w-full bg-discord-sidebar border-none rounded px-2 sm:px-3 py-2 pr-8 sm:pr-9 text-xs sm:text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple font-mono"
                         disabled={addingToken}
                         autoComplete="one-time-code"
                         data-1p-ignore
@@ -439,12 +478,12 @@ export default function GlobalSettings() {
             {section === 'general' && (
               <>
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-4">General</h3>
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-4">General</h3>
 
                   <div className="space-y-5">
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Message Display</h4>
-                      <p className="text-sm text-discord-text-muted mb-3">
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Message Display</h4>
+                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
                         Choose how messages are displayed in chat.
                       </p>
                       <div className="flex gap-1.5">
@@ -480,8 +519,8 @@ export default function GlobalSettings() {
                       )}
                     </div>
 
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Role Colors</h4>
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Role Colors</h4>
                       <Toggle
                         value={roleColors}
                         onChange={setRoleColors}
@@ -489,8 +528,8 @@ export default function GlobalSettings() {
                       />
                     </div>
 
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Contract Detection</h4>
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Contract Detection</h4>
                       <Toggle
                         value={contractDetection}
                         onChange={setContractDetection}
@@ -498,8 +537,8 @@ export default function GlobalSettings() {
                       />
                     </div>
 
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Open in Discord App</h4>
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Open in Discord App</h4>
                       <Toggle
                         value={openInDiscordApp}
                         onChange={setOpenInDiscordApp}
@@ -507,16 +546,16 @@ export default function GlobalSettings() {
                       />
                     </div>
 
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Badge Click Action</h4>
-                      <p className="text-sm text-discord-text-muted mb-3">
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Badge Click Action</h4>
+                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
                         What happens when you click a keyword match or contract badge on a message.
                       </p>
-                      <div className="flex gap-1.5">
+                      <div className="flex flex-wrap gap-1.5">
                         {([
-                          ['discord', 'Open in Discord'],
-                          ['platform', 'Open in Platform'],
-                          ['both', 'Discord + Platform'],
+                          ['discord', 'Discord'],
+                          ['platform', 'Platform'],
+                          ['both', 'Both'],
                         ] as [BadgeClickAction, string][]).map(([action, label]) => (
                           <button
                             key={action}
@@ -538,16 +577,16 @@ export default function GlobalSettings() {
                       </p>
                     </div>
 
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Chat / Send Messages</h4>
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Chat / Send Messages</h4>
                       <Toggle
                         value={chattingEnabled}
                         onChange={setChattingEnabled}
                         label="Enable sending messages through Trenchcord"
                       />
-                      <div className="mt-3 p-3 rounded bg-discord-red/10 border border-discord-red/30">
-                        <p className="text-xs text-discord-red font-semibold mb-1">Warning: Increased Detection Risk</p>
-                        <p className="text-[11px] text-discord-text-muted leading-relaxed">
+                      <div className="mt-3 p-2.5 sm:p-3 rounded bg-discord-red/10 border border-discord-red/30">
+                        <p className="text-[11px] sm:text-xs text-discord-red font-semibold mb-1">Warning: Detection Risk</p>
+                        <p className="text-[10px] sm:text-[11px] text-discord-text-muted leading-relaxed">
                           Sending messages through this app increases the chance of your Discord account being detected and flagged.
                           Reading messages is passive and harder to detect, but sending messages leaves a direct API footprint
                           that Discord can associate with automated or third-party usage. Use at your own risk.
@@ -562,17 +601,17 @@ export default function GlobalSettings() {
             {section === 'contracts' && (
               <>
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-4">Contracts</h3>
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-4">Contracts</h3>
 
                   <div className="space-y-5">
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Contract Click Action</h4>
-                      <p className="text-sm text-discord-text-muted mb-3">
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Contract Click Action</h4>
+                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
                         What happens when you click a contract address in chat.
                       </p>
-                      <div className="flex gap-1.5">
+                      <div className="flex flex-wrap gap-1.5">
                         {([
-                          ['copy', 'Copy Address'],
+                          ['copy', 'Copy'],
                           ['copy_open', 'Copy + Open'],
                           ['open', 'Open Only'],
                         ] as [ContractClickAction, string][]).map(([action, label]) => (
@@ -591,15 +630,15 @@ export default function GlobalSettings() {
                       </div>
                     </div>
 
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Trading Platform</h4>
-                      <p className="text-sm text-discord-text-muted mb-3">
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Trading Platform</h4>
+                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
                         Choose which trading platform opens when you click a contract address.
                       </p>
                       <div className="space-y-3">
                         <div className="px-3 py-2.5 bg-discord-dark rounded">
                           <label className="text-[11px] text-discord-text-muted mb-1.5 block">SOL Platform</label>
-                          <div className="flex gap-1.5">
+                          <div className="flex flex-wrap gap-1.5">
                             {(['axiom', 'padre', 'bloom', 'gmgn', 'custom'] as SolPlatform[]).map((p) => (
                               <button
                                 key={p}
@@ -626,7 +665,7 @@ export default function GlobalSettings() {
                         </div>
                         <div className="px-3 py-2.5 bg-discord-dark rounded">
                           <label className="text-[11px] text-discord-text-muted mb-1.5 block">EVM Platform</label>
-                          <div className="flex gap-1.5">
+                          <div className="flex flex-wrap gap-1.5">
                             {(['gmgn', 'bloom', 'custom'] as EvmPlatform[]).map((p) => (
                               <button
                                 key={p}
@@ -654,8 +693,8 @@ export default function GlobalSettings() {
                       </div>
                     </div>
 
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Auto-Open Highlighted Contracts</h4>
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Auto-Open Highlighted Contracts</h4>
                       <Toggle
                         value={autoOpenHighlightedContracts}
                         onChange={setAutoOpenHighlightedContracts}
@@ -663,34 +702,34 @@ export default function GlobalSettings() {
                       />
                     </div>
 
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Address Colors</h4>
-                      <p className="text-sm text-discord-text-muted mb-3">
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Address Colors</h4>
+                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
                         Customize highlight colors for detected contract addresses by chain type.
                       </p>
                       <div className="space-y-3">
-                        <div className="flex items-center gap-3 px-3 py-2 bg-discord-dark rounded">
+                        <div className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 bg-discord-dark rounded">
                           <ColorPickerWithAlpha
                             value={evmAddressColor}
                             onChange={(c) => setEvmAddressColor(c)}
                             defaultColor="#fee75c"
                             showTextInput
                           />
-                          <span className="text-sm text-discord-text flex-1">EVM (0x...)</span>
+                          <span className="text-xs sm:text-sm text-discord-text flex-1">EVM (0x...)</span>
                           {evmAddressColor !== '#fee75c' && (
-                            <button onClick={() => setEvmAddressColor('#fee75c')} className="text-[11px] text-discord-text-muted hover:text-white">Reset</button>
+                            <button onClick={() => setEvmAddressColor('#fee75c')} className="text-[11px] text-discord-text-muted hover:text-white shrink-0">Reset</button>
                           )}
                         </div>
-                        <div className="flex items-center gap-3 px-3 py-2 bg-discord-dark rounded">
+                        <div className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 bg-discord-dark rounded">
                           <ColorPickerWithAlpha
                             value={solAddressColor}
                             onChange={(c) => setSolAddressColor(c)}
                             defaultColor="#14f195"
                             showTextInput
                           />
-                          <span className="text-sm text-discord-text flex-1">SOL</span>
+                          <span className="text-xs sm:text-sm text-discord-text flex-1">SOL</span>
                           {solAddressColor !== '#14f195' && (
-                            <button onClick={() => setSolAddressColor('#14f195')} className="text-[11px] text-discord-text-muted hover:text-white">Reset</button>
+                            <button onClick={() => setSolAddressColor('#14f195')} className="text-[11px] text-discord-text-muted hover:text-white shrink-0">Reset</button>
                           )}
                         </div>
                       </div>
@@ -703,11 +742,11 @@ export default function GlobalSettings() {
             {section === 'sounds' && (
               <>
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-4">Sounds & Notifications</h3>
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-4">Sounds & Notifications</h3>
 
                   <div className="space-y-5">
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Desktop Notifications</h4>
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Desktop Notifications</h4>
                       <Toggle
                         value={desktopNotifications}
                         onChange={async (v) => {
@@ -724,7 +763,7 @@ export default function GlobalSettings() {
                       />
                     </div>
 
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
                       <h4 className="text-sm font-semibold text-white mb-3">Sound Settings</h4>
                       <Toggle
                         value={messageSounds}
@@ -765,11 +804,11 @@ export default function GlobalSettings() {
                           ] as [SoundType, string][]).map(([type, label]) => {
                             const sc = soundSettings[type];
                             return (
-                              <div key={type} className="px-3 py-3 bg-discord-dark rounded space-y-2.5">
+                              <div key={type} className="px-2 sm:px-3 py-2.5 sm:py-3 bg-discord-dark rounded space-y-2.5">
                                 <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <Volume2 size={14} className="text-discord-text-muted" />
-                                    <span className="text-sm text-discord-text font-medium">{label}</span>
+                                  <div className="flex items-center gap-1.5 sm:gap-2">
+                                    <Volume2 size={14} className="text-discord-text-muted shrink-0" />
+                                    <span className="text-xs sm:text-sm text-discord-text font-medium">{label}</span>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <button
@@ -816,7 +855,7 @@ export default function GlobalSettings() {
                                     </div>
 
                                     <div className="space-y-2">
-                                      <div className="flex items-center gap-2">
+                                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                                         <span className="text-[11px] text-discord-text-muted">Sound:</span>
                                         <button
                                           onClick={() => setSoundSettings((prev) => ({
@@ -917,8 +956,8 @@ export default function GlobalSettings() {
                       )}
                     </div>
 
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Channel Sounds</h4>
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Channel Sounds</h4>
                       <p className="text-xs text-discord-text-muted mb-3">
                         Play a notification sound for every message in specific channels, even when no highlight or keyword matches.
                       </p>
@@ -1015,12 +1054,12 @@ export default function GlobalSettings() {
                                   const chInfo = channels.find((c) => c.id === chId);
                                   const label = chInfo ? `#${chInfo.name}` : `#${chId}`;
                                   return (
-                                    <div key={chId} className="px-3 py-3 bg-discord-dark rounded space-y-2.5">
+                                    <div key={chId} className="px-2 sm:px-3 py-2.5 sm:py-3 bg-discord-dark rounded space-y-2.5">
                                       <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                          <Volume2 size={14} className="text-discord-text-muted" />
-                                          <span className="text-sm text-discord-text font-medium">{label}</span>
-                                          {chInfo?.guildName && <span className="text-[10px] text-discord-text-muted">{chInfo.guildName}</span>}
+                                        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                                          <Volume2 size={14} className="text-discord-text-muted shrink-0" />
+                                          <span className="text-xs sm:text-sm text-discord-text font-medium truncate">{label}</span>
+                                          {chInfo?.guildName && <span className="text-[10px] text-discord-text-muted hidden sm:inline">{chInfo.guildName}</span>}
                                         </div>
                                         <div className="flex items-center gap-2">
                                           <button
@@ -1060,7 +1099,7 @@ export default function GlobalSettings() {
                                             <span className="text-[11px] text-discord-text-muted w-8 text-right">{sc.volume}%</span>
                                           </div>
                                           <div className="space-y-2">
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                                               <span className="text-[11px] text-discord-text-muted">Sound:</span>
                                               <button
                                                 onClick={() => setChannelSounds((prev) => ({ ...prev, [chId]: { ...prev[chId], useCustom: false, presetSound: undefined } }))}
@@ -1154,7 +1193,7 @@ export default function GlobalSettings() {
             {section === 'pushover' && (
               <>
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-4">Pushover</h3>
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-4">Pushover</h3>
                   <div className="space-y-4">
                     <p className="text-sm text-discord-text-muted">
                       Send push notifications to your phone via{' '}
@@ -1165,11 +1204,11 @@ export default function GlobalSettings() {
                     </p>
 
                     <details className="group bg-discord-sidebar rounded-lg">
-                      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-3 cursor-pointer select-none">
                         <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         <span className="text-sm font-semibold text-white">Setup Guide</span>
                       </summary>
-                      <div className="px-4 pb-4 space-y-3">
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-3">
                         <div className="space-y-2">
                           <div className="flex items-start gap-2.5">
                             <span className="shrink-0 w-5 h-5 rounded-full bg-discord-blurple text-white text-xs font-bold flex items-center justify-center mt-0.5">1</span>
@@ -1223,7 +1262,7 @@ export default function GlobalSettings() {
 
                     {pushoverEnabled && (
                       <div className="space-y-4">
-                        <div className="p-4 bg-discord-sidebar rounded-lg space-y-3">
+                        <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-3">
                           <h4 className="text-sm font-semibold text-white">Credentials</h4>
                           <div className="px-3 py-2 bg-discord-dark rounded">
                             <label className="text-[11px] text-discord-text-muted mb-1 block">Application API Token</label>
@@ -1255,7 +1294,7 @@ export default function GlobalSettings() {
                           </div>
                         </div>
 
-                        <div className="p-4 bg-discord-sidebar rounded-lg space-y-3">
+                        <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-3">
                           <h4 className="text-sm font-semibold text-white">Triggers</h4>
                           <p className="text-xs text-discord-text-muted">Choose which events send a push notification.</p>
                           <Toggle
@@ -1280,12 +1319,12 @@ export default function GlobalSettings() {
                           />
                         </div>
 
-                        <div className="p-4 bg-discord-sidebar rounded-lg space-y-3">
+                        <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-3">
                           <h4 className="text-sm font-semibold text-white">Filters</h4>
                           <p className="text-xs text-discord-text-muted">Narrow down which messages trigger notifications. Empty = no filter (all match).</p>
 
                           {/* User filter */}
-                          <div className="px-3 py-2 bg-discord-dark rounded space-y-2">
+                          <div className="px-2 sm:px-3 py-2 bg-discord-dark rounded space-y-2">
                             <label className="text-[11px] text-discord-text-muted block">Only from these highlighted users</label>
                             {(() => {
                               const allHighlighted = Array.from(new Set([
@@ -1324,7 +1363,7 @@ export default function GlobalSettings() {
                           </div>
 
                           {/* Guild filter */}
-                          <div className="px-3 py-2 bg-discord-dark rounded space-y-2">
+                          <div className="px-2 sm:px-3 py-2 bg-discord-dark rounded space-y-2">
                             <label className="text-[11px] text-discord-text-muted block">Only from these guilds</label>
                             {(() => {
                               const filtered = guilds.filter((g) => enabledGuilds.includes(g.id));
@@ -1360,7 +1399,7 @@ export default function GlobalSettings() {
                           </div>
 
                           {/* Channel filter */}
-                          <div className="px-3 py-2 bg-discord-dark rounded space-y-2">
+                          <div className="px-2 sm:px-3 py-2 bg-discord-dark rounded space-y-2">
                             <label className="text-[11px] text-discord-text-muted block">Only from these channels</label>
                             {(() => {
                               const rooms = config?.rooms ?? [];
@@ -1419,7 +1458,7 @@ export default function GlobalSettings() {
                           </div>
                         </div>
 
-                        <div className="p-4 bg-discord-sidebar rounded-lg space-y-3">
+                        <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-3">
                           <h4 className="text-sm font-semibold text-white">Notification Settings</h4>
                           <div className="px-3 py-2 bg-discord-dark rounded">
                             <label className="text-[11px] text-discord-text-muted mb-1 block">Priority</label>
@@ -1458,11 +1497,11 @@ export default function GlobalSettings() {
             {section === 'keywords' && (
               <>
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-4">Keywords</h3>
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-4">Keywords</h3>
 
                   <div className="space-y-5">
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Keyword Alerts</h4>
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Keyword Alerts</h4>
                       <Toggle
                         value={keywordAlertsEnabled}
                         onChange={setKeywordAlertsEnabled}
@@ -1470,8 +1509,8 @@ export default function GlobalSettings() {
                       />
                     </div>
 
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Global Keyword Patterns</h4>
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Global Keyword Patterns</h4>
                       <p className="text-sm text-discord-text-muted mb-2">
                         Add patterns to match against messages globally. Use <strong className="text-discord-text">Contains</strong> for substring matches, <strong className="text-discord-text">Exact</strong> for whole-word matches, or <strong className="text-discord-text">Regex</strong> for advanced patterns.
                       </p>
@@ -1505,8 +1544,8 @@ export default function GlobalSettings() {
                             <Plus size={16} />
                           </button>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <div className="flex rounded overflow-hidden border border-discord-divider">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                          <div className="flex rounded overflow-hidden border border-discord-divider shrink-0">
                             {(['includes', 'exact', 'regex'] as KeywordMatchMode[]).map((mode) => (
                               <button
                                 key={mode}
@@ -1538,17 +1577,17 @@ export default function GlobalSettings() {
                           </p>
                         )}
                         {globalKeywordPatterns.map((kw, idx) => (
-                          <div key={idx} className="flex items-center justify-between px-3 py-2 bg-discord-dark rounded">
-                            <div className="flex items-center gap-2 min-w-0">
+                          <div key={idx} className="flex items-center justify-between gap-2 px-2 sm:px-3 py-2 bg-discord-dark rounded">
+                            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
                               {(kw.matchMode === 'regex' || (!kw.matchMode && kw.isRegex)) && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-400/20 text-orange-400 font-semibold shrink-0">REGEX</span>
+                                <span className="text-[10px] px-1 sm:px-1.5 py-0.5 rounded bg-orange-400/20 text-orange-400 font-semibold shrink-0">REGEX</span>
                               )}
                               {kw.matchMode === 'exact' && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-discord-blurple/20 text-discord-blurple font-semibold shrink-0">EXACT</span>
+                                <span className="text-[10px] px-1 sm:px-1.5 py-0.5 rounded bg-discord-blurple/20 text-discord-blurple font-semibold shrink-0">EXACT</span>
                               )}
-                              <span className="text-sm text-discord-text font-mono truncate">{kw.pattern}</span>
+                              <span className="text-xs sm:text-sm text-discord-text font-mono truncate">{kw.pattern}</span>
                               {kw.label && (
-                                <span className="text-[11px] text-discord-text-muted">({kw.label})</span>
+                                <span className="text-[10px] sm:text-[11px] text-discord-text-muted hidden sm:inline">({kw.label})</span>
                               )}
                             </div>
                             <button
@@ -1569,8 +1608,8 @@ export default function GlobalSettings() {
             {section === 'users' && (
               <>
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-1">Global Highlighted Users</h3>
-                  <p className="text-sm text-discord-text-muted mb-4">
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Global Highlighted Users</h3>
+                  <p className="text-xs sm:text-sm text-discord-text-muted mb-3 sm:mb-4">
                     These users will be highlighted in all rooms.
                   </p>
                   <div className="flex gap-2 mb-4">
@@ -1600,11 +1639,11 @@ export default function GlobalSettings() {
                       </p>
                     )}
                     {globalUsers.map((uid) => (
-                      <div key={uid} className="flex items-center justify-between px-3 py-2 bg-discord-sidebar rounded">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-sm text-discord-text font-mono">{uid}</span>
+                      <div key={uid} className="flex items-center justify-between gap-2 px-2 sm:px-3 py-2 bg-discord-sidebar rounded">
+                        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                          <span className="text-xs sm:text-sm text-discord-text font-mono truncate">{uid}</span>
                           {userNameMap.has(uid) && (
-                            <span className="text-[11px] text-discord-text-muted">{userNameMap.get(uid)}</span>
+                            <span className="text-[10px] sm:text-[11px] text-discord-text-muted shrink-0">{userNameMap.get(uid)}</span>
                           )}
                         </div>
                         <button
@@ -1623,7 +1662,7 @@ export default function GlobalSettings() {
             {section === 'help' && (
               <>
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-1">Help & Features</h3>
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Help & Features</h3>
                   <p className="text-sm text-discord-text-muted mb-6">
                     Everything you need to know about using Trenchcord.
                   </p>
@@ -1631,11 +1670,11 @@ export default function GlobalSettings() {
                   <div className="space-y-4">
                     {/* Getting Started */}
                     <details className="group bg-discord-sidebar rounded-lg" open>
-                      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
                         <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         <span className="text-sm font-semibold text-white">Getting Started</span>
                       </summary>
-                      <div className="px-4 pb-4 space-y-2 text-sm text-discord-text">
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 text-sm text-discord-text">
                         <div className="flex gap-2 items-start">
                           <span className="text-discord-blurple font-bold mt-0.5">1.</span>
                           <span>Go to <strong className="text-white">Settings &gt; Guilds</strong> and enable the Discord servers you want to monitor.</span>
@@ -1657,11 +1696,11 @@ export default function GlobalSettings() {
 
                     {/* Message Interactions */}
                     <details className="group bg-discord-sidebar rounded-lg">
-                      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
                         <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         <span className="text-sm font-semibold text-white">Message Interactions</span>
                       </summary>
-                      <div className="px-4 pb-4 space-y-2.5 text-sm text-discord-text">
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2.5 text-sm text-discord-text">
                         <div className="px-3 py-2 bg-discord-dark rounded">
                           <p className="font-medium text-white text-xs mb-1">Channel Badge</p>
                           <p className="text-discord-text-muted text-xs">Click the <strong className="text-discord-text">server / #channel</strong> badge on any message to jump to the original message in Discord. Configure whether it opens in the Discord app or browser in Settings &gt; General.</p>
@@ -1687,11 +1726,11 @@ export default function GlobalSettings() {
 
                     {/* Focus Mode */}
                     <details className="group bg-discord-sidebar rounded-lg">
-                      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
                         <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         <span className="text-sm font-semibold text-white">Focus Mode</span>
                       </summary>
-                      <div className="px-4 pb-4 space-y-2 text-sm text-discord-text">
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 text-sm text-discord-text">
                         <p className="text-discord-text-muted">When a room has multiple channels, you can temporarily filter to a single channel:</p>
                         <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
                           <p className="text-xs"><span className="text-discord-blurple font-semibold">Enter:</span> <span className="text-discord-text-muted">Click the</span> <Eye size={13} className="inline text-discord-text-muted mx-0.5" /> <span className="text-discord-text-muted">eye icon on any message to focus on that message's channel.</span></p>
@@ -1703,11 +1742,11 @@ export default function GlobalSettings() {
 
                     {/* Chat / Quick Reply */}
                     <details className="group bg-discord-sidebar rounded-lg">
-                      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
                         <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         <span className="text-sm font-semibold text-white">Chat / Quick Reply</span>
                       </summary>
-                      <div className="px-4 pb-4 space-y-2 text-sm text-discord-text">
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 text-sm text-discord-text">
                         <p className="text-discord-text-muted">Send messages directly from the Trenchcord dashboard without switching to Discord.</p>
                         <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
                           <p className="text-xs"><span className="text-discord-blurple font-semibold">Enable:</span> <span className="text-discord-text-muted">Go to Settings &gt; General and turn on <strong className="text-discord-text">Chat / Send Messages</strong> (disabled by default).</span></p>
@@ -1725,11 +1764,11 @@ export default function GlobalSettings() {
 
                     {/* Contract Detection */}
                     <details className="group bg-discord-sidebar rounded-lg">
-                      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
                         <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         <span className="text-sm font-semibold text-white">Contract Detection</span>
                       </summary>
-                      <div className="px-4 pb-4 space-y-2 text-sm text-discord-text">
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 text-sm text-discord-text">
                         <p className="text-discord-text-muted">Trenchcord automatically detects Solana and EVM contract addresses in messages.</p>
                         <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
                           <p className="text-xs"><span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#14f195]/20 text-[#14f195] mr-1">SOL</span> <span className="text-discord-text-muted">Solana addresses appear as green pills.</span></p>
@@ -1749,11 +1788,11 @@ export default function GlobalSettings() {
 
                     {/* User Highlighting */}
                     <details className="group bg-discord-sidebar rounded-lg">
-                      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
                         <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         <span className="text-sm font-semibold text-white">User Highlighting</span>
                       </summary>
-                      <div className="px-4 pb-4 space-y-2 text-sm text-discord-text">
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 text-sm text-discord-text">
                         <p className="text-discord-text-muted">Track specific Discord users to never miss their messages.</p>
                         <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
                           <p className="text-xs"><span className="text-discord-blurple font-semibold">Global:</span> <span className="text-discord-text-muted">Add user IDs in Settings &gt; Highlighted Users. These users are highlighted in all rooms.</span></p>
@@ -1765,11 +1804,11 @@ export default function GlobalSettings() {
 
                     {/* Keyword Alerts */}
                     <details className="group bg-discord-sidebar rounded-lg">
-                      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
                         <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         <span className="text-sm font-semibold text-white">Keyword Alerts</span>
                       </summary>
-                      <div className="px-4 pb-4 space-y-2 text-sm text-discord-text">
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 text-sm text-discord-text">
                         <p className="text-discord-text-muted">Get alerted when messages match your keyword patterns.</p>
                         <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
                           <p className="text-xs"><span className="text-discord-blurple font-semibold">Global:</span> <span className="text-discord-text-muted">Settings &gt; Keywords — matched in all rooms.</span></p>
@@ -1782,11 +1821,11 @@ export default function GlobalSettings() {
 
                     {/* Room Configuration */}
                     <details className="group bg-discord-sidebar rounded-lg">
-                      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
                         <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         <span className="text-sm font-semibold text-white">Room Configuration</span>
                       </summary>
-                      <div className="px-4 pb-4 space-y-2 text-sm text-discord-text">
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 text-sm text-discord-text">
                         <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
                           <p className="text-xs"><span className="text-discord-blurple font-semibold">Edit/Delete:</span> <span className="text-discord-text-muted">Hover over a room in the sidebar to reveal the gear (edit) and trash (delete) icons.</span></p>
                           <p className="text-xs"><span className="text-discord-blurple font-semibold">Room Color:</span> <span className="text-discord-text-muted">Set a custom background color for the room in the config modal.</span></p>
@@ -1798,11 +1837,11 @@ export default function GlobalSettings() {
 
                     {/* User Management */}
                     <details className="group bg-discord-sidebar rounded-lg">
-                      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
                         <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         <span className="text-sm font-semibold text-white">Hiding Users</span>
                       </summary>
-                      <div className="px-4 pb-4 space-y-2 text-sm text-discord-text">
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 text-sm text-discord-text">
                         <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
                           <p className="text-xs"><span className="text-discord-blurple font-semibold">Hide:</span> <span className="text-discord-text-muted">Right-click any username &gt; "Hide user" to hide them from that specific channel.</span></p>
                           <p className="text-xs"><span className="text-discord-blurple font-semibold">Manage:</span> <span className="text-discord-text-muted">Click the hidden users icon in the channel header to view and unhide users.</span></p>
@@ -1812,11 +1851,11 @@ export default function GlobalSettings() {
 
                     {/* Sounds & Notifications */}
                     <details className="group bg-discord-sidebar rounded-lg">
-                      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
                         <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         <span className="text-sm font-semibold text-white">Sounds & Notifications</span>
                       </summary>
-                      <div className="px-4 pb-4 space-y-2 text-sm text-discord-text">
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 text-sm text-discord-text">
                         <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
                           <p className="text-xs text-discord-text-muted">Three independent sound channels with individual volume controls:</p>
                           <p className="text-xs"><span className="text-discord-blurple font-semibold">Highlighted User:</span> <span className="text-discord-text-muted">Plays when a highlighted user sends a message.</span></p>
@@ -1837,11 +1876,11 @@ export default function GlobalSettings() {
 
                     {/* Guild Colors */}
                     <details className="group bg-discord-sidebar rounded-lg">
-                      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
                         <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         <span className="text-sm font-semibold text-white">Guild Colors</span>
                       </summary>
-                      <div className="px-4 pb-4 text-sm text-discord-text">
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 text-sm text-discord-text">
                         <div className="px-3 py-2 bg-discord-dark rounded">
                           <p className="text-xs text-discord-text-muted">In Settings &gt; Guilds, assign a background color to each server. In rooms with multiple guilds, messages are color-coded so you can instantly tell which server a message came from.</p>
                         </div>
@@ -1850,11 +1889,11 @@ export default function GlobalSettings() {
 
                     {/* DMs */}
                     <details className="group bg-discord-sidebar rounded-lg">
-                      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
                         <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         <span className="text-sm font-semibold text-white">Direct Messages</span>
                       </summary>
-                      <div className="px-4 pb-4 text-sm text-discord-text">
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 text-sm text-discord-text">
                         <div className="px-3 py-2 bg-discord-dark rounded">
                           <p className="text-xs text-discord-text-muted">DMs automatically appear in the sidebar under "Direct Messages" when you receive new messages. Click one to view the conversation.</p>
                         </div>
@@ -1863,11 +1902,11 @@ export default function GlobalSettings() {
 
                     {/* Multiple Tokens */}
                     <details className="group bg-discord-sidebar rounded-lg">
-                      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
                         <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         <span className="text-sm font-semibold text-white">Multiple Accounts</span>
                       </summary>
-                      <div className="px-4 pb-4 text-sm text-discord-text">
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 text-sm text-discord-text">
                         <div className="px-3 py-2 bg-discord-dark rounded">
                           <p className="text-xs text-discord-text-muted">Add multiple Discord tokens in Settings &gt; Tokens to monitor channels across different accounts simultaneously. All guilds and channels from all tokens are available when creating rooms.</p>
                         </div>
@@ -1881,12 +1920,12 @@ export default function GlobalSettings() {
             {section === 'guilds' && (
               <>
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-4">Guilds</h3>
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-4">Guilds</h3>
 
                   <div className="space-y-5">
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Enabled Guilds</h4>
-                      <p className="text-sm text-discord-text-muted mb-3">
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Enabled Guilds</h4>
+                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
                         Only enabled guilds will appear in the channel picker when creating rooms. All guilds are off by default.
                       </p>
                       <div className="relative mb-3">
@@ -1920,7 +1959,7 @@ export default function GlobalSettings() {
                                     enabled ? prev.filter((id) => id !== guild.id) : [...prev, guild.id]
                                   );
                                 }}
-                                className={`w-full flex items-center gap-3 px-3 py-2 rounded text-sm text-left transition-colors ${
+                                className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 rounded text-xs sm:text-sm text-left transition-colors ${
                                   enabled
                                     ? 'bg-discord-green/10 text-discord-text'
                                     : 'bg-discord-dark/50 text-discord-text-muted'
@@ -1956,20 +1995,20 @@ export default function GlobalSettings() {
                       </div>
                     </div>
 
-                    <div className="p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-sm font-semibold text-white mb-2">Guild Message Colors</h4>
-                      <p className="text-sm text-discord-text-muted mb-3">
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Guild Message Colors</h4>
+                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
                         Set a background color for messages from each enabled guild to visually distinguish them in mixed rooms.
                       </p>
                       <div className="space-y-2">
                         {guilds.filter((g) => enabledGuilds.includes(g.id)).map((guild) => (
-                          <div key={guild.id} className="flex items-center gap-3 px-3 py-2 bg-discord-dark rounded">
+                          <div key={guild.id} className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 bg-discord-dark rounded">
                             <ColorPickerWithAlpha
                               value={guildColors[guild.id] || '#313338'}
                               onChange={(c) => setGuildColors((prev) => ({ ...prev, [guild.id]: c }))}
                               defaultColor="#313338"
                             />
-                            <span className="text-sm text-discord-text flex-1 truncate">{guild.name}</span>
+                            <span className="text-xs sm:text-sm text-discord-text flex-1 truncate">{guild.name}</span>
                             {guildColors[guild.id] && (
                               <button
                                 onClick={() => setGuildColors((prev) => { const { [guild.id]: _, ...rest } = prev; return rest; })}
@@ -1992,9 +2031,9 @@ export default function GlobalSettings() {
                       )];
                       if (dmChannelIdsInRooms.length === 0) return null;
                       return (
-                        <div className="p-4 bg-discord-sidebar rounded-lg">
-                          <h4 className="text-sm font-semibold text-white mb-2">DM Message Colors</h4>
-                          <p className="text-sm text-discord-text-muted mb-3">
+                        <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                          <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">DM Message Colors</h4>
+                          <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
                             Set a background color for messages from each DM that is added to a room.
                           </p>
                           <div className="space-y-2">
@@ -2004,13 +2043,13 @@ export default function GlobalSettings() {
                                 ? dm.recipients.map((r) => r.global_name || r.username).join(', ')
                                 : channelId;
                               return (
-                                <div key={channelId} className="flex items-center gap-3 px-3 py-2 bg-discord-dark rounded">
+                                <div key={channelId} className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 bg-discord-dark rounded">
                                   <ColorPickerWithAlpha
                                     value={dmColors[channelId] || '#313338'}
                                     onChange={(c) => setDmColors((prev) => ({ ...prev, [channelId]: c }))}
                                     defaultColor="#313338"
                                   />
-                                  <span className="text-sm text-discord-text flex-1 truncate">{dmName}</span>
+                                  <span className="text-xs sm:text-sm text-discord-text flex-1 truncate">{dmName}</span>
                                   {dmColors[channelId] && (
                                     <button
                                       onClick={() => setDmColors((prev) => { const { [channelId]: _, ...rest } = prev; return rest; })}
@@ -2034,17 +2073,17 @@ export default function GlobalSettings() {
         </div>
 
         {/* Save bar */}
-        <div className={`border-t px-8 py-3 flex items-center justify-between gap-3 shrink-0 transition-colors ${
+        <div className={`border-t px-3 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-3 shrink-0 transition-colors ${
           hasUnsavedChanges ? 'border-discord-yellow/30 bg-discord-yellow/5' : 'border-discord-divider bg-discord-dark'
         }`}>
-          <span className={`text-sm transition-opacity ${hasUnsavedChanges ? 'opacity-100 text-discord-yellow' : 'opacity-0'}`}>
-            You have unsaved changes
+          <span className={`text-[11px] sm:text-sm transition-opacity ${hasUnsavedChanges ? 'opacity-100 text-discord-yellow' : 'opacity-0'}`}>
+            Unsaved changes
           </span>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {hasUnsavedChanges && (
               <button
                 onClick={() => { if (config) fetchConfig(); }}
-                className="px-4 py-2 rounded text-sm text-discord-text-muted hover:text-white font-medium transition-colors"
+                className="px-3 sm:px-4 py-1.5 sm:py-2 rounded text-xs sm:text-sm text-discord-text-muted hover:text-white font-medium transition-colors"
               >
                 Reset
               </button>
@@ -2052,13 +2091,13 @@ export default function GlobalSettings() {
             <button
               onClick={handleSave}
               disabled={saving || !hasUnsavedChanges}
-              className={`px-5 py-2 rounded text-sm text-white font-medium transition-colors ${
+              className={`px-4 sm:px-5 py-1.5 sm:py-2 rounded text-xs sm:text-sm text-white font-medium transition-colors ${
                 hasUnsavedChanges
                   ? 'bg-discord-green hover:bg-discord-green/80'
                   : 'bg-discord-blurple hover:bg-discord-blurple-hover disabled:opacity-50 disabled:cursor-not-allowed'
               }`}
             >
-              {saving ? 'Saving...' : 'Save Settings'}
+              {saving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </div>

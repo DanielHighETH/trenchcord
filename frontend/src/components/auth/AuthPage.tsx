@@ -74,7 +74,7 @@ export default function AuthPage({ onAuth }: { onAuth: () => void }) {
 
   return (
     <div className="flex items-center justify-center h-full w-full bg-discord-dark">
-      <div className="w-full max-w-md px-8">
+      <div className="w-full max-w-md px-5 sm:px-8">
         <div className="flex flex-col items-center mb-8">
           <div className="w-16 h-16 rounded-2xl bg-discord-blurple/10 flex items-center justify-center mb-5">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#5865f2" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

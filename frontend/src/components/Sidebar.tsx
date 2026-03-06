@@ -21,12 +21,18 @@ export default function Sidebar() {
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
+  const closeMobile = () => {
+    if (window.innerWidth < 768) toggleSidebar();
+  };
+
   if (collapsed) {
     return null;
   }
 
   return (
-    <div className="w-60 bg-discord-sidebar flex flex-col h-full shrink-0 transition-all duration-200">
+    <>
+      <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={toggleSidebar} />
+      <div className="fixed inset-y-0 left-0 z-50 md:relative md:z-auto w-60 bg-discord-sidebar flex flex-col h-full shrink-0 transition-all duration-200">
       {/* Header */}
       <div className="h-12 px-4 flex items-center shadow-[0_1px_0_rgba(0,0,0,0.2),0_1.5px_0_rgba(0,0,0,0.05),0_2px_0_rgba(0,0,0,0.05)] border-b border-discord-darker/50 shrink-0">
         <h1 className="flex items-center gap-2 text-base font-semibold text-discord-header-primary truncate">
@@ -57,7 +63,7 @@ export default function Sidebar() {
               ? 'bg-discord-hover-light text-discord-header-primary font-medium'
               : 'text-discord-channel-icon hover:bg-discord-hover hover:text-discord-header-secondary'
           }`}
-          onClick={() => setActiveView('contracts')}
+          onClick={() => { setActiveView('contracts'); closeMobile(); }}
         >
           <FileText size={20} className="shrink-0 opacity-70" />
           <span className="text-base leading-5 truncate flex-1">Contracts</span>
@@ -104,7 +110,7 @@ export default function Sidebar() {
                   ? 'bg-discord-hover-light text-discord-header-primary font-medium'
                   : 'text-discord-channel-icon hover:bg-discord-hover hover:text-discord-header-secondary'
               }`}
-              onClick={() => setActiveRoom(room.id)}
+              onClick={() => { setActiveRoom(room.id); closeMobile(); }}
             >
               <Hash size={20} className="shrink-0 opacity-70" />
               <span className="text-base leading-5 truncate flex-1">{room.name}</span>
@@ -175,7 +181,7 @@ export default function Sidebar() {
                         ? 'bg-discord-hover-light text-discord-header-primary font-medium'
                         : 'text-discord-channel-icon hover:bg-discord-hover hover:text-discord-header-secondary'
                     }`}
-                    onClick={() => setActiveRoom(dmRoomId)}
+                    onClick={() => { setActiveRoom(dmRoomId); closeMobile(); }}
                   >
                     {dm && dm.recipients.length === 1 ? (
                       <img
@@ -216,7 +222,7 @@ export default function Sidebar() {
       {/* Footer */}
       <div className="h-[52px] px-2 flex items-center gap-1 shrink-0 bg-discord-sidebar border-t border-discord-darker/30">
         <button
-          onClick={() => setActiveView('settings')}
+          onClick={() => { setActiveView('settings'); closeMobile(); }}
           className={`flex items-center gap-2 text-sm transition-colors flex-1 px-2 py-1.5 rounded ${
             activeView === 'settings'
               ? 'text-discord-header-primary bg-discord-hover-light'
@@ -228,7 +234,7 @@ export default function Sidebar() {
         </button>
         {isHostedMode && (
           <button
-            onClick={() => setActiveView('profile')}
+            onClick={() => { setActiveView('profile'); closeMobile(); }}
             className={`p-1.5 rounded transition-colors ${
               activeView === 'profile'
                 ? 'text-discord-header-primary bg-discord-hover-light'
@@ -240,7 +246,7 @@ export default function Sidebar() {
           </button>
         )}
         <button
-          onClick={() => setActiveView('settings', 'help')}
+          onClick={() => { setActiveView('settings', 'help'); closeMobile(); }}
           className="p-1.5 rounded text-discord-header-secondary hover:text-discord-header-primary hover:bg-discord-hover transition-colors"
           title="Help & Features"
         >
@@ -260,5 +266,6 @@ export default function Sidebar() {
         onCancel={() => setDeleteTarget(null)}
       />
     </div>
+    </>
   );
 }

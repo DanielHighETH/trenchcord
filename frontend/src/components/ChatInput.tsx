@@ -129,7 +129,7 @@ export default function ChatInput({ channels, defaultChannelId, isDM, dmChannelI
   }, [filePreviewUrls]);
 
   return (
-    <div className="px-4 pb-6 pt-4 shrink-0">
+    <div className="px-2 sm:px-4 pb-4 sm:pb-6 pt-3 sm:pt-4 shrink-0">
       {error && (
         <div className="mb-1.5 flex items-center gap-1.5 text-xs text-discord-red bg-discord-red/10 rounded px-3 py-1.5">
           <AlertTriangle size={12} className="shrink-0" />

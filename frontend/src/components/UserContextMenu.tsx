@@ -33,7 +33,7 @@ export default function UserContextMenu({
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handle = (e: MouseEvent) => {
+    const handle = (e: MouseEvent | TouchEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
@@ -42,9 +42,11 @@ export default function UserContextMenu({
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('mousedown', handle);
+    document.addEventListener('touchstart', handle);
     document.addEventListener('keydown', handleKey);
     return () => {
       document.removeEventListener('mousedown', handle);
+      document.removeEventListener('touchstart', handle);
       document.removeEventListener('keydown', handleKey);
     };
   }, [onClose]);
@@ -53,12 +55,17 @@ export default function UserContextMenu({
     const menu = menuRef.current;
     if (!menu) return;
     const rect = menu.getBoundingClientRect();
-    if (rect.right > window.innerWidth) {
-      menu.style.left = `${position.x - rect.width}px`;
+    const pad = 8;
+    let x = position.x;
+    let y = position.y;
+    if (rect.right > window.innerWidth - pad) {
+      x = Math.max(pad, window.innerWidth - rect.width - pad);
     }
-    if (rect.bottom > window.innerHeight) {
-      menu.style.top = `${position.y - rect.height}px`;
+    if (rect.bottom > window.innerHeight - pad) {
+      y = Math.max(pad, window.innerHeight - rect.height - pad);
     }
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
   }, [position]);
 
   const channelLabel = guildName ? `${guildName} / #${channelName}` : `#${channelName}`;

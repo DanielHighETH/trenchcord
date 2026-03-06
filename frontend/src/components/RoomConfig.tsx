@@ -177,26 +177,26 @@ export default function RoomConfig() {
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={closeConfigModal}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70" onClick={closeConfigModal}>
       <div
-        className="bg-discord-sidebar rounded-lg shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col"
+        className="bg-discord-sidebar rounded-t-xl sm:rounded-lg shadow-2xl w-full sm:max-w-2xl h-[90vh] sm:h-auto sm:max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-discord-divider">
-          <h2 className="text-lg font-semibold text-white">
-            {editingRoom ? `Edit Room: ${editingRoom.name}` : 'Create New Room'}
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-discord-divider shrink-0">
+          <h2 className="text-base sm:text-lg font-semibold text-white truncate">
+            {editingRoom ? `Edit: ${editingRoom.name}` : 'Create New Room'}
           </h2>
-          <button onClick={closeConfigModal} className="text-discord-text-muted hover:text-white">
+          <button onClick={closeConfigModal} className="text-discord-text-muted hover:text-white shrink-0 p-1">
             <X size={20} />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-0 border-b border-discord-divider px-6">
+        <div className="flex overflow-x-auto border-b border-discord-divider px-4 sm:px-6 shrink-0 scrollbar-none">
           <button
             onClick={() => setTab('channels')}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               tab === 'channels'
                 ? 'border-discord-blurple text-white'
                 : 'border-transparent text-discord-text-muted hover:text-discord-text'
@@ -206,27 +206,27 @@ export default function RoomConfig() {
           </button>
           <button
             onClick={() => setTab('users')}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               tab === 'users'
                 ? 'border-discord-blurple text-white'
                 : 'border-transparent text-discord-text-muted hover:text-discord-text'
             }`}
           >
-            Highlighted Users
+            Highlights
           </button>
           <button
             onClick={() => setTab('filter')}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               tab === 'filter'
                 ? 'border-discord-blurple text-white'
                 : 'border-transparent text-discord-text-muted hover:text-discord-text'
             }`}
           >
-            User Filter
+            Filter
           </button>
           <button
             onClick={() => setTab('keywords')}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               tab === 'keywords'
                 ? 'border-discord-blurple text-white'
                 : 'border-transparent text-discord-text-muted hover:text-discord-text'
@@ -237,7 +237,7 @@ export default function RoomConfig() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4" data-form-type="other" data-lpignore="true" data-1p-ignore>
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4" data-form-type="other" data-lpignore="true" data-1p-ignore>
           {tab === 'channels' && (
             <>
               {/* Room name */}
@@ -828,7 +828,7 @@ export default function RoomConfig() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-discord-divider">
+        <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-3 sm:py-4 border-t border-discord-divider shrink-0">
           <button
             onClick={closeConfigModal}
             className="px-4 py-2 text-sm text-discord-text-muted hover:text-white transition-colors"

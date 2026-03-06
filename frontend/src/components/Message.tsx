@@ -46,16 +46,16 @@ export function getAvatarUrl(userId: string, avatar: string | null, discriminato
   return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
 }
 
-function formatTimestamp(iso: string): string {
+function formatTimestamp(iso: string, short = false): string {
   const d = new Date(iso);
   const now = new Date();
   const isToday = d.toDateString() === now.toDateString();
   const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (isToday) return `Today at ${time}`;
+  if (isToday) return short ? time : `Today at ${time}`;
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return `Yesterday at ${time}`;
-  return `${d.toLocaleDateString()} ${time}`;
+  if (d.toDateString() === yesterday.toDateString()) return short ? `Yest ${time}` : `Yesterday at ${time}`;
+  return short ? `${d.toLocaleDateString([], { month: 'numeric', day: 'numeric' })} ${time}` : `${d.toLocaleDateString()} ${time}`;
 }
 
 const URL_REGEX = /(https?:\/\/[^\s<>()[\]]+(?:\([^\s<>()]*\))*[^\s<>()[\],.'\"!?;:]?)/g;
@@ -640,7 +640,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                     key={att.id}
                     src={att.proxy_url}
                     alt={att.filename}
-                    className="max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => setLightboxSrc(att.proxy_url)}
                   />
                 ) : (
@@ -663,7 +663,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
               {message.embeds.map((embed, i) => (
                 <div
                   key={i}
-                  className="border-l-4 rounded bg-discord-embed-bg p-3 max-w-[520px]"
+                  className="border-l-4 rounded bg-discord-embed-bg p-2 sm:p-3 max-w-full sm:max-w-[520px]"
                   style={{ borderColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : '#1e1f22' }}
                 >
                   {embed.author?.name && (
@@ -722,7 +722,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                     <img
                       src={embed.image.url}
                       alt=""
-                      className="max-w-[400px] max-h-[300px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                      className="max-w-full sm:max-w-[400px] max-h-[300px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
                       onClick={() => setLightboxSrc(embed.image!.url)}
                     />
                   )}
@@ -802,7 +802,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                     key={att.id}
                     src={att.proxy_url}
                     alt={att.filename}
-                    className="max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => setLightboxSrc(att.proxy_url)}
                   />
                 ) : (
@@ -825,7 +825,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
               {message.embeds.map((embed, i) => (
                 <div
                   key={i}
-                  className="border-l-4 rounded bg-discord-embed-bg p-3 max-w-[520px]"
+                  className="border-l-4 rounded bg-discord-embed-bg p-2 sm:p-3 max-w-full sm:max-w-[520px]"
                   style={{ borderColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : '#1e1f22' }}
                 >
                   {embed.author?.name && (
@@ -884,7 +884,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                     <img
                       src={embed.image.url}
                       alt=""
-                      className="max-w-[400px] max-h-[300px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                      className="max-w-full sm:max-w-[400px] max-h-[300px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
                       onClick={() => setLightboxSrc(embed.image!.url)}
                     />
                   )}
@@ -913,6 +913,28 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
 
   return (
     <div className={`relative hover:bg-discord-hover pt-[1.0625rem] pb-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} group`} style={bgStyle}>
+      <div className={`absolute right-0 sm:right-2 top-0.5 sm:top-1 flex items-center gap-0.5 rounded px-0.5 py-0.5 z-10 transition-opacity sm:bg-discord-dark/90 sm:shadow-sm sm:border sm:border-discord-divider/50 ${isFocused ? 'opacity-100' : 'sm:opacity-0 sm:group-hover:opacity-100'}`}>
+        <button
+          onClick={() => onFocus?.(message.guildId, message.channelId, message.guildName, message.channelName)}
+          className={`p-0.5 sm:p-1 rounded transition-colors ${
+            isFocused
+              ? 'text-discord-blurple'
+              : 'text-discord-text-muted/60 sm:text-discord-text-muted hover:text-white hover:bg-discord-hover/50'
+          }`}
+          title={isFocused ? 'Focused on this channel' : 'Focus on this channel'}
+        >
+          <Eye size={13} className="sm:w-3.5 sm:h-3.5" />
+        </button>
+        {chattingEnabled && (
+          <button
+            onClick={() => onQuickReply?.(message.channelId)}
+            className="p-0.5 sm:p-1 rounded text-discord-text-muted/60 sm:text-discord-text-muted hover:text-discord-green hover:bg-discord-hover/50 transition-colors"
+            title="Quick reply to this channel"
+          >
+            <MessageSquareReply size={13} className="sm:w-3.5 sm:h-3.5" />
+          </button>
+        )}
+      </div>
       <img
         src={getAvatarUrl(message.author.id, message.author.avatar)}
         alt=""
@@ -933,30 +955,13 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
               </span>
             )}
           </span>
-          <span className="text-xs text-discord-text-muted leading-[1.375rem] ml-1">
+          <span className="text-xs text-discord-text-muted leading-[1.375rem] ml-1 sm:hidden">
+            {formatTimestamp(message.timestamp, true)}
+          </span>
+          <span className="text-xs text-discord-text-muted leading-[1.375rem] ml-1 hidden sm:inline">
             {formatTimestamp(message.timestamp)}
           </span>
           {channelBadge}
-          <button
-            onClick={() => onFocus?.(message.guildId, message.channelId, message.guildName, message.channelName)}
-            className={`opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded ${
-              isFocused
-                ? '!opacity-100 text-discord-blurple'
-                : 'text-discord-text-muted hover:text-white'
-            }`}
-            title={isFocused ? 'Focused on this channel' : 'Focus on this channel'}
-          >
-            <Eye size={13} />
-          </button>
-          {chattingEnabled && (
-            <button
-              onClick={() => onQuickReply?.(message.channelId)}
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-discord-text-muted hover:text-discord-green"
-              title="Quick reply to this channel"
-            >
-              <MessageSquareReply size={13} />
-            </button>
-          )}
           {message.hasContractAddress && (
             <span
               onClick={handleBadgeClick}
@@ -1009,7 +1014,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                   key={att.id}
                   src={att.proxy_url}
                   alt={att.filename}
-                  className="max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                  className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                   onClick={() => setLightboxSrc(att.proxy_url)}
                 />
               ) : (
@@ -1032,7 +1037,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
             {message.embeds.map((embed, i) => (
               <div
                 key={i}
-                className="border-l-4 rounded bg-discord-embed-bg p-3 max-w-[520px]"
+                className="border-l-4 rounded bg-discord-embed-bg p-2 sm:p-3 max-w-full sm:max-w-[520px]"
                 style={{ borderColor: embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : '#1e1f22' }}
               >
                 {embed.author?.name && (
@@ -1091,7 +1096,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                   <img
                     src={embed.image.url}
                     alt=""
-                    className="max-w-[400px] max-h-[300px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => setLightboxSrc(embed.image!.url)}
                   />
                 )}

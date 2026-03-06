@@ -135,8 +135,8 @@ export default function OnboardingWizard({ onComplete, userId }: { onComplete: (
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-discord-darker">
-      <div className="w-full max-w-2xl mx-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-discord-darker overflow-y-auto">
+      <div className="w-full max-w-2xl mx-4 my-4">
         {/* Progress dots */}
         <div className="flex items-center justify-center gap-2 mb-8">
           {STEPS.map((s, i) => (
@@ -156,7 +156,7 @@ export default function OnboardingWizard({ onComplete, userId }: { onComplete: (
         <div className="bg-discord-sidebar rounded-xl shadow-2xl overflow-hidden">
           {/* ── Welcome ── */}
           {step === 'welcome' && (
-            <div className="px-10 py-12 text-center">
+            <div className="px-6 sm:px-10 py-8 sm:py-12 text-center">
               <div className="w-16 h-16 rounded-2xl bg-discord-blurple/10 flex items-center justify-center mx-auto mb-6">
                 <Sparkles size={32} className="text-discord-blurple" />
               </div>
@@ -173,7 +173,7 @@ export default function OnboardingWizard({ onComplete, userId }: { onComplete: (
 
           {/* ── Guild Selection ── */}
           {step === 'guilds' && (
-            <div className="px-8 py-8">
+            <div className="px-5 sm:px-8 py-6 sm:py-8">
               <h2 className="text-xl font-bold text-white mb-1">Enable your servers</h2>
               <p className="text-discord-text-muted text-sm mb-5">
                 Pick the Discord servers you want to monitor. Only enabled servers will appear when you configure rooms.
@@ -249,7 +249,7 @@ export default function OnboardingWizard({ onComplete, userId }: { onComplete: (
 
           {/* ── Create Room ── */}
           {step === 'room' && (
-            <div className="px-8 py-8">
+            <div className="px-5 sm:px-8 py-6 sm:py-8">
               <h2 className="text-xl font-bold text-white mb-1">Create your first room</h2>
               <p className="text-discord-text-muted text-sm mb-5">
                 A room aggregates channels from your enabled servers into a single feed. Give it a name and pick some channels.
@@ -339,7 +339,7 @@ export default function OnboardingWizard({ onComplete, userId }: { onComplete: (
 
           {/* ── Done ── */}
           {step === 'done' && (
-            <div className="px-10 py-10">
+            <div className="px-6 sm:px-10 py-8 sm:py-10">
               <div className="text-center mb-8">
                 <div className="w-14 h-14 rounded-full bg-discord-green/10 flex items-center justify-center mx-auto mb-5">
                   <Check size={28} className="text-discord-green" />
@@ -350,7 +350,7 @@ export default function OnboardingWizard({ onComplete, userId }: { onComplete: (
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 mb-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
                 {TIPS.map((tip) => (
                   <div key={tip.title} className="flex gap-3 p-3 rounded-lg bg-discord-dark/50">
                     <tip.icon size={18} className="text-discord-blurple shrink-0 mt-0.5" />
@@ -365,7 +365,7 @@ export default function OnboardingWizard({ onComplete, userId }: { onComplete: (
           )}
 
           {/* ── Footer ── */}
-          <div className="flex items-center justify-between px-8 py-5 border-t border-discord-divider">
+          <div className="flex items-center justify-between px-5 sm:px-8 py-4 sm:py-5 border-t border-discord-divider">
             <div>
               {step !== 'welcome' && step !== 'done' && (
                 <button

@@ -86,7 +86,7 @@ export default function ProfilePage() {
         <span className="text-discord-header-primary font-semibold text-base">Profile</span>
       </div>
 
-      <div className="flex-1 p-6 max-w-2xl mx-auto w-full">
+      <div className="flex-1 p-4 sm:p-6 max-w-2xl mx-auto w-full">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 size={24} className="animate-spin text-discord-blurple" />
@@ -98,8 +98,8 @@ export default function ProfilePage() {
         ) : (
           <div className="space-y-6">
             {/* Avatar & Identity */}
-            <div className="bg-discord-sidebar rounded-lg p-6">
-              <div className="flex items-center gap-4">
+            <div className="bg-discord-sidebar rounded-lg p-4 sm:p-6">
+              <div className="flex items-center gap-3 sm:gap-4">
                 {profile.discordAvatar ? (
                   <img src={profile.discordAvatar} alt="" className="w-16 h-16 rounded-full" />
                 ) : (
@@ -125,8 +125,8 @@ export default function ProfilePage() {
 
             {/* Details */}
             <div className="bg-discord-sidebar rounded-lg divide-y divide-discord-darker/40">
-              <div className="px-6 py-4 flex items-center justify-between">
-                <div className="flex items-center gap-3 text-sm">
+              <div className="px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 sm:gap-3 text-sm">
                   <Shield size={16} className="text-discord-channel-icon shrink-0" />
                   <span className="text-discord-text-muted">Login Method</span>
                 </div>
@@ -140,20 +140,20 @@ export default function ProfilePage() {
                 </span>
               </div>
 
-              <div className="px-6 py-4 flex items-center justify-between">
-                <div className="flex items-center gap-3 text-sm">
+              <div className="px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 sm:gap-3 text-sm">
                   <Calendar size={16} className="text-discord-channel-icon shrink-0" />
-                  <span className="text-discord-text-muted">Account Created</span>
+                  <span className="text-discord-text-muted">Created</span>
                 </div>
-                <span className="text-sm text-discord-header-secondary">{formatDate(profile.createdAt)}</span>
+                <span className="text-xs sm:text-sm text-discord-header-secondary">{formatDate(profile.createdAt)}</span>
               </div>
 
-              <div className="px-6 py-4 flex items-center justify-between">
-                <div className="flex items-center gap-3 text-sm">
+              <div className="px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 sm:gap-3 text-sm">
                   <Clock size={16} className="text-discord-channel-icon shrink-0" />
                   <span className="text-discord-text-muted">Last Sign In</span>
                 </div>
-                <span className="text-sm text-discord-header-secondary">{formatDateTime(profile.lastSignIn)}</span>
+                <span className="text-xs sm:text-sm text-discord-header-secondary">{formatDateTime(profile.lastSignIn)}</span>
               </div>
 
             </div>

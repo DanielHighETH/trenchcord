@@ -97,32 +97,33 @@ export default function ContractDashboard() {
   return (
     <div className="flex-1 flex flex-col bg-discord-bg overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-2 sm:gap-3 px-2 sm:px-4 py-3 border-b border-discord-border shrink-0">
-        {sidebarCollapsed && (
-          <button
-            onClick={toggleSidebar}
-            className="p-1.5 rounded text-discord-channel-icon hover:text-discord-header-primary hover:bg-discord-hover transition-colors shrink-0"
-            title="Show sidebar"
-          >
-            <PanelLeftOpen size={18} />
-          </button>
-        )}
-        <h2 className="text-white font-semibold text-base sm:text-lg">Contract Feed</h2>
-        <span className="text-discord-text-muted text-sm">{filtered.length} contracts</span>
-        <div className="flex-1" />
-        <div className="flex items-center gap-2">
+      <div className="border-b border-discord-border shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3">
+          {sidebarCollapsed && (
+            <button
+              onClick={toggleSidebar}
+              className="p-1.5 rounded text-discord-channel-icon hover:text-discord-header-primary hover:bg-discord-hover transition-colors shrink-0"
+              title="Show sidebar"
+            >
+              <PanelLeftOpen size={18} />
+            </button>
+          )}
+          <h2 className="text-white font-semibold text-base sm:text-lg">Contract Feed</h2>
+          <span className="text-discord-text-muted text-xs sm:text-sm">{filtered.length}</span>
+          <div className="flex-1" />
           {contracts.length > 0 && (
             <button
               onClick={handleDeleteAll}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs text-discord-red hover:bg-discord-red/10 transition-colors border border-discord-red/30 hover:border-discord-red/60"
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs text-discord-red hover:bg-discord-red/10 transition-colors border border-discord-red/30 hover:border-discord-red/60 shrink-0"
               title="Delete all contracts"
             >
               <Trash2 size={12} />
-              Clear All
+              <span className="hidden sm:inline">Clear All</span>
             </button>
           )}
-
-          <div className="flex rounded overflow-hidden border border-discord-border text-xs">
+        </div>
+        <div className="flex items-center gap-2 px-3 sm:px-4 pb-3 overflow-x-auto scrollbar-none">
+          <div className="flex rounded overflow-hidden border border-discord-border text-xs shrink-0">
             <button
               onClick={() => setViewMode('table')}
               className={`px-2 py-1 transition-colors ${
@@ -147,7 +148,7 @@ export default function ContractDashboard() {
             </button>
           </div>
 
-          <div className="flex rounded overflow-hidden border border-discord-border text-xs">
+          <div className="flex rounded overflow-hidden border border-discord-border text-xs shrink-0">
             {(['all', 'evm', 'sol'] as const).map((f) => (
               <button
                 key={f}
@@ -163,14 +164,14 @@ export default function ContractDashboard() {
             ))}
           </div>
 
-          <div className="relative">
+          <div className="relative flex-1 min-w-[120px]">
             <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-discord-text-muted" />
             <input
               type="text"
               placeholder="Search..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="bg-discord-dark border border-discord-border rounded pl-7 pr-3 py-1 text-sm text-white placeholder-discord-text-muted w-48 focus:outline-none focus:border-discord-blurple"
+              className="bg-discord-dark border border-discord-border rounded pl-7 pr-3 py-1 text-sm text-white placeholder-discord-text-muted w-full focus:outline-none focus:border-discord-blurple"
             />
           </div>
         </div>
@@ -199,7 +200,7 @@ export default function ContractDashboard() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3 p-3 sm:p-4">
             {filtered.map((entry, i) => (
               <ContractCard
                 key={`${entry.messageId}-${entry.address}-${i}`}
@@ -261,7 +262,7 @@ function ContractRow({
   const isNew = entry.firstSeen !== false;
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-discord-hover/30 transition-colors group">
+    <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 hover:bg-discord-hover/30 transition-colors group">
       <span
         className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 uppercase"
         style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}
@@ -270,7 +271,7 @@ function ContractRow({
       </span>
 
       <span
-        className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 uppercase ${
+        className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 uppercase hidden sm:inline ${
           isNew
             ? 'bg-green-500/20 text-green-400'
             : 'bg-orange-500/20 text-orange-400'
@@ -305,16 +306,16 @@ function ContractRow({
         </button>
         <button
           onClick={() => onOpenDiscord(entry)}
-          className="p-1 rounded hover:bg-discord-dark/60 text-discord-text-muted hover:text-white transition-colors"
+          className="p-1 rounded hover:bg-discord-dark/60 text-discord-text-muted hover:text-white transition-colors hidden sm:block"
           title="Open in Discord"
         >
           <MessageSquare size={13} />
         </button>
       </div>
 
-      <span className="text-sm text-white truncate max-w-[120px]">{entry.authorName}</span>
+      <span className="text-sm text-white truncate max-w-[80px] sm:max-w-[120px] hidden sm:inline">{entry.authorName}</span>
 
-      <span className="text-xs text-discord-text-muted truncate max-w-[180px]">
+      <span className="text-xs text-discord-text-muted truncate max-w-[180px] hidden md:inline">
         {entry.guildName ? `${entry.guildName} / ` : ''}#{entry.channelName}
       </span>
 
@@ -324,7 +325,7 @@ function ContractRow({
 
       <button
         onClick={() => onDelete(entry)}
-        className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-discord-red/20 text-discord-text-muted hover:text-discord-red transition-all shrink-0"
+        className="p-1 rounded sm:opacity-0 sm:group-hover:opacity-100 hover:bg-discord-red/20 text-discord-text-muted hover:text-discord-red transition-all shrink-0"
         title="Delete"
       >
         <X size={13} />
