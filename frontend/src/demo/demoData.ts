@@ -161,6 +161,7 @@ export const DEMO_CONFIG: AppConfig = {
   evmAddressColor: '#fee75c',
   solAddressColor: '#14f195',
   openInDiscordApp: false,
+  openInTelegramApp: false,
   hiddenUsers: {},
   messageSounds: false,
   soundSettings: {
@@ -184,6 +185,7 @@ export const DEMO_CONFIG: AppConfig = {
   messageDisplay: 'default',
   compactModeAvatars: true,
   roleColors: true,
+  telegramColors: {},
 };
 
 // ---------------------------------------------------------------------------

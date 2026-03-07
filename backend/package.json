@@ -17,6 +17,7 @@
     "express-rate-limit": "^8.2.1",
     "helmet": "^8.1.0",
     "multer": "^2.0.2",
+    "telegram": "^2.26.22",
     "uuid": "^11.1.0",
     "ws": "^8.18.0"
   },

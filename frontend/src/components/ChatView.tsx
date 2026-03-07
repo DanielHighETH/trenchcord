@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
 import Message from './Message';
 import ChatInput from './ChatInput';
-import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown, PanelLeftOpen } from 'lucide-react';
+import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown, PanelLeftOpen, Send } from 'lucide-react';
 
 const SCROLL_THRESHOLD = 150;
 
@@ -41,10 +41,12 @@ export default function ChatView() {
   const chattingEnabled = config?.chattingEnabled ?? false;
 
   const isDMView = activeRoomId?.startsWith('dm:') ?? false;
-  const dmChannelId = isDMView ? activeRoomId!.slice(3) : null;
+  const isTgDMView = activeRoomId?.startsWith('tg-dm:') ?? false;
+  const isAnyDMView = isDMView || isTgDMView;
+  const dmChannelId = isDMView ? activeRoomId!.slice(3) : isTgDMView ? activeRoomId!.slice(6) : null;
   const activeDM = isDMView ? dmChannels.find((dm) => dm.id === dmChannelId) : null;
 
-  const activeRoom = isDMView ? null : rooms.find((r) => r.id === activeRoomId);
+  const activeRoom = isAnyDMView ? null : rooms.find((r) => r.id === activeRoomId);
   const allRoomMessages = activeRoomId ? (messages[activeRoomId] ?? []) : [];
   const embedDisabledChannels = new Set(
     activeRoom?.channels.filter((c) => c.disableEmbeds).map((c) => c.channelId)
@@ -270,9 +272,11 @@ export default function ChatView() {
 
   const dmRecipientNames = activeDM
     ? activeDM.recipients.map((r) => r.global_name || r.username || 'Unknown').join(', ')
-    : null;
+    : isTgDMView
+      ? (allRoomMessages[0]?.channelName ?? allRoomMessages[0]?.author.displayName ?? 'Telegram Chat')
+      : null;
 
-  if (!activeRoom && !activeDM) {
+  if (!activeRoom && !activeDM && !isTgDMView) {
     return (
       <div className="flex-1 flex flex-col bg-discord-main">
         {sidebarCollapsed && (
@@ -310,15 +314,17 @@ export default function ChatView() {
             <PanelLeftOpen size={18} />
           </button>
         )}
-        {isDMView ? (
+        {isTgDMView ? (
+          <Send size={20} className="text-[#2AABEE] mr-1.5 shrink-0" />
+        ) : isDMView ? (
           <MessageCircle size={20} className="text-discord-channel-icon mr-1.5 shrink-0" />
         ) : (
           <Hash size={20} className="text-discord-channel-icon mr-1.5 shrink-0" />
         )}
         <span className="font-semibold text-sm sm:text-base text-discord-header-primary truncate">
-          {isDMView ? dmRecipientNames : activeRoom!.name}
+          {isAnyDMView ? dmRecipientNames : activeRoom!.name}
         </span>
-        {!isDMView && (
+        {!isAnyDMView && (
           <span className="ml-2 text-xs sm:text-sm text-discord-header-secondary truncate hidden sm:inline">
             {activeRoom!.channels.length} channel{activeRoom!.channels.length !== 1 ? 's' : ''}
           </span>
@@ -509,9 +515,11 @@ export default function ChatView() {
               : Infinity;
             const isCompact = sameAuthor && timeDiff < 5 * 60 * 1000 && prev?.channelId === msg.channelId;
 
-            const guildColor = msg.guildId
-              ? config?.guildColors?.[msg.guildId]
-              : config?.dmColors?.[msg.channelId];
+            const guildColor = msg.source === 'telegram'
+              ? config?.telegramColors?.[msg.channelId]
+              : msg.guildId
+                ? config?.guildColors?.[msg.guildId]
+                : config?.dmColors?.[msg.channelId];
             const highlightColor = activeRoom?.highlightedUserColors?.[msg.author.id];
 
             return (
@@ -530,10 +538,16 @@ export default function ChatView() {
                   contractLinkTemplates={config?.contractLinkTemplates}
                   contractClickAction={config?.contractClickAction ?? 'copy_open'}
                   openInDiscordApp={config?.openInDiscordApp ?? false}
+                  openInTelegramApp={config?.openInTelegramApp ?? false}
                   badgeClickAction={config?.badgeClickAction ?? 'discord'}
                   onHideUser={hideUser}
                   onToggleHighlight={activeRoom ? toggleHighlightUser : undefined}
-                  isUserHighlighted={activeRoom?.highlightedUsers?.includes(msg.author.id) ?? false}
+                  isUserHighlighted={
+                    activeRoom?.highlightedUsers?.some((e) =>
+                      e === msg.author.id ||
+                      (e.startsWith('@') && msg.author.username && e.slice(1).toLowerCase() === msg.author.username.toLowerCase())
+                    ) ?? false
+                  }
                   onFocus={handleFocus}
                   isFocused={focusFilter !== null && focusFilter.guildId === msg.guildId && focusFilter.channelId === msg.channelId}
                   onQuickReply={handleQuickReply}
@@ -560,11 +574,12 @@ export default function ChatView() {
 
       {/* Chat input */}
       {chattingEnabled && (
-        isDMView && dmChannelId ? (
+        isAnyDMView && dmChannelId ? (
           <ChatInput
             channels={[]}
             isDM
             dmChannelId={dmChannelId}
+            dmSource={isTgDMView ? 'telegram' : 'discord'}
           />
         ) : activeRoom ? (
           <ChatInput

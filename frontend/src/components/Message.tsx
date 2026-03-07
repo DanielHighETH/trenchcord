@@ -25,6 +25,7 @@ interface MessageProps {
   contractLinkTemplates?: ContractLinkTemplates;
   contractClickAction?: ContractClickAction;
   openInDiscordApp?: boolean;
+  openInTelegramApp?: boolean;
   badgeClickAction?: BadgeClickAction;
   onHideUser?: (guildId: string | null, channelId: string, userId: string, displayName: string) => void;
   onToggleHighlight?: (userId: string, displayName: string) => void;
@@ -37,6 +38,9 @@ interface MessageProps {
 }
 
 export function getAvatarUrl(userId: string, avatar: string | null, discriminator?: string): string {
+  if (avatar && (avatar.startsWith('/') || avatar.startsWith('http'))) {
+    return avatar;
+  }
   if (avatar) {
     return `https://cdn.discordapp.com/avatars/${userId}/${avatar}.webp?size=80`;
   }
@@ -459,7 +463,62 @@ function ReactionPills({ reactions }: { reactions: FrontendMessage['reactions'] 
   );
 }
 
-export default function Message({ message, isCompact, messageDisplay = 'default', compactModeAvatars = true, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, openInDiscordApp, badgeClickAction, onHideUser, onToggleHighlight, isUserHighlighted, onFocus, isFocused, onQuickReply, chattingEnabled, roleColors = true }: MessageProps) {
+function TelegramExtras({ message }: { message: FrontendMessage }) {
+  if (message.source !== 'telegram') return null;
+
+  return (
+    <>
+      {message.forwardFrom && (
+        <div className="text-xs text-[#2AABEE] italic mt-0.5 mb-1">
+          Forwarded from {message.forwardFrom.name}
+          {message.forwardFrom.chatTitle && message.forwardFrom.chatTitle !== message.forwardFrom.name
+            ? ` in ${message.forwardFrom.chatTitle}`
+            : ''}
+        </div>
+      )}
+
+      {message.sticker && (
+        <div className="mt-1">
+          {message.sticker.url ? (
+            <img
+              src={message.sticker.url}
+              alt={message.sticker.emoji ?? 'sticker'}
+              className="w-32 h-32 object-contain"
+            />
+          ) : (
+            <span className="text-4xl">{message.sticker.emoji ?? '🏷️'}</span>
+          )}
+        </div>
+      )}
+
+      {message.poll && (
+        <div className="mt-1 border border-discord-divider rounded p-3 max-w-sm">
+          <div className="text-sm font-semibold text-white mb-2">📊 {message.poll.question}</div>
+          <div className="space-y-1.5">
+            {message.poll.options.map((opt, i) => {
+              const total = message.poll!.options.reduce((s, o) => s + o.voters, 0);
+              const pct = total > 0 ? Math.round((opt.voters / total) * 100) : 0;
+              return (
+                <div key={i} className="relative">
+                  <div
+                    className="absolute inset-0 bg-[#2AABEE]/15 rounded"
+                    style={{ width: `${pct}%` }}
+                  />
+                  <div className="relative flex items-center justify-between px-2 py-1.5 text-sm">
+                    <span className="text-discord-text">{opt.text}</span>
+                    <span className="text-discord-text-muted text-xs">{pct}%</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+export default function Message({ message, isCompact, messageDisplay = 'default', compactModeAvatars = true, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, openInDiscordApp, openInTelegramApp, badgeClickAction, onHideUser, onToggleHighlight, isUserHighlighted, onFocus, isFocused, onQuickReply, chattingEnabled, roleColors = true }: MessageProps) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const addrColors: AddressColors = { evm: evmAddressColor ?? '#fee75c', sol: solAddressColor ?? '#14f195' };
   const templates: ContractLinkTemplates = contractLinkTemplates ?? DEFAULT_LINK_TEMPLATES;
@@ -503,19 +562,40 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
 
   const bgStyle = guildColor ? { backgroundColor: guildColor, ...highlightInlineStyle } : highlightInlineStyle;
 
+  const isTelegram = message.source === 'telegram';
+
   const discordPath = `discord.com/channels/${message.guildId ?? '@me'}/${message.channelId}/${message.id}`;
   const discordUrl = openInDiscordApp ? `discord://${discordPath}` : `https://${discordPath}`;
+  const webTelegramUrl = message.platformUrl ?? null;
+  const telegramUrl = (() => {
+    if (!webTelegramUrl) return null;
+    if (!openInTelegramApp) return webTelegramUrl;
+    const privateMatch = webTelegramUrl.match(/^https:\/\/t\.me\/c\/(\d+)\/(\d+)$/);
+    if (privateMatch) return `tg://privatepost?channel=${privateMatch[1]}&post=${privateMatch[2]}`;
+    const publicMatch = webTelegramUrl.match(/^https:\/\/t\.me\/([^/]+)\/(\d+)$/);
+    if (publicMatch) return `tg://resolve?domain=${publicMatch[1]}&post=${publicMatch[2]}`;
+    return webTelegramUrl;
+  })();
   const badgeAct: BadgeClickAction = badgeClickAction ?? 'discord';
 
-  const handleBadgeClick = () => {
-    const hasContract = message.hasContractAddress && message.contractAddresses.length > 0;
-    const openDiscord = () => {
+  const openSourcePlatform = () => {
+    if (isTelegram && telegramUrl) {
+      if (openInTelegramApp) {
+        window.location.href = telegramUrl;
+      } else {
+        window.open(telegramUrl, '_blank', 'noopener,noreferrer');
+      }
+    } else if (!isTelegram) {
       if (openInDiscordApp) {
         window.location.href = discordUrl;
       } else {
         window.open(discordUrl, '_blank', 'noopener,noreferrer');
       }
-    };
+    }
+  };
+
+  const handleBadgeClick = () => {
+    const hasContract = message.hasContractAddress && message.contractAddresses.length > 0;
     const openPlatform = () => {
       if (hasContract) {
         const url = buildContractUrl(message.contractAddresses[0], templates);
@@ -526,26 +606,38 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
     switch (badgeAct) {
       case 'platform':
         if (hasContract) openPlatform();
-        else openDiscord();
+        else openSourcePlatform();
         break;
       case 'both':
-        openDiscord();
+        openSourcePlatform();
         if (hasContract) openPlatform();
         break;
       case 'discord':
       default:
-        openDiscord();
+        openSourcePlatform();
         break;
     }
   };
 
-  const channelBadge = openInDiscordApp ? (
+  const channelLabel = isTelegram
+    ? message.channelName
+    : `${message.guildName ? `${message.guildName} / ` : ''}#${message.channelName}`;
+
+  const channelBadge = isTelegram ? (
+    <span
+      onClick={telegramUrl ? openSourcePlatform : undefined}
+      className={`text-[0.6875rem] px-1.5 py-0.5 rounded bg-[#2AABEE]/10 text-[#2AABEE] font-medium shrink-0${telegramUrl ? ' cursor-pointer hover:bg-[#2AABEE]/20 transition-colors' : ''}`}
+      title={telegramUrl ? 'Open in Telegram' : 'Telegram'}
+    >
+      TG &middot; {channelLabel}
+    </span>
+  ) : openInDiscordApp ? (
     <span
       onClick={() => { window.location.href = discordUrl; }}
       className="text-[0.6875rem] px-1.5 py-0.5 rounded bg-discord-embed-bg text-discord-text-muted font-medium shrink-0 hover:text-discord-text hover:bg-discord-dark transition-colors cursor-pointer"
       title="Open in Discord app"
     >
-      {message.guildName ? `${message.guildName}` : ''}{message.guildName ? ' / ' : ''}#{message.channelName}
+      {channelLabel}
     </span>
   ) : (
     <a
@@ -555,7 +647,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
       className="text-[0.6875rem] px-1.5 py-0.5 rounded bg-discord-embed-bg text-discord-text-muted font-medium shrink-0 hover:text-discord-text hover:bg-discord-dark transition-colors cursor-pointer"
       title="Open in Discord"
     >
-      {message.guildName ? `${message.guildName}` : ''}{message.guildName ? ' / ' : ''}#{message.channelName}
+      {channelLabel}
     </a>
   );
 
@@ -604,6 +696,28 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
               )}
             </span>
             {channelBadge}
+            <span className={`hidden sm:inline-flex items-center gap-0.5 align-middle transition-opacity ${isFocused ? 'opacity-100' : 'opacity-0 group-hover/compact:opacity-100'}`}>
+              <button
+                onClick={() => onFocus?.(message.guildId, message.channelId, message.guildName, message.channelName)}
+                className={`p-0.5 rounded transition-colors ${
+                  isFocused
+                    ? 'text-discord-blurple'
+                    : 'text-discord-text-muted hover:text-white hover:bg-discord-hover/50'
+                }`}
+                title={isFocused ? 'Focused on this channel' : 'Focus on this channel'}
+              >
+                <Eye size={13} />
+              </button>
+              {chattingEnabled && (
+                <button
+                  onClick={() => onQuickReply?.(message.channelId)}
+                  className="p-0.5 rounded text-discord-text-muted hover:text-discord-green hover:bg-discord-hover/50 transition-colors"
+                  title="Quick reply to this channel"
+                >
+                  <MessageSquareReply size={13} />
+                </button>
+              )}
+            </span>
             {' '}
             {message.hasContractAddress && (
               <>
@@ -642,6 +756,21 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                     alt={att.filename}
                     className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => setLightboxSrc(att.proxy_url)}
+                  />
+                ) : att.content_type?.startsWith('audio/') ? (
+                  <div key={att.id} className="flex flex-col gap-1 max-w-full sm:max-w-[400px]">
+                    <audio controls preload="none" className="h-8 max-w-full">
+                      <source src={att.proxy_url} type={att.content_type} />
+                    </audio>
+                    <span className="text-[11px] text-discord-text-muted truncate">{att.filename}</span>
+                  </div>
+                ) : att.content_type?.startsWith('video/') ? (
+                  <video
+                    key={att.id}
+                    src={att.proxy_url}
+                    controls
+                    preload="none"
+                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg"
                   />
                 ) : (
                   <a
@@ -739,6 +868,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
             </div>
           )}
 
+          <TelegramExtras message={message} />
           <ReactionPills reactions={message.reactions} />
         </div>
 
@@ -757,7 +887,10 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
             openInDiscordApp={openInDiscordApp ?? false}
             position={contextMenu}
             isHighlighted={isUserHighlighted}
-            onToggleHighlight={onToggleHighlight ? () => onToggleHighlight(message.author.id, message.author.displayName) : undefined}
+            onToggleHighlight={onToggleHighlight ? () => {
+              const highlightKey = isTelegram && message.author.username ? `@${message.author.username}` : message.author.id;
+              onToggleHighlight(highlightKey, message.author.displayName);
+            } : undefined}
             onHide={() => onHideUser?.(message.guildId, message.channelId, message.author.id, message.author.displayName)}
             onCopyId={copyUserId}
             onClose={() => setContextMenu(null)}
@@ -805,6 +938,21 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                     className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => setLightboxSrc(att.proxy_url)}
                   />
+                ) : att.content_type?.startsWith('audio/') ? (
+                  <div key={att.id} className="flex flex-col gap-1 max-w-full sm:max-w-[400px]">
+                    <audio controls preload="none" className="h-8 max-w-full">
+                      <source src={att.proxy_url} type={att.content_type} />
+                    </audio>
+                    <span className="text-[11px] text-discord-text-muted truncate">{att.filename}</span>
+                  </div>
+                ) : att.content_type?.startsWith('video/') ? (
+                  <video
+                    key={att.id}
+                    src={att.proxy_url}
+                    controls
+                    preload="none"
+                    className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg"
+                  />
                 ) : (
                   <a
                     key={att.id}
@@ -901,6 +1049,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
             </div>
           )}
 
+          <TelegramExtras message={message} />
           <ReactionPills reactions={message.reactions} />
         </div>
 
@@ -913,25 +1062,25 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
 
   return (
     <div className={`relative hover:bg-discord-hover pt-[1.0625rem] pb-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} group`} style={bgStyle}>
-      <div className={`absolute right-0 sm:right-2 top-0.5 sm:top-1 flex items-center gap-0.5 rounded px-0.5 py-0.5 z-10 transition-opacity sm:bg-discord-dark/90 sm:shadow-sm sm:border sm:border-discord-divider/50 ${isFocused ? 'opacity-100' : 'sm:opacity-0 sm:group-hover:opacity-100'}`}>
+      <div className={`absolute right-0 top-0.5 flex items-center gap-0.5 rounded px-0.5 py-0.5 z-10 sm:hidden ${isFocused ? 'opacity-100' : ''}`}>
         <button
           onClick={() => onFocus?.(message.guildId, message.channelId, message.guildName, message.channelName)}
-          className={`p-0.5 sm:p-1 rounded transition-colors ${
+          className={`p-0.5 rounded transition-colors ${
             isFocused
               ? 'text-discord-blurple'
-              : 'text-discord-text-muted/60 sm:text-discord-text-muted hover:text-white hover:bg-discord-hover/50'
+              : 'text-discord-text-muted/60 hover:text-white'
           }`}
           title={isFocused ? 'Focused on this channel' : 'Focus on this channel'}
         >
-          <Eye size={13} className="sm:w-3.5 sm:h-3.5" />
+          <Eye size={13} />
         </button>
         {chattingEnabled && (
           <button
             onClick={() => onQuickReply?.(message.channelId)}
-            className="p-0.5 sm:p-1 rounded text-discord-text-muted/60 sm:text-discord-text-muted hover:text-discord-green hover:bg-discord-hover/50 transition-colors"
+            className="p-0.5 rounded text-discord-text-muted/60 hover:text-discord-green transition-colors"
             title="Quick reply to this channel"
           >
-            <MessageSquareReply size={13} className="sm:w-3.5 sm:h-3.5" />
+            <MessageSquareReply size={13} />
           </button>
         )}
       </div>
@@ -962,6 +1111,28 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
             {formatTimestamp(message.timestamp)}
           </span>
           {channelBadge}
+          <span className={`hidden sm:inline-flex items-center gap-0.5 align-middle transition-opacity ${isFocused ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+            <button
+              onClick={() => onFocus?.(message.guildId, message.channelId, message.guildName, message.channelName)}
+              className={`p-0.5 rounded transition-colors ${
+                isFocused
+                  ? 'text-discord-blurple'
+                  : 'text-discord-text-muted hover:text-white hover:bg-discord-hover/50'
+              }`}
+              title={isFocused ? 'Focused on this channel' : 'Focus on this channel'}
+            >
+              <Eye size={14} />
+            </button>
+            {chattingEnabled && (
+              <button
+                onClick={() => onQuickReply?.(message.channelId)}
+                className="p-0.5 rounded text-discord-text-muted hover:text-discord-green hover:bg-discord-hover/50 transition-colors"
+                title="Quick reply to this channel"
+              >
+                <MessageSquareReply size={14} />
+              </button>
+            )}
+          </span>
           {message.hasContractAddress && (
             <span
               onClick={handleBadgeClick}
@@ -1016,6 +1187,21 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                   alt={att.filename}
                   className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                   onClick={() => setLightboxSrc(att.proxy_url)}
+                />
+              ) : att.content_type?.startsWith('audio/') ? (
+                <div key={att.id} className="flex flex-col gap-1 max-w-full sm:max-w-[400px]">
+                  <audio controls preload="none" className="h-8 max-w-full">
+                    <source src={att.proxy_url} type={att.content_type} />
+                  </audio>
+                  <span className="text-[11px] text-discord-text-muted truncate">{att.filename}</span>
+                </div>
+              ) : att.content_type?.startsWith('video/') ? (
+                <video
+                  key={att.id}
+                  src={att.proxy_url}
+                  controls
+                  preload="none"
+                  className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg"
                 />
               ) : (
                 <a
@@ -1113,6 +1299,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
           </div>
         )}
 
+        <TelegramExtras message={message} />
         <ReactionPills reactions={message.reactions} />
       </div>
 
@@ -1131,7 +1318,10 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
           openInDiscordApp={openInDiscordApp ?? false}
           position={contextMenu}
           isHighlighted={isUserHighlighted}
-          onToggleHighlight={onToggleHighlight ? () => onToggleHighlight(message.author.id, message.author.displayName) : undefined}
+          onToggleHighlight={onToggleHighlight ? () => {
+            const highlightKey = isTelegram && message.author.username ? `@${message.author.username}` : message.author.id;
+            onToggleHighlight(highlightKey, message.author.displayName);
+          } : undefined}
           onHide={() => onHideUser?.(message.guildId, message.channelId, message.author.id, message.author.displayName)}
           onCopyId={copyUserId}
           onClose={() => setContextMenu(null)}

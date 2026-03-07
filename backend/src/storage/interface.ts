@@ -16,7 +16,7 @@ export interface StorageProvider {
 
   getRoomsForChannel(userId: string, channelId: string): Promise<Room[]>;
   isChannelSubscribed(userId: string, channelId: string): Promise<boolean>;
-  isUserHighlighted(userId: string, discordUserId: string, roomId?: string): Promise<boolean>;
+  isUserHighlighted(userId: string, discordUserId: string, roomId?: string, username?: string | null): Promise<boolean>;
 
   getContracts(userId: string, limit?: number, since?: string): Promise<ContractEntry[]>;
   logContract(userId: string, entry: ContractEntry): Promise<void>;

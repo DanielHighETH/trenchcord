@@ -13,6 +13,7 @@ import {
   Zap,
   Link2,
   Send,
+  MessagesSquare,
 } from 'lucide-react';
 import { StaggerContainer, fadeUpVariant } from './AnimatedSection';
 import { AnimatedSection } from './AnimatedSection';
@@ -22,6 +23,12 @@ const features = [
     icon: LayoutGrid,
     title: 'Custom Rooms',
     desc: 'Aggregate channels from multiple servers into unified rooms.',
+    span: 'md:col-span-2',
+  },
+  {
+    icon: MessagesSquare,
+    title: 'Telegram Integration',
+    desc: 'Monitor Telegram groups, channels, and DMs alongside Discord — all in the same rooms.',
     span: 'md:col-span-2',
   },
   {
@@ -114,7 +121,7 @@ export function Features() {
             Everything You Need
           </h2>
           <p className="mt-3 text-dc-text-muted max-w-xl mx-auto text-sm">
-            A complete toolkit for monitoring Discord alpha and trading crypto — all in one place.
+            A complete toolkit for monitoring Discord &amp; Telegram alpha and trading crypto — all in one place.
           </p>
         </AnimatedSection>
 

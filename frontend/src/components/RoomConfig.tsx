@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { ChannelRef, KeywordPattern, KeywordMatchMode, HighlightMode } from '../types';
-import { X, Search, Plus, Trash2, Hash, MessageCircle, Users, Filter, AlertTriangle, Palette } from 'lucide-react';
+import { X, Search, Plus, Trash2, Hash, MessageCircle, Users, Filter, AlertTriangle, Palette, Send } from 'lucide-react';
 import ColorPickerWithAlpha from './ColorPickerWithAlpha';
 
 export default function RoomConfig() {
@@ -19,6 +19,9 @@ export default function RoomConfig() {
   const fetchConfig = useAppStore((s) => s.fetchConfig);
   const updateConfig = useAppStore((s) => s.updateConfig);
   const allMessages = useAppStore((s) => s.messages);
+  const telegramChats = useAppStore((s) => s.telegramChats);
+  const fetchTelegramChats = useAppStore((s) => s.fetchTelegramChats);
+  const authStatus = useAppStore((s) => s.authStatus);
 
   const userNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -45,6 +48,7 @@ export default function RoomConfig() {
   const [newFilterUser, setNewFilterUser] = useState('');
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<'channels' | 'users' | 'filter' | 'keywords'>('channels');
+  const [platformTab, setPlatformTab] = useState<'discord' | 'telegram'>('discord');
   const [roomKeywordPatterns, setRoomKeywordPatterns] = useState<KeywordPattern[]>([]);
   const [highlightMode, setHighlightMode] = useState<HighlightMode>('background');
   const [highlightedUserColors, setHighlightedUserColors] = useState<Record<string, string>>({});
@@ -58,8 +62,11 @@ export default function RoomConfig() {
       fetchGuilds();
       fetchDMChannels();
       fetchConfig();
+      if (authStatus?.telegramConnected) {
+        fetchTelegramChats();
+      }
     }
-  }, [configModalOpen, fetchGuilds, fetchDMChannels, fetchConfig]);
+  }, [configModalOpen, fetchGuilds, fetchDMChannels, fetchConfig, fetchTelegramChats, authStatus?.telegramConnected]);
 
   useEffect(() => {
     if (editingRoom) {
@@ -174,6 +181,12 @@ export default function RoomConfig() {
           r.username.toLowerCase().includes(search.toLowerCase()) ||
           (r.global_name ?? '').toLowerCase().includes(search.toLowerCase())
       )
+  );
+
+  const filteredTelegramChats = telegramChats.filter(
+    (chat) =>
+      !search ||
+      chat.title.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -293,7 +306,12 @@ export default function RoomConfig() {
                     {selectedChannels.map((ch) => (
                       <div key={ch.channelId} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-discord-dark/50">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          {ch.guildId ? <Hash size={12} className="shrink-0 text-discord-channel-icon" /> : <MessageCircle size={12} className="shrink-0 text-discord-channel-icon" />}
+                          {ch.source === 'telegram'
+                            ? <Send size={12} className="shrink-0 text-[#2AABEE]" />
+                            : ch.guildId
+                              ? <Hash size={12} className="shrink-0 text-discord-channel-icon" />
+                              : <MessageCircle size={12} className="shrink-0 text-discord-channel-icon" />
+                          }
                           <span className="text-sm text-discord-text truncate">
                             {ch.guildName ? `${ch.guildName} / ` : ''}{ch.channelName ?? ch.channelId}
                           </span>
@@ -407,6 +425,34 @@ export default function RoomConfig() {
                 );
               })()}
 
+              {/* Platform toggle */}
+              {(authStatus?.telegramConnected || authStatus?.telegramConfigured || telegramChats.length > 0) && (
+                <div className="flex rounded-lg bg-discord-dark p-0.5 mb-3">
+                  <button
+                    onClick={() => setPlatformTab('discord')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                      platformTab === 'discord'
+                        ? 'bg-discord-blurple text-white'
+                        : 'text-discord-text-muted hover:text-discord-text'
+                    }`}
+                  >
+                    <Hash size={12} />
+                    Discord
+                  </button>
+                  <button
+                    onClick={() => setPlatformTab('telegram')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                      platformTab === 'telegram'
+                        ? 'bg-[#2AABEE] text-white'
+                        : 'text-discord-text-muted hover:text-discord-text'
+                    }`}
+                  >
+                    <Send size={12} />
+                    Telegram
+                  </button>
+                </div>
+              )}
+
               {/* Search */}
               <div className="relative mb-4">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-discord-text-muted" />
@@ -414,92 +460,141 @@ export default function RoomConfig() {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search guilds and channels..."
+                  placeholder={platformTab === 'telegram' ? 'Search Telegram chats...' : 'Search Discord channels...'}
                   className="w-full bg-discord-dark border-none rounded px-3 py-2 pl-9 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple"
                 />
               </div>
 
-              {/* Guild channels */}
               <div className="space-y-3 max-h-[300px] overflow-y-auto">
-                {filteredGuilds.map((guild) => (
-                  <div key={guild.id}>
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-1 flex items-center gap-1.5">
-                      <Users size={12} />
-                      {guild.name}
-                    </div>
-                    <div className="space-y-0.5 ml-2">
-                      {guild.channels.map((ch) => {
-                        const selected = isChannelSelected(ch.id);
-                        return (
-                          <button
-                            key={ch.id}
-                            onClick={() =>
-                              toggleChannel({
-                                guildId: guild.id,
-                                channelId: ch.id,
-                                guildName: guild.name,
-                                channelName: ch.name,
-                              })
-                            }
-                            className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm text-left transition-colors ${
-                              selected
-                                ? 'bg-discord-blurple/20 text-discord-blurple'
-                                : 'text-discord-channel-icon hover:bg-discord-hover/50 hover:text-discord-text'
-                            }`}
-                          >
-                            <Hash size={14} />
-                            <span className="truncate">{ch.name}</span>
-                            {selected && <span className="ml-auto text-[10px]">ADDED</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
+                {/* Discord section */}
+                {platformTab === 'discord' && (
+                  <>
+                    {(filteredGuilds.length > 0 || filteredDMs.length > 0) ? (
+                      <div className="space-y-3">
+                        {filteredGuilds.map((guild) => (
+                          <div key={guild.id}>
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-1 flex items-center gap-1.5">
+                              <Users size={12} />
+                              {guild.name}
+                            </div>
+                            <div className="space-y-0.5 ml-2">
+                              {guild.channels.map((ch) => {
+                                const selected = isChannelSelected(ch.id);
+                                return (
+                                  <button
+                                    key={ch.id}
+                                    onClick={() =>
+                                      toggleChannel({
+                                        guildId: guild.id,
+                                        channelId: ch.id,
+                                        guildName: guild.name,
+                                        channelName: ch.name,
+                                      })
+                                    }
+                                    className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm text-left transition-colors ${
+                                      selected
+                                        ? 'bg-discord-blurple/20 text-discord-blurple'
+                                        : 'text-discord-channel-icon hover:bg-discord-hover/50 hover:text-discord-text'
+                                    }`}
+                                  >
+                                    <Hash size={14} />
+                                    <span className="truncate">{ch.name}</span>
+                                    {selected && <span className="ml-auto text-[10px]">ADDED</span>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
 
-                {/* DM channels */}
-                {filteredDMs.length > 0 && (
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-1 flex items-center gap-1.5">
-                      <MessageCircle size={12} />
-                      Direct Messages
-                    </div>
-                    <div className="space-y-0.5 ml-2">
-                      {filteredDMs.map((dm) => {
-                        const selected = isChannelSelected(dm.id);
-                        const recipientNames = dm.recipients
-                          .map((r) => r.global_name || r.username)
-                          .join(', ');
-                        return (
-                          <button
-                            key={dm.id}
-                            onClick={() =>
-                              toggleChannel({
-                                guildId: null,
-                                channelId: dm.id,
-                                channelName: recipientNames,
-                              })
-                            }
-                            className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm text-left transition-colors ${
-                              selected
-                                ? 'bg-discord-blurple/20 text-discord-blurple'
-                                : 'text-discord-channel-icon hover:bg-discord-hover/50 hover:text-discord-text'
-                            }`}
-                          >
-                            <MessageCircle size={14} />
-                            <span className="truncate">{recipientNames}</span>
-                            {selected && <span className="ml-auto text-[10px]">ADDED</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                        {filteredDMs.length > 0 && (
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-1 flex items-center gap-1.5">
+                              <MessageCircle size={12} />
+                              Direct Messages
+                            </div>
+                            <div className="space-y-0.5 ml-2">
+                              {filteredDMs.map((dm) => {
+                                const selected = isChannelSelected(dm.id);
+                                const recipientNames = dm.recipients
+                                  .map((r) => r.global_name || r.username)
+                                  .join(', ');
+                                return (
+                                  <button
+                                    key={dm.id}
+                                    onClick={() =>
+                                      toggleChannel({
+                                        guildId: null,
+                                        channelId: dm.id,
+                                        channelName: recipientNames,
+                                      })
+                                    }
+                                    className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm text-left transition-colors ${
+                                      selected
+                                        ? 'bg-discord-blurple/20 text-discord-blurple'
+                                        : 'text-discord-channel-icon hover:bg-discord-hover/50 hover:text-discord-text'
+                                    }`}
+                                  >
+                                    <MessageCircle size={14} />
+                                    <span className="truncate">{recipientNames}</span>
+                                    {selected && <span className="ml-auto text-[10px]">ADDED</span>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-discord-text-muted text-center py-4">
+                        {guilds.length === 0 ? 'Loading Discord channels...' : 'No Discord channels match your search.'}
+                      </p>
+                    )}
+                  </>
                 )}
 
-                {filteredGuilds.length === 0 && filteredDMs.length === 0 && (
-                  <p className="text-sm text-discord-text-muted text-center py-4">
-                    {guilds.length === 0 ? 'Loading guilds...' : 'No channels match your search.'}
-                  </p>
+                {/* Telegram section */}
+                {platformTab === 'telegram' && (
+                  <>
+                    {filteredTelegramChats.length > 0 ? (
+                      <div className="space-y-0.5">
+                        {filteredTelegramChats.map((chat) => {
+                          const selected = isChannelSelected(chat.id);
+                          const typeLabel = chat.type === 'channel' ? 'CH' : chat.type === 'supergroup' ? 'SG' : chat.type === 'group' ? 'GP' : '';
+                          return (
+                            <button
+                              key={chat.id}
+                              onClick={() =>
+                                toggleChannel({
+                                  source: 'telegram',
+                                  guildId: null,
+                                  channelId: chat.id,
+                                  guildName: chat.type !== 'user' ? chat.title : undefined,
+                                  channelName: chat.title,
+                                })
+                              }
+                              className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm text-left transition-colors ${
+                                selected
+                                  ? 'bg-[#2AABEE]/20 text-[#2AABEE]'
+                                  : 'text-discord-channel-icon hover:bg-discord-hover/50 hover:text-discord-text'
+                              }`}
+                            >
+                              <Send size={14} />
+                              <span className="truncate">{chat.title}</span>
+                              {typeLabel && (
+                                <span className="text-[9px] px-1 py-0.5 rounded bg-discord-dark/50 text-discord-text-muted shrink-0">{typeLabel}</span>
+                              )}
+                              {selected && <span className="ml-auto text-[10px]">ADDED</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-discord-text-muted text-center py-4">
+                        {telegramChats.length === 0 ? 'No Telegram chats available. Connect Telegram in Settings.' : 'No Telegram chats match your search.'}
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             </>
@@ -508,8 +603,8 @@ export default function RoomConfig() {
           {tab === 'users' && (
             <>
               <p className="text-sm text-discord-text-muted mb-4">
-                Add Discord user IDs to highlight in this room. Their messages will be visually
-                highlighted and you'll get alerts when they send messages.
+                Add user IDs or Telegram @usernames to highlight in this room. Their messages will be
+                visually highlighted and you'll get alerts when they send messages.
               </p>
 
               <div className="mb-4">
@@ -551,7 +646,7 @@ export default function RoomConfig() {
                   value={newUserId}
                   onChange={(e) => setNewUserId(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && addHighlightedUser()}
-                  placeholder="Discord User ID"
+                  placeholder="Discord User ID or @telegram_username"
                   className="flex-1 bg-discord-dark border-none rounded px-3 py-2 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple"
                   autoComplete="off"
                   data-1p-ignore
@@ -571,14 +666,17 @@ export default function RoomConfig() {
                     No highlighted users for this room.
                   </p>
                 )}
-                {highlightedUsers.map((uid) => (
+                {highlightedUsers.map((uid) => {
+                  const isTgUser = uid.startsWith('@');
+                  return (
                   <div
                     key={uid}
                     className="flex items-center justify-between px-3 py-2 bg-discord-dark rounded"
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-sm font-mono" style={{ color: highlightedUserColors[uid] || '#f2f3f5' }}>{uid}</span>
-                      {userNameMap.has(uid) && (
+                      {isTgUser && <Send size={12} className="text-[#2AABEE] shrink-0" />}
+                      <span className={`text-sm ${isTgUser ? 'text-[#2AABEE]' : 'font-mono'}`} style={isTgUser ? undefined : { color: highlightedUserColors[uid] || '#f2f3f5' }}>{uid}</span>
+                      {!isTgUser && userNameMap.has(uid) && (
                         <span className="text-[11px] text-discord-text-muted">{userNameMap.get(uid)}</span>
                       )}
                     </div>
@@ -605,7 +703,8 @@ export default function RoomConfig() {
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </>
           )}

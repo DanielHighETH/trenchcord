@@ -18,10 +18,12 @@ const DEFAULT_CONFIG: AppConfig = {
   contractDetection: true,
   guildColors: {},
   dmColors: {},
+  telegramColors: {},
   enabledGuilds: [],
   evmAddressColor: '#fee75c',
   solAddressColor: '#14f195',
   openInDiscordApp: false,
+  openInTelegramApp: false,
   hiddenUsers: {},
   messageSounds: false,
   soundSettings: {
@@ -135,7 +137,7 @@ class ConfigStore {
     return this.config;
   }
 
-  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors'>>): AppConfig {
+  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'telegramApiId' | 'telegramApiHash' | 'telegramSessions'>>): AppConfig {
     Object.assign(this.config, partial);
     this.save();
     return this.config;
@@ -180,13 +182,17 @@ class ConfigStore {
     return this.config.rooms.filter((r) => r.channels.some((c) => c.channelId === channelId));
   }
 
-  isUserHighlighted(userId: string, roomId?: string): boolean {
-    if (this.config.globalHighlightedUsers.includes(userId)) return true;
+  isUserHighlighted(userId: string, roomId?: string, username?: string | null): boolean {
+    const matchesList = (list: string[]) =>
+      list.includes(userId) ||
+      (username ? list.some((e) => e.startsWith('@') && e.slice(1).toLowerCase() === username.toLowerCase()) : false);
+
+    if (matchesList(this.config.globalHighlightedUsers)) return true;
     if (roomId) {
       const room = this.getRoom(roomId);
-      return room?.highlightedUsers.includes(userId) ?? false;
+      return room ? matchesList(room.highlightedUsers) : false;
     }
-    return this.config.rooms.some((r) => r.highlightedUsers.includes(userId));
+    return this.config.rooms.some((r) => matchesList(r.highlightedUsers));
   }
 
   getTokens(): string[] {

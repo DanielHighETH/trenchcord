@@ -54,8 +54,8 @@ export class JsonStorageProvider implements StorageProvider {
     return configStore.isChannelSubscribed(channelId);
   }
 
-  async isUserHighlighted(_userId: string, discordUserId: string, roomId?: string): Promise<boolean> {
-    return configStore.isUserHighlighted(discordUserId, roomId);
+  async isUserHighlighted(_userId: string, discordUserId: string, roomId?: string, username?: string | null): Promise<boolean> {
+    return configStore.isUserHighlighted(discordUserId, roomId, username);
   }
 
   async getContracts(_userId: string, limit?: number, since?: string): Promise<ContractEntry[]> {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAppStore } from '../stores/appStore';
-import { Hash, Plus, Settings, Trash2, FileText, HelpCircle, PanelLeftClose, User } from 'lucide-react';
+import { Hash, Plus, Settings, Trash2, FileText, HelpCircle, PanelLeftClose, User, Send } from 'lucide-react';
 import { isHostedMode } from '../lib/supabase';
 import { getAvatarUrl } from './Message';
 import ConfirmModal from './ConfirmModal';
@@ -19,6 +19,7 @@ export default function Sidebar() {
   const contracts = useAppStore((s) => s.contracts);
   const collapsed = useAppStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
+  const authStatus = useAppStore((s) => s.authStatus);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const closeMobile = () => {
@@ -42,8 +43,14 @@ export default function Sidebar() {
         <div className="ml-auto flex items-center gap-1">
           <div
             className={`w-2 h-2 rounded-full ${connected ? 'bg-discord-green' : 'bg-discord-red'}`}
-            title={connected ? 'Connected' : 'Disconnected'}
+            title={connected ? 'Discord connected' : 'Discord disconnected'}
           />
+          {authStatus?.telegramConfigured && (
+            <div
+              className={`w-2 h-2 rounded-full ${authStatus.telegramConnected ? 'bg-[#2AABEE]' : 'bg-yellow-500'}`}
+              title={authStatus.telegramConnected ? 'Telegram connected' : 'Telegram disconnected'}
+            />
+          )}
           <button
             onClick={toggleSidebar}
             className="ml-1 p-1 rounded text-discord-channel-icon hover:text-discord-header-primary hover:bg-discord-hover transition-colors"
@@ -143,7 +150,7 @@ export default function Sidebar() {
           );
         })}
 
-        {/* DM Channels - only show DMs that have received messages */}
+        {/* Discord DM Channels */}
         {(() => {
           const dmLookup = new Map(dmChannels.map((dm) => [dm.id, dm]));
           const activeDMs = Object.keys(messages)
@@ -208,6 +215,53 @@ export default function Sidebar() {
                       </div>
                     )}
                     <span className="text-base leading-5 truncate flex-1">{recipientNames}</span>
+                    {msgCount > 0 && (
+                      <span className="text-[10px] text-discord-text-muted">{msgCount}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          );
+        })()}
+
+        {/* Telegram DM Channels */}
+        {(() => {
+          const activeTgDMs = Object.keys(messages)
+            .filter((key) => key.startsWith('tg-dm:') && (messages[key]?.length ?? 0) > 0)
+            .map((key) => {
+              const chatId = key.slice(6);
+              const msgs = messages[key];
+              const lastMsg = msgs[msgs.length - 1];
+              return { chatId, tgDmRoomId: key, lastTimestamp: lastMsg?.timestamp ?? '', displayName: lastMsg?.author.displayName ?? 'TG Chat' };
+            })
+            .sort((a, b) => b.lastTimestamp.localeCompare(a.lastTimestamp));
+
+          if (activeTgDMs.length === 0) return null;
+
+          return (
+            <>
+              <div className="flex items-center px-2 mb-1 mt-4">
+                <span className="text-xs font-bold uppercase tracking-[0.02em] text-[#2AABEE]">
+                  Telegram DMs
+                </span>
+              </div>
+              {activeTgDMs.map(({ chatId, tgDmRoomId, displayName }) => {
+                const isActive = activeRoomId === tgDmRoomId && activeView === 'chat';
+                const msgCount = messages[tgDmRoomId]?.length ?? 0;
+
+                return (
+                  <div
+                    key={chatId}
+                    className={`group flex items-center gap-1.5 px-2 py-[6px] rounded cursor-pointer mb-[1px] ${
+                      isActive
+                        ? 'bg-discord-hover-light text-discord-header-primary font-medium'
+                        : 'text-discord-channel-icon hover:bg-discord-hover hover:text-discord-header-secondary'
+                    }`}
+                    onClick={() => { setActiveRoom(tgDmRoomId); closeMobile(); }}
+                  >
+                    <Send size={16} className="shrink-0 text-[#2AABEE]" />
+                    <span className="text-base leading-5 truncate flex-1">{displayName}</span>
                     {msgCount > 0 && (
                       <span className="text-[10px] text-discord-text-muted">{msgCount}</span>
                     )}

@@ -4,10 +4,12 @@
   "contractDetection": true,
   "guildColors": {},
   "dmColors": {},
+  "telegramColors": {},
   "enabledGuilds": [],
   "evmAddressColor": "#fee75c",
   "solAddressColor": "#14f195",
   "openInDiscordApp": true,
+  "openInTelegramApp": false,
   "hiddenUsers": {},
   "messageSounds": true,
   "soundSettings": {
@@ -44,5 +46,8 @@
   "autoOpenHighlightedContracts": true,
   "badgeClickAction": "discord",
   "messageDisplay": "default",
-  "compactModeAvatars": true
+  "compactModeAvatars": true,
+  "telegramApiId": "",
+  "telegramApiHash": "",
+  "telegramSessions": []
 }

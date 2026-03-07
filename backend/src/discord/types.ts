@@ -83,7 +83,10 @@ export const GatewayOpcodes = {
   HEARTBEAT_ACK: 11,
 } as const;
 
+export type MessageSource = 'discord' | 'telegram';
+
 export interface ChannelRef {
+  source?: MessageSource;
   guildId: string | null;
   channelId: string;
   guildName?: string;
@@ -181,10 +184,12 @@ export interface AppConfig {
   contractDetection: boolean;
   guildColors: Record<string, string>;
   dmColors: Record<string, string>;
+  telegramColors: Record<string, string>;
   enabledGuilds: string[];
   evmAddressColor: string;
   solAddressColor: string;
   openInDiscordApp: boolean;
+  openInTelegramApp: boolean;
   hiddenUsers: Record<string, { userId: string; displayName: string }[]>;
   messageSounds: boolean;
   soundSettings: SoundSettings;
@@ -202,6 +207,16 @@ export interface AppConfig {
   messageDisplay: MessageDisplay;
   compactModeAvatars: boolean;
   roleColors: boolean;
+  telegramApiId?: string;
+  telegramApiHash?: string;
+  telegramSessions?: string[];
+}
+
+export interface TelegramChatInfo {
+  id: string;
+  title: string;
+  type: 'user' | 'group' | 'supergroup' | 'channel';
+  photo?: string | null;
 }
 
 export interface GuildInfo {
@@ -221,12 +236,29 @@ export interface FrontendReaction {
   count: number;
 }
 
+export interface TelegramSticker {
+  url: string;
+  emoji?: string;
+  isAnimated?: boolean;
+}
+
+export interface TelegramPoll {
+  question: string;
+  options: { text: string; voters: number }[];
+}
+
+export interface TelegramForward {
+  name: string;
+  chatTitle?: string;
+}
+
 export interface FrontendMessage {
   id: string;
   channelId: string;
   guildId: string | null;
   channelName: string;
   guildName: string | null;
+  source?: MessageSource;
   author: {
     id: string;
     username: string;
@@ -250,4 +282,8 @@ export interface FrontendMessage {
   } | null;
   reactions?: FrontendReaction[];
   matchedKeywords?: string[];
+  platformUrl?: string;
+  sticker?: TelegramSticker;
+  poll?: TelegramPoll;
+  forwardFrom?: TelegramForward;
 }

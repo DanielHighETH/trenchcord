@@ -10,6 +10,10 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { GatewayManager } from './discord/gatewayManager.js';
+import { TelegramClientManager } from './telegram/clientManager.js';
+import { processTelegramMessage } from './telegram/messageProcessor.js';
+import type { TelegramRawMessage } from './telegram/types.js';
+import type { TelegramMessageProcessorContext } from './telegram/messageProcessor.js';
 import { WsServer } from './ws/server.js';
 import { createRouter } from './api/routes.js';
 import { getStorageProvider, isHostedMode } from './storage/index.js';
@@ -27,6 +31,10 @@ const PORT = parseInt(process.env.PORT ?? '3001', 10);
 const LOCAL_USER_ID = 'local';
 
 const gatewayPool = new UserGatewayPool();
+
+// Telegram state
+let localTelegramManager: TelegramClientManager | null = null;
+const telegramManagers = new Map<string, TelegramClientManager>();
 
 function checkPushover(cfg: PushoverConfig, msg: FrontendMessage, evmChainHint: string | null, contractLinkTemplates: ContractLinkTemplates): void {
   if (!cfg.enabled || !cfg.appToken || !cfg.userKey) return;
@@ -209,6 +217,145 @@ export function getUserGateway(userId: string): GatewayManager | null {
   return getGateway();
 }
 
+// --- Telegram ---
+
+function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userId: string): void {
+  const storage = getStorageProvider();
+
+  tg.on('ready', (user: { id: string; username: string | null; firstName: string }) => {
+    console.log(`[App] Telegram logged in as ${user.firstName} (@${user.username ?? 'no-username'})`);
+    wsServer.broadcastRaw({ type: 'telegram_ready', data: { username: user.username, firstName: user.firstName } }, userId);
+  });
+
+  tg.on('message', async (raw: TelegramRawMessage) => {
+    const rooms = await storage.getRoomsForChannel(userId, raw.chatId);
+    const isTgDm = raw.chatType === 'user';
+
+    if (rooms.length === 0 && !isTgDm) return;
+
+    const config = await storage.getConfig(userId);
+    const isHighlighted = await storage.isUserHighlighted(userId, raw.sender.id, undefined, raw.sender.username);
+    const ctx: TelegramMessageProcessorContext = {
+      config,
+      isHighlighted,
+      cacheUserName: (telegramUserId, displayName) => {
+        storage.cacheUserName(userId, telegramUserId, displayName);
+      },
+    };
+
+    const roomKeywords = rooms.flatMap((r) => r.keywordPatterns ?? []);
+    const frontendMsg = processTelegramMessage(raw, roomKeywords, ctx);
+    const evmChainHint = detectEvmChainFromContent(raw.text, []);
+
+    checkPushover(config.pushover, frontendMsg, evmChainHint, config.contractLinkTemplates);
+
+    const roomIds = rooms.map((r) => r.id);
+    if (isTgDm) {
+      roomIds.push(`tg-dm:${raw.chatId}`);
+    }
+
+    if (frontendMsg.hasContractAddress) {
+      for (const addr of frontendMsg.contractAddresses) {
+        const isEvm = addr.startsWith('0x');
+        const entry = {
+          address: addr,
+          chain: (isEvm ? 'evm' : 'sol') as 'evm' | 'sol',
+          evmChain: isEvm ? (evmChainHint ?? undefined) : undefined,
+          authorId: frontendMsg.author.id,
+          authorName: frontendMsg.author.displayName,
+          channelId: frontendMsg.channelId,
+          channelName: frontendMsg.channelName,
+          guildId: frontendMsg.guildId,
+          guildName: frontendMsg.guildName,
+          roomIds,
+          messageId: frontendMsg.id,
+          timestamp: frontendMsg.timestamp,
+        };
+        await storage.logContract(userId, entry);
+        if (isEvm && evmChainHint) {
+          await storage.updateEvmChain(userId, addr, evmChainHint);
+        }
+        wsServer.broadcastContract(entry, userId);
+      }
+    }
+
+    if (frontendMsg.matchedKeywords && frontendMsg.matchedKeywords.length > 0) {
+      wsServer.broadcastAlert({
+        type: 'keyword_match',
+        message: frontendMsg,
+        reason: `Keyword match: ${frontendMsg.matchedKeywords.join(', ')}`,
+      }, userId);
+    }
+
+    wsServer.broadcastMessage(frontendMsg, roomIds, userId);
+  });
+
+  tg.on('messageUpdate', async (raw: TelegramRawMessage) => {
+    const rooms = await storage.getRoomsForChannel(userId, raw.chatId);
+    const isTgDm = raw.chatType === 'user';
+    if (rooms.length === 0 && !isTgDm) return;
+
+    const roomIds = rooms.map((r) => r.id);
+    if (isTgDm) roomIds.push(`tg-dm:${raw.chatId}`);
+
+    const frontendMsg = processTelegramMessage(raw);
+    wsServer.broadcastMessageUpdate({
+      messageId: frontendMsg.id,
+      channelId: frontendMsg.channelId,
+      content: frontendMsg.content,
+    }, roomIds, userId);
+  });
+
+  tg.on('fatal', (err: Error) => {
+    console.error('[App] Fatal Telegram error:', err.message);
+  });
+}
+
+export async function connectTelegram(
+  apiId: number,
+  apiHash: string,
+  sessions: string[],
+  wsServer: WsServer,
+  userId: string = LOCAL_USER_ID,
+): Promise<TelegramClientManager> {
+  // Disconnect existing
+  disconnectTelegram(userId);
+
+  const tg = new TelegramClientManager(apiId, apiHash, sessions);
+  wireTelegramEvents(tg, wsServer, userId);
+  await tg.connect();
+
+  if (isHostedMode()) {
+    telegramManagers.set(userId, tg);
+  } else {
+    localTelegramManager = tg;
+  }
+
+  return tg;
+}
+
+export function disconnectTelegram(userId: string = LOCAL_USER_ID): void {
+  if (isHostedMode()) {
+    const tg = telegramManagers.get(userId);
+    if (tg) {
+      tg.disconnect();
+      telegramManagers.delete(userId);
+    }
+  } else {
+    if (localTelegramManager) {
+      localTelegramManager.disconnect();
+      localTelegramManager = null;
+    }
+  }
+}
+
+export function getUserTelegram(userId: string): TelegramClientManager | null {
+  if (isHostedMode()) {
+    return telegramManagers.get(userId) ?? null;
+  }
+  return localTelegramManager;
+}
+
 const app = express();
 
 // CORS: restrict origins in hosted mode, allow all in local mode
@@ -295,6 +442,18 @@ httpServer.listen(PORT, async () => {
       connectGateway(tokens, wsServer, LOCAL_USER_ID);
     } else {
       console.log('[App] No Discord tokens configured. Waiting for token setup via frontend.');
+    }
+
+    const config = await storage.getConfig(LOCAL_USER_ID);
+    if (config.telegramSessions?.length && config.telegramApiId && config.telegramApiHash) {
+      console.log(`[App] Found ${config.telegramSessions.length} Telegram session(s), connecting...`);
+      connectTelegram(
+        parseInt(config.telegramApiId),
+        config.telegramApiHash,
+        config.telegramSessions,
+        wsServer,
+        LOCAL_USER_ID,
+      ).catch((err) => console.error('[App] Telegram connection failed:', err.message));
     }
   } else {
     console.log('[App] Hosted mode: gateways will connect per-user on demand.');

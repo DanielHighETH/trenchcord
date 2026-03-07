@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Package, Download, KeyRound, Play, AlertTriangle } from 'lucide-react';
+import { Package, Download, KeyRound, Play, AlertTriangle, Send } from 'lucide-react';
 import { AnimatedSection } from './AnimatedSection';
 
 const tabs = [
   { id: 'requirements', label: 'Requirements', icon: Package },
   { id: 'installation', label: 'Installation', icon: Download },
   { id: 'token', label: 'Discord Token', icon: KeyRound },
+  { id: 'telegram', label: 'Telegram', icon: Send },
   { id: 'running', label: 'Running', icon: Play },
 ] as const;
 
@@ -143,6 +144,60 @@ function TokenContent() {
   );
 }
 
+function TelegramContent() {
+  const steps = [
+    { title: 'Go to my.telegram.org', desc: 'Open my.telegram.org in your browser and log in with your phone number.' },
+    { title: 'Navigate to API Development Tools', desc: 'Click "API development tools" on the main page after logging in.' },
+    { title: 'Create a new application', desc: 'Fill in the app title (e.g. "Trenchcord") and short name. Platform can be left as "Desktop".' },
+    { title: 'Copy your API ID and API Hash', desc: 'After creating the app, you\'ll see your api_id (a number) and api_hash (a long string). Copy both.' },
+    { title: 'Connect in Trenchcord', desc: 'Open Trenchcord, go to Settings, and click "Connect Telegram". Paste your API ID and API Hash, then enter your phone number.' },
+    { title: 'Verify with code', desc: 'Telegram will send a verification code to your Telegram app. Enter it in Trenchcord. If you have 2FA enabled, you\'ll also be prompted for your password.' },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <p className="text-dc-text-muted text-sm">
+        Telegram integration lets you monitor groups, channels, and DMs alongside Discord — all in the same rooms.
+      </p>
+
+      <div className="flex items-start gap-3 rounded-lg border border-dc-blurple/30 bg-dc-blurple/5 p-4">
+        <AlertTriangle size={18} className="text-dc-blurple shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-semibold text-dc-blurple">Your credentials are safe</p>
+          <p className="text-xs text-dc-text-muted mt-1">
+            Your API ID, API hash, and session are encrypted at rest with AES-256-GCM. Your phone number and 2FA password are never stored or logged — they're used only during the auth handshake.
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <span className="text-[10px] font-bold tracking-widest text-dc-text-faint uppercase">
+          Getting your Telegram API credentials
+        </span>
+        <div className="space-y-2.5 mt-3">
+          {steps.map((step, i) => (
+            <div key={i} className="flex items-start gap-3">
+              <div className="shrink-0 w-6 h-6 rounded bg-dc-dark border border-dc-divider flex items-center justify-center">
+                <span className="text-[11px] font-bold text-dc-text">{i + 1}</span>
+              </div>
+              <div className="pt-0.5">
+                <p className="text-sm text-dc-text font-medium">{step.title}</p>
+                <p className="text-xs text-dc-text-muted mt-0.5">{step.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-dc-main rounded-lg p-3 mt-2 border border-dc-divider/50">
+        <p className="text-xs text-dc-text-faint">
+          Once connected, you can add Telegram chats to any room alongside Discord channels. Messages from both platforms appear in a unified feed.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function RunningContent() {
   return (
     <div className="space-y-4">
@@ -173,6 +228,7 @@ const tabContent: Record<TabId, React.FC> = {
   requirements: RequirementsContent,
   installation: InstallationContent,
   token: TokenContent,
+  telegram: TelegramContent,
   running: RunningContent,
 };
 
@@ -209,7 +265,7 @@ export function Tutorial() {
                         ? 'text-white'
                         : 'text-dc-text-muted hover:text-dc-text hover:bg-dc-hover/30'
                     } ${
-                      tab.id === 'token' && !isActive
+                      (tab.id === 'token' || tab.id === 'telegram') && !isActive
                         ? 'text-dc-yellow/60 hover:text-dc-yellow/80'
                         : ''
                     }`}

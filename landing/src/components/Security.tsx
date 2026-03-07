@@ -13,8 +13,8 @@ export function Security() {
             Your Tokens Are Safe
           </h2>
           <p className="mt-3 text-dc-text-muted max-w-xl mx-auto text-sm">
-            Trenchcord takes token security seriously. Your Discord credentials are encrypted
-            and never stored in plain text.
+            Trenchcord takes credential security seriously. Your Discord tokens, Telegram sessions,
+            API keys, and all sensitive data are encrypted and never stored in plain text.
           </p>
         </AnimatedSection>
 
@@ -26,7 +26,7 @@ export function Security() {
               </div>
               <h3 className="font-semibold text-white text-sm">AES-256-GCM Encryption</h3>
               <p className="text-xs text-dc-text-muted leading-relaxed">
-                Every Discord token is encrypted at rest using AES-256-GCM — the same standard used by banks and governments.
+                Every Discord token, Telegram session string, API ID, and API hash is encrypted at rest using AES-256-GCM — the same standard used by banks and governments.
               </p>
             </div>
 
@@ -36,7 +36,7 @@ export function Security() {
               </div>
               <h3 className="font-semibold text-white text-sm">Never Stored in Plain Text</h3>
               <p className="text-xs text-dc-text-muted leading-relaxed">
-                Tokens are encrypted before they reach the database. They are never stored, logged, or transmitted in plain text.
+                All credentials are encrypted before they reach the database. Your Telegram phone number and 2FA password are never stored or logged — they exist only in memory during the auth handshake.
               </p>
             </div>
 

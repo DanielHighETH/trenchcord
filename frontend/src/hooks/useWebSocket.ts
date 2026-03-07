@@ -41,6 +41,8 @@ export function useWebSocket() {
   const fetchGuilds = useAppStore((s) => s.fetchGuilds);
   const fetchDMChannels = useAppStore((s) => s.fetchDMChannels);
   const fetchHistory = useAppStore((s) => s.fetchHistory);
+  const fetchTelegramChats = useAppStore((s) => s.fetchTelegramChats);
+  const checkAuth = useAppStore((s) => s.checkAuth);
 
   useDemoStream();
 
@@ -153,6 +155,10 @@ export function useWebSocket() {
             fetchGuilds();
             fetchDMChannels();
             fetchHistory();
+          } else if (incoming.type === 'telegram_ready') {
+            fetchTelegramChats();
+            fetchHistory();
+            checkAuth();
           }
         } catch {
           // ignore malformed
@@ -178,5 +184,5 @@ export function useWebSocket() {
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, [addMessage, updateMessage, addAlert, setConnected, updateReaction, addContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory]);
+  }, [addMessage, updateMessage, addAlert, setConnected, updateReaction, addContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth]);
 }

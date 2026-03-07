@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Room, FrontendMessage, Alert, AppConfig, GuildInfo, DMChannel, ContractEntry, FrontendReaction, AuthStatus, MaskedToken } from '../types';
+import type { Room, FrontendMessage, Alert, AppConfig, GuildInfo, DMChannel, ContractEntry, FrontendReaction, AuthStatus, MaskedToken, TelegramChatInfo } from '../types';
 import { isDemoMode, createDemoOverrides } from '../demo/demoStore';
 import { isHostedMode, getAccessToken } from '../lib/supabase';
 
@@ -41,6 +41,7 @@ interface AppState {
   contracts: ContractEntry[];
   maskedTokens: MaskedToken[];
   sidebarCollapsed: boolean;
+  telegramChats: TelegramChatInfo[];
 
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -75,13 +76,19 @@ interface AppState {
   createRoom: (name: string, channels: Room['channels'], highlightedUsers: string[], color?: string | null, filteredUsers?: string[], filterEnabled?: boolean) => Promise<Room>;
   updateRoom: (id: string, data: Partial<Omit<Room, 'id'>>) => Promise<void>;
   deleteRoom: (id: string) => Promise<void>;
-  updateConfig: (data: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors'>>) => Promise<void>;
-  sendMessage: (channelId: string, content: string, files?: File[]) => Promise<{ success: boolean; error?: string }>;
+  updateConfig: (data: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'telegramColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors'>>) => Promise<void>;
+  sendMessage: (channelId: string, content: string, files?: File[], source?: 'discord' | 'telegram') => Promise<{ success: boolean; error?: string }>;
   hideUser: (guildId: string | null, channelId: string, userId: string, displayName: string) => Promise<void>;
   unhideUser: (guildId: string | null, channelId: string, userId: string) => Promise<void>;
 
   openConfigModal: (room?: Room, tab?: 'channels' | 'users' | 'filter' | 'keywords' | 'global') => void;
   closeConfigModal: () => void;
+
+  fetchTelegramChats: () => Promise<void>;
+  telegramAuthStart: (apiId: string, apiHash: string, phoneNumber: string) => Promise<{ success: boolean; error?: string; needs2FA?: boolean }>;
+  telegramAuthVerify: (phoneCode: string, password?: string) => Promise<{ success: boolean; error?: string; needs2FA?: boolean }>;
+  telegramAuth2FA: (password: string) => Promise<{ success: boolean; error?: string }>;
+  telegramDisconnect: () => Promise<{ success: boolean; error?: string }>;
 }
 
 export const useAppStore = create<AppState>((set, get) => {
@@ -107,6 +114,7 @@ export const useAppStore = create<AppState>((set, get) => {
   contracts: [],
   maskedTokens: [],
   sidebarCollapsed: false,
+  telegramChats: [],
 
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
@@ -437,11 +445,14 @@ export const useAppStore = create<AppState>((set, get) => {
     await get().fetchConfig();
   },
 
-  sendMessage: async (channelId, content, files) => {
+  sendMessage: async (channelId, content, files, source) => {
     try {
       const formData = new FormData();
       formData.append('channelId', channelId);
       formData.append('content', content);
+      if (source) {
+        formData.append('source', source);
+      }
       if (files) {
         for (const file of files) {
           formData.append('files', file);
@@ -484,6 +495,76 @@ export const useAppStore = create<AppState>((set, get) => {
       hiddenUsers[key] = filtered;
     }
     await get().updateConfig({ hiddenUsers });
+  },
+
+  fetchTelegramChats: async () => {
+    try {
+      const res = await apiFetch(`${API_BASE}/telegram/chats`);
+      if (!res.ok) return;
+      const chats: TelegramChatInfo[] = await res.json();
+      set({ telegramChats: chats });
+    } catch {}
+  },
+
+  telegramAuthStart: async (apiId, apiHash, phoneNumber) => {
+    try {
+      const res = await apiFetch(`${API_BASE}/auth/telegram/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiId, apiHash, phoneNumber }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error };
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  telegramAuthVerify: async (phoneCode, password) => {
+    try {
+      const res = await apiFetch(`${API_BASE}/auth/telegram/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneCode, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error };
+      if (data.needs2FA) return { success: false, needs2FA: true };
+      await get().checkAuth();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  telegramAuth2FA: async (password) => {
+    try {
+      const res = await apiFetch(`${API_BASE}/auth/telegram/2fa`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error };
+      await get().checkAuth();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  telegramDisconnect: async () => {
+    try {
+      const res = await apiFetch(`${API_BASE}/auth/telegram/disconnect`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error };
+      set({ telegramChats: [] });
+      await get().checkAuth();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
   },
 
   openConfigModal: (room, tab) => set({ configModalOpen: true, editingRoom: room ?? null, configModalTab: tab ?? null }),

@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   evmAddressColor: '#fee75c',
   solAddressColor: '#14f195',
   openInDiscordApp: false,
+  openInTelegramApp: false,
   hiddenUsers: {},
   messageSounds: false,
   soundSettings: {
@@ -45,6 +46,7 @@ const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   messageDisplay: 'default',
   compactModeAvatars: true,
   roleColors: true,
+  telegramColors: {},
 };
 
 function createServiceClient(): SupabaseClient {
@@ -129,18 +131,45 @@ export class SupabaseStorageProvider implements StorageProvider {
       .single();
 
     const settings = data?.settings ?? {};
+    delete settings.telegramApiId;
+    delete settings.telegramApiHash;
+    delete settings.telegramSessions;
     const merged = { ...DEFAULT_SETTINGS, ...settings };
 
     const tokens = await this.getTokens(userId);
     const rooms = await this.getRooms(userId);
+    const telegramCreds = await this.getTelegramApiCredentials(userId);
+    const telegramSessions = await this.getTelegramSessions(userId);
 
-    const config = { ...merged, discordTokens: tokens, rooms } as AppConfig;
+    const config = {
+      ...merged,
+      discordTokens: tokens,
+      rooms,
+      telegramApiId: telegramCreds?.apiId,
+      telegramApiHash: telegramCreds?.apiHash,
+      telegramSessions,
+    } as AppConfig;
     this.setCache(cacheKey, config);
     return config;
   }
 
   async updateConfig(userId: string, partial: Partial<AppConfig>): Promise<AppConfig> {
-    const { discordTokens: _t, rooms: _r, ...settingsUpdate } = partial as any;
+    const {
+      discordTokens: _t,
+      rooms: _r,
+      telegramApiId,
+      telegramApiHash,
+      telegramSessions,
+      ...settingsUpdate
+    } = partial as any;
+
+    if (telegramApiId !== undefined || telegramApiHash !== undefined) {
+      await this.setTelegramApiCredentials(userId, telegramApiId, telegramApiHash);
+    }
+
+    if (telegramSessions !== undefined) {
+      await this.setTelegramSessions(userId, telegramSessions);
+    }
 
     const { data: existing } = await this.supabase
       .from('user_configs')
@@ -150,6 +179,11 @@ export class SupabaseStorageProvider implements StorageProvider {
 
     const currentSettings = existing?.settings ?? {};
     const newSettings = { ...currentSettings, ...settingsUpdate };
+
+    // Scrub any leftover plaintext telegram fields from the JSON blob
+    delete newSettings.telegramApiId;
+    delete newSettings.telegramApiHash;
+    delete newSettings.telegramSessions;
 
     const result = await this.supabase
       .from('user_configs')
@@ -229,6 +263,7 @@ export class SupabaseStorageProvider implements StorageProvider {
     for (const ch of channelRows ?? []) {
       const list = channelsByRoom.get(ch.room_id) ?? [];
       list.push({
+        source: ch.source ?? 'discord',
         guildId: ch.guild_id,
         channelId: ch.channel_id,
         guildName: ch.guild_name,
@@ -259,6 +294,7 @@ export class SupabaseStorageProvider implements StorageProvider {
       .eq('room_id', roomId);
 
     const channels: ChannelRef[] = (channelRows ?? []).map((ch) => ({
+      source: ch.source ?? 'discord',
       guildId: ch.guild_id,
       channelId: ch.channel_id,
       guildName: ch.guild_name,
@@ -290,6 +326,7 @@ export class SupabaseStorageProvider implements StorageProvider {
       const channelRows = data.channels.map((ch) => ({
         room_id: roomId,
         user_id: userId,
+        source: ch.source ?? 'discord',
         guild_id: ch.guildId,
         channel_id: ch.channelId,
         guild_name: ch.guildName,
@@ -328,6 +365,7 @@ export class SupabaseStorageProvider implements StorageProvider {
         const channelRows = data.channels.map((ch) => ({
           room_id: roomId,
           user_id: userId,
+          source: ch.source ?? 'discord',
           guild_id: ch.guildId,
           channel_id: ch.channelId,
           guild_name: ch.guildName,
@@ -365,17 +403,21 @@ export class SupabaseStorageProvider implements StorageProvider {
     return rooms.some((r) => r.channels.some((ch) => ch.channelId === channelId));
   }
 
-  async isUserHighlighted(userId: string, discordUserId: string, roomId?: string): Promise<boolean> {
+  async isUserHighlighted(userId: string, discordUserId: string, roomId?: string, username?: string | null): Promise<boolean> {
+    const matchesList = (list: string[]) =>
+      list.includes(discordUserId) ||
+      (username ? list.some((e) => e.startsWith('@') && e.slice(1).toLowerCase() === username.toLowerCase()) : false);
+
     const config = await this.getConfig(userId);
-    if (config.globalHighlightedUsers.includes(discordUserId)) return true;
+    if (matchesList(config.globalHighlightedUsers)) return true;
 
     if (roomId) {
       const room = await this.getRoom(userId, roomId);
-      return room?.highlightedUsers.includes(discordUserId) ?? false;
+      return room ? matchesList(room.highlightedUsers) : false;
     }
 
     const rooms = await this.getRooms(userId);
-    return rooms.some((r) => r.highlightedUsers.includes(discordUserId));
+    return rooms.some((r) => matchesList(r.highlightedUsers));
   }
 
   // ---- Contracts ----
@@ -470,6 +512,96 @@ export class SupabaseStorageProvider implements StorageProvider {
       .eq('address', address);
 
     return (count ?? 0) > 0;
+  }
+
+  // ---- Telegram credentials (encrypted) ----
+
+  private async getTelegramApiCredentials(userId: string): Promise<{ apiId: string; apiHash: string } | null> {
+    const cacheKey = `${userId}:tg_creds`;
+    const cached = this.getCached<{ apiId: string; apiHash: string }>(cacheKey);
+    if (cached) return cached;
+
+    const { data } = await this.supabase
+      .from('telegram_credentials')
+      .select('encrypted_api_id, api_id_iv, api_id_tag, encrypted_api_hash, api_hash_iv, api_hash_tag')
+      .eq('user_id', userId)
+      .single();
+
+    if (!data) return null;
+
+    const apiId = decryptToken(data.encrypted_api_id, data.api_id_iv, data.api_id_tag);
+    const apiHash = decryptToken(data.encrypted_api_hash, data.api_hash_iv, data.api_hash_tag);
+    const result = { apiId, apiHash };
+    this.setCache(cacheKey, result);
+    return result;
+  }
+
+  private async setTelegramApiCredentials(userId: string, apiId?: string, apiHash?: string): Promise<void> {
+    if (!apiId && !apiHash) return;
+
+    const existing = await this.getTelegramApiCredentials(userId);
+    const finalApiId = apiId ?? existing?.apiId;
+    const finalApiHash = apiHash ?? existing?.apiHash;
+
+    if (!finalApiId || !finalApiHash) return;
+
+    const encId = encryptToken(finalApiId);
+    const encHash = encryptToken(finalApiHash);
+
+    const result = await this.supabase.from('telegram_credentials').upsert({
+      user_id: userId,
+      encrypted_api_id: encId.encrypted,
+      api_id_iv: encId.iv,
+      api_id_tag: encId.tag,
+      encrypted_api_hash: encHash.encrypted,
+      api_hash_iv: encHash.iv,
+      api_hash_tag: encHash.tag,
+    }, { onConflict: 'user_id' });
+    throwIfError(result, 'Failed to store Telegram API credentials');
+    this.invalidateUser(userId);
+  }
+
+  private async getTelegramSessions(userId: string): Promise<string[]> {
+    const cacheKey = `${userId}:tg_sessions`;
+    const cached = this.getCached<string[]>(cacheKey);
+    if (cached) return cached;
+
+    const { data } = await this.supabase
+      .from('telegram_sessions')
+      .select('encrypted_session, session_iv, session_tag, position')
+      .eq('user_id', userId)
+      .order('position');
+
+    if (!data || data.length === 0) return [];
+
+    const sessions = data.map((row) => decryptToken(row.encrypted_session, row.session_iv, row.session_tag));
+    this.setCache(cacheKey, sessions);
+    return sessions;
+  }
+
+  private async setTelegramSessions(userId: string, sessions: string[]): Promise<void> {
+    const delResult = await this.supabase.from('telegram_sessions').delete().eq('user_id', userId);
+    throwIfError(delResult, 'Failed to delete existing Telegram sessions');
+
+    if (sessions.length === 0) {
+      this.invalidateUser(userId);
+      return;
+    }
+
+    const rows = sessions.map((session, i) => {
+      const enc = encryptToken(session);
+      return {
+        user_id: userId,
+        encrypted_session: enc.encrypted,
+        session_iv: enc.iv,
+        session_tag: enc.tag,
+        position: i,
+      };
+    });
+
+    const insResult = await this.supabase.from('telegram_sessions').insert(rows);
+    throwIfError(insResult, 'Failed to store Telegram sessions');
+    this.invalidateUser(userId);
   }
 
   // ---- User name cache ----

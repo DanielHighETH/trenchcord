@@ -2,10 +2,11 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay } from '../types';
 import { PUSHOVER_SOUNDS } from '../types';
-import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, PanelLeftOpen } from 'lucide-react';
+import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, PanelLeftOpen, Send } from 'lucide-react';
 import { requestNotificationPermission } from '../utils/desktopNotification';
 import { previewSound, previewPreset, PRESET_SOUNDS } from '../utils/notificationSound';
 import ColorPickerWithAlpha from './ColorPickerWithAlpha';
+import TelegramSetup from './TelegramSetup';
 
 type Section = 'tokens' | 'general' | 'contracts' | 'sounds' | 'pushover' | 'keywords' | 'users' | 'guilds' | 'help';
 
@@ -39,6 +40,8 @@ export default function GlobalSettings() {
   const settingsSection = useAppStore((s) => s.settingsSection);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
+  const authStatus = useAppStore((s) => s.authStatus);
+  const telegramDisconnect = useAppStore((s) => s.telegramDisconnect);
 
   const userNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -61,11 +64,13 @@ export default function GlobalSettings() {
   const [contractDetection, setContractDetection] = useState(true);
   const [guildColors, setGuildColors] = useState<Record<string, string>>({});
   const [dmColors, setDmColors] = useState<Record<string, string>>({});
+  const [telegramColors, setTelegramColors] = useState<Record<string, string>>({});
   const [enabledGuilds, setEnabledGuilds] = useState<string[]>([]);
   const [guildSearch, setGuildSearch] = useState('');
   const [evmAddressColor, setEvmAddressColor] = useState('#fee75c');
   const [solAddressColor, setSolAddressColor] = useState('#14f195');
   const [openInDiscordApp, setOpenInDiscordApp] = useState(false);
+  const [openInTelegramApp, setOpenInTelegramApp] = useState(false);
   const [messageSounds, setMessageSounds] = useState(false);
   const defaultSoundConfig: SoundConfig = { enabled: true, volume: 80, useCustom: false };
   const [soundSettings, setSoundSettings] = useState<SoundSettings>({
@@ -109,6 +114,7 @@ export default function GlobalSettings() {
   const [showNewToken, setShowNewToken] = useState(false);
   const [tokenError, setTokenError] = useState('');
   const [addingToken, setAddingToken] = useState(false);
+  const [showTelegramSetup, setShowTelegramSetup] = useState(false);
 
   useEffect(() => {
     fetchGuilds();
@@ -123,10 +129,12 @@ export default function GlobalSettings() {
       setContractDetection(config.contractDetection);
       setGuildColors(config.guildColors ?? {});
       setDmColors(config.dmColors ?? {});
+      setTelegramColors(config.telegramColors ?? {});
       setEnabledGuilds(config.enabledGuilds ?? []);
       setEvmAddressColor(config.evmAddressColor ?? '#fee75c');
       setSolAddressColor(config.solAddressColor ?? '#14f195');
       setOpenInDiscordApp(config.openInDiscordApp ?? false);
+      setOpenInTelegramApp(config.openInTelegramApp ?? false);
       setMessageSounds(config.messageSounds ?? false);
       if (config.soundSettings) {
         setSoundSettings({
@@ -175,10 +183,12 @@ export default function GlobalSettings() {
       contractDetection !== config.contractDetection ||
       !objEqual(guildColors, config.guildColors ?? {}) ||
       !objEqual(dmColors, config.dmColors ?? {}) ||
+      !objEqual(telegramColors, config.telegramColors ?? {}) ||
       !arraysEqual(enabledGuilds, config.enabledGuilds ?? []) ||
       evmAddressColor !== (config.evmAddressColor ?? '#fee75c') ||
       solAddressColor !== (config.solAddressColor ?? '#14f195') ||
       openInDiscordApp !== (config.openInDiscordApp ?? false) ||
+      openInTelegramApp !== (config.openInTelegramApp ?? false) ||
       messageSounds !== (config.messageSounds ?? false) ||
       JSON.stringify(soundSettings) !== JSON.stringify(config.soundSettings ? {
         highlight: { ...defaultSoundConfig, ...config.soundSettings.highlight },
@@ -208,8 +218,8 @@ export default function GlobalSettings() {
       compactModeAvatars !== (config.compactModeAvatars ?? true) ||
       roleColors !== (config.roleColors ?? true)
     );
-  }, [config, globalUsers, contractDetection, guildColors, dmColors, enabledGuilds, evmAddressColor, solAddressColor,
-    openInDiscordApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters,
+  }, [config, globalUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, evmAddressColor, solAddressColor,
+    openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters,
     solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, autoOpenHighlightedContracts,
     globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors]);
 
@@ -238,10 +248,12 @@ export default function GlobalSettings() {
         contractDetection,
         guildColors,
         dmColors,
+        telegramColors,
         enabledGuilds,
         evmAddressColor,
         solAddressColor,
         openInDiscordApp,
+        openInTelegramApp,
         messageSounds,
         soundSettings,
         channelSounds,
@@ -472,6 +484,59 @@ export default function GlobalSettings() {
                     <p className="text-xs text-discord-red mt-1.5">{tokenError}</p>
                   )}
                 </div>
+
+                {/* Telegram Section */}
+                <div className="mt-8 pt-6 border-t border-discord-divider">
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Telegram</h3>
+                  <p className="text-xs sm:text-sm text-discord-text-muted mb-3 sm:mb-4">
+                    Connect your Telegram account to combine TG chats with Discord channels in your rooms.
+                  </p>
+
+                  {authStatus?.telegramConnected ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 px-3 py-2.5 bg-discord-sidebar rounded">
+                        <div className="w-2 h-2 rounded-full bg-discord-green" />
+                        <span className="text-sm text-discord-text">Telegram connected</span>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          await telegramDisconnect();
+                        }}
+                        className="px-4 py-2 bg-discord-red/20 hover:bg-discord-red/30 text-discord-red rounded text-sm font-medium transition-colors"
+                      >
+                        Disconnect Telegram
+                      </button>
+                    </div>
+                  ) : authStatus?.telegramConfigured ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 px-3 py-2.5 bg-discord-sidebar rounded">
+                        <div className="w-2 h-2 rounded-full bg-yellow-500" />
+                        <span className="text-sm text-discord-text">Telegram configured but not connected</span>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          await telegramDisconnect();
+                        }}
+                        className="px-4 py-2 bg-discord-red/20 hover:bg-discord-red/30 text-discord-red rounded text-sm font-medium transition-colors"
+                      >
+                        Remove Telegram Session
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      {showTelegramSetup ? (
+                        <TelegramSetup onClose={() => setShowTelegramSetup(false)} />
+                      ) : (
+                        <button
+                          onClick={() => setShowTelegramSetup(true)}
+                          className="px-4 py-2.5 bg-[#2AABEE] hover:bg-[#229ED9] rounded text-sm font-medium text-white transition-colors"
+                        >
+                          Connect Telegram
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </>
             )}
 
@@ -543,6 +608,15 @@ export default function GlobalSettings() {
                         value={openInDiscordApp}
                         onChange={setOpenInDiscordApp}
                         label="Clicking a channel badge opens the message directly in the Discord app"
+                      />
+                    </div>
+
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Open in Telegram App</h4>
+                      <Toggle
+                        value={openInTelegramApp}
+                        onChange={setOpenInTelegramApp}
+                        label="Clicking a TG channel badge opens the message directly in the Telegram app"
                       />
                     </div>
 
@@ -988,22 +1062,25 @@ export default function GlobalSettings() {
                       {(() => {
                         const rooms = config?.rooms ?? [];
                         const seen = new Set<string>();
-                        const channels: { id: string; name: string; guildName: string | null }[] = [];
+                        const channels: { id: string; name: string; guildName: string | null; source: 'discord' | 'telegram' }[] = [];
                         for (const room of rooms) {
                           for (const ch of room.channels) {
                             if (!seen.has(ch.channelId)) {
                               seen.add(ch.channelId);
-                              channels.push({ id: ch.channelId, name: ch.channelName ?? ch.channelId, guildName: ch.guildName ?? null });
+                              channels.push({ id: ch.channelId, name: ch.channelName ?? ch.channelId, guildName: ch.guildName ?? null, source: (ch.source ?? 'discord') as 'discord' | 'telegram' });
                             }
                           }
                         }
                         if (channels.length === 0) return <p className="text-xs text-discord-text-muted italic">No channels in rooms yet</p>;
 
-                        const grouped = new Map<string, typeof channels>();
-                        for (const ch of channels) {
+                        const discordChannels = channels.filter((c) => c.source !== 'telegram');
+                        const telegramChannels = channels.filter((c) => c.source === 'telegram');
+
+                        const discordGrouped = new Map<string, typeof channels>();
+                        for (const ch of discordChannels) {
                           const key = ch.guildName ?? 'DMs';
-                          if (!grouped.has(key)) grouped.set(key, []);
-                          grouped.get(key)!.push(ch);
+                          if (!discordGrouped.has(key)) discordGrouped.set(key, []);
+                          discordGrouped.get(key)!.push(ch);
                         }
 
                         const enabledIds = Object.keys(channelSounds);
@@ -1012,7 +1089,7 @@ export default function GlobalSettings() {
                           <div className="space-y-3">
                             {/* Channel picker */}
                             <div className="space-y-2">
-                              {Array.from(grouped.entries()).map(([guildName, guildChannels]) => (
+                              {Array.from(discordGrouped.entries()).map(([guildName, guildChannels]) => (
                                 <div key={guildName}>
                                   <p className="text-[10px] text-discord-text-muted uppercase tracking-wider mb-1">{guildName}</p>
                                   <div className="flex flex-wrap gap-1.5">
@@ -1044,6 +1121,42 @@ export default function GlobalSettings() {
                                   </div>
                                 </div>
                               ))}
+
+                              {telegramChannels.length > 0 && (
+                                <div>
+                                  <p className="text-[10px] text-[#2AABEE] uppercase tracking-wider mb-1 flex items-center gap-1">
+                                    <Send size={9} />
+                                    Telegram
+                                  </p>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {telegramChannels.map((ch) => {
+                                      const active = ch.id in channelSounds;
+                                      return (
+                                        <button
+                                          key={ch.id}
+                                          onClick={() => {
+                                            if (active) {
+                                              setChannelSounds((prev) => {
+                                                const next = { ...prev };
+                                                delete next[ch.id];
+                                                return next;
+                                              });
+                                            } else {
+                                              setChannelSounds((prev) => ({
+                                                ...prev,
+                                                [ch.id]: { enabled: true, volume: 80, useCustom: false },
+                                              }));
+                                            }
+                                          }}
+                                          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${active ? 'bg-[#2AABEE] text-white' : 'bg-discord-dark text-discord-text-muted hover:text-discord-text'}`}
+                                        >
+                                          {ch.name}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
                             </div>
 
                             {/* Per-channel sound configs */}
@@ -1052,14 +1165,19 @@ export default function GlobalSettings() {
                                 {enabledIds.map((chId) => {
                                   const sc = channelSounds[chId];
                                   const chInfo = channels.find((c) => c.id === chId);
-                                  const label = chInfo ? `#${chInfo.name}` : `#${chId}`;
+                                  const isTg = chInfo?.source === 'telegram';
+                                  const label = chInfo ? (isTg ? chInfo.name : `#${chInfo.name}`) : `#${chId}`;
                                   return (
                                     <div key={chId} className="px-2 sm:px-3 py-2.5 sm:py-3 bg-discord-dark rounded space-y-2.5">
                                       <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
                                           <Volume2 size={14} className="text-discord-text-muted shrink-0" />
+                                          {isTg && <Send size={12} className="text-[#2AABEE] shrink-0" />}
                                           <span className="text-xs sm:text-sm text-discord-text font-medium truncate">{label}</span>
-                                          {chInfo?.guildName && <span className="text-[10px] text-discord-text-muted hidden sm:inline">{chInfo.guildName}</span>}
+                                          {isTg
+                                            ? <span className="text-[10px] text-[#2AABEE] hidden sm:inline">Telegram</span>
+                                            : chInfo?.guildName && <span className="text-[10px] text-discord-text-muted hidden sm:inline">{chInfo.guildName}</span>
+                                          }
                                         </div>
                                         <div className="flex items-center gap-2">
                                           <button
@@ -1610,7 +1728,7 @@ export default function GlobalSettings() {
                 <div>
                   <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Global Highlighted Users</h3>
                   <p className="text-xs sm:text-sm text-discord-text-muted mb-3 sm:mb-4">
-                    These users will be highlighted in all rooms.
+                    These users will be highlighted in all rooms. Use Discord user IDs or Telegram @usernames.
                   </p>
                   <div className="flex gap-2 mb-4">
                     <input
@@ -1618,7 +1736,7 @@ export default function GlobalSettings() {
                       value={newUserId}
                       onChange={(e) => setNewUserId(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && addGlobalUser()}
-                      placeholder="Discord User ID"
+                      placeholder="User ID or @telegram_username"
                       className="flex-1 bg-discord-sidebar border-none rounded px-3 py-2 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple"
                       autoComplete="off"
                       data-1p-ignore
@@ -1638,11 +1756,14 @@ export default function GlobalSettings() {
                         No global highlighted users.
                       </p>
                     )}
-                    {globalUsers.map((uid) => (
+                    {globalUsers.map((uid) => {
+                      const isTgUser = uid.startsWith('@');
+                      return (
                       <div key={uid} className="flex items-center justify-between gap-2 px-2 sm:px-3 py-2 bg-discord-sidebar rounded">
                         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-                          <span className="text-xs sm:text-sm text-discord-text font-mono truncate">{uid}</span>
-                          {userNameMap.has(uid) && (
+                          {isTgUser && <Send size={12} className="text-[#2AABEE] shrink-0" />}
+                          <span className={`text-xs sm:text-sm truncate ${isTgUser ? 'text-[#2AABEE]' : 'text-discord-text font-mono'}`}>{uid}</span>
+                          {!isTgUser && userNameMap.has(uid) && (
                             <span className="text-[10px] sm:text-[11px] text-discord-text-muted shrink-0">{userNameMap.get(uid)}</span>
                           )}
                         </div>
@@ -1653,7 +1774,8 @@ export default function GlobalSettings() {
                           <Trash2 size={14} />
                         </button>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               </>
@@ -2053,6 +2175,48 @@ export default function GlobalSettings() {
                                   {dmColors[channelId] && (
                                     <button
                                       onClick={() => setDmColors((prev) => { const { [channelId]: _, ...rest } = prev; return rest; })}
+                                      className="text-discord-text-muted hover:text-white"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {(() => {
+                      const tgChannelIdsInRooms = [...new Set(
+                        rooms.flatMap((r) => r.channels.filter((c) => c.source === 'telegram').map((c) => c.channelId))
+                      )];
+                      if (tgChannelIdsInRooms.length === 0) return null;
+                      return (
+                        <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                          <h4 className="text-xs sm:text-sm font-semibold text-white mb-2 flex items-center gap-1.5">
+                            <Send size={14} className="text-[#2AABEE]" />
+                            Telegram Chat Colors
+                          </h4>
+                          <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                            Set a background color for messages from each Telegram chat that is added to a room.
+                          </p>
+                          <div className="space-y-2">
+                            {tgChannelIdsInRooms.map((channelId) => {
+                              const channelRef = rooms.flatMap((r) => r.channels).find((c) => c.channelId === channelId && c.source === 'telegram');
+                              const chatName = channelRef?.channelName ?? channelId;
+                              return (
+                                <div key={channelId} className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 bg-discord-dark rounded">
+                                  <ColorPickerWithAlpha
+                                    value={telegramColors[channelId] || '#313338'}
+                                    onChange={(c) => setTelegramColors((prev) => ({ ...prev, [channelId]: c }))}
+                                    defaultColor="#313338"
+                                  />
+                                  <span className="text-xs sm:text-sm text-discord-text flex-1 truncate">{chatName}</span>
+                                  {telegramColors[channelId] && (
+                                    <button
+                                      onClick={() => setTelegramColors((prev) => { const { [channelId]: _, ...rest } = prev; return rest; })}
                                       className="text-discord-text-muted hover:text-white"
                                     >
                                       <Trash2 size={14} />

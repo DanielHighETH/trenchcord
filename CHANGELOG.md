@@ -5,6 +5,11 @@ All notable changes to Trenchcord are documented here.
 ## 2026-03-06
 
 ### Added
+- **Telegram integration** — monitor Telegram groups, channels, supergroups, and DMs alongside Discord
+- **Telegram setup flow** — connect your Telegram account with phone number, verification code, and optional 2FA
+- **Encrypted Telegram credentials** — API ID, API hash, and session strings encrypted at rest with AES-256-GCM (hosted mode)
+- **Telegram message rendering** — replies, forwards, stickers, polls, and media displayed natively in the feed
+- **Mixed rooms** — combine Discord and Telegram channels in the same room
 - **Mobile responsivity** — improved mobile-friendly layouts and touch interactions across the app
 
 ### Fixed
