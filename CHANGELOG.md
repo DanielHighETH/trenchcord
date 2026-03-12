@@ -2,6 +2,11 @@
 
 All notable changes to Trenchcord are documented here.
 
+## 2026-03-12
+
+### Fixed
+- **Auto-scroll reliability** — chat no longer stops auto-scrolling when a reaction or large image appears, even if the user hasn't scrolled up
+
 ## 2026-03-06
 
 ### Added

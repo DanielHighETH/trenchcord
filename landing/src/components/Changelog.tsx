@@ -9,6 +9,12 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2026-03-12',
+    fixed: [
+      '**Auto-scroll reliability** — chat no longer stops auto-scrolling when a reaction or large image appears, even if the user hasn\'t scrolled up',
+    ],
+  },
+  {
     date: '2026-03-06',
     added: [
       '**Telegram integration** — monitor Telegram groups, channels, supergroups, and DMs alongside Discord',

@@ -256,7 +256,21 @@ export default function ChatView() {
     const observer = new ResizeObserver(() => {
       if (isNearBottomRef.current) {
         const container = scrollContainerRef.current;
-        if (container) container.scrollTop = container.scrollHeight;
+        if (container) {
+          // Track whether a performScroll is already managing programmaticScrollRef so
+          // we don't accidentally clear it early when our rAF fires.
+          const wasProgrammatic = programmaticScrollRef.current;
+          programmaticScrollRef.current = true;
+          container.scrollTop = container.scrollHeight;
+          // The assignment above fires onScroll synchronously; force the flag back to
+          // true so checkNearBottom (which may run inside that event) can't flip it.
+          isNearBottomRef.current = true;
+          if (!wasProgrammatic) {
+            requestAnimationFrame(() => {
+              programmaticScrollRef.current = false;
+            });
+          }
+        }
       }
     });
 
@@ -498,7 +512,7 @@ export default function ChatView() {
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto"
         onScroll={checkNearBottom}
-        
+        style={{ overflowAnchor: 'none' }}
       >
         <div ref={contentRef}>
           {roomMessages.length === 0 && (
