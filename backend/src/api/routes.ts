@@ -698,6 +698,95 @@ export function createRouter(wsServer: WsServer): Router {
     res.json(config);
   });
 
+  // --- Settings Export / Import ---
+
+  const SENSITIVE_CONFIG_KEYS = [
+    'discordTokens',
+    'telegramSessions',
+    'telegramApiId',
+    'telegramApiHash',
+    'userNameCache',
+  ] as const;
+
+  const SENSITIVE_PUSHOVER_KEYS = ['appToken', 'userKey'] as const;
+
+  router.get('/config/export', async (req, res) => {
+    const userId = getUserId(req);
+    try {
+      const fullConfig = await storage.getConfig(userId);
+      const rooms = await storage.getRooms(userId);
+
+      const exportConfig: Record<string, any> = {};
+      for (const [key, value] of Object.entries(fullConfig)) {
+        if ((SENSITIVE_CONFIG_KEYS as readonly string[]).includes(key)) continue;
+        if (key === 'rooms') continue;
+        exportConfig[key] = value;
+      }
+
+      if (exportConfig.pushover) {
+        const { appToken, userKey, ...safePushover } = exportConfig.pushover;
+        exportConfig.pushover = safePushover;
+      }
+
+      res.json({
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        config: exportConfig,
+        rooms,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: safeError(err, 'Failed to export settings') });
+    }
+  });
+
+  router.post('/config/import', async (req, res) => {
+    const userId = getUserId(req);
+    const { config: importedConfig, rooms: importedRooms } = req.body;
+
+    if (!importedConfig || typeof importedConfig !== 'object') {
+      return res.status(400).json({ error: 'Invalid import data: missing config object.' });
+    }
+
+    try {
+      const sanitized: Record<string, any> = {};
+      const blockedKeys = [...SENSITIVE_CONFIG_KEYS, 'rooms'] as readonly string[];
+      for (const [key, value] of Object.entries(importedConfig)) {
+        if (blockedKeys.includes(key)) continue;
+        sanitized[key] = value;
+      }
+
+      if (sanitized.pushover) {
+        const existing = (await storage.getConfig(userId)).pushover;
+        sanitized.pushover = {
+          ...sanitized.pushover,
+          appToken: existing?.appToken ?? '',
+          userKey: existing?.userKey ?? '',
+        };
+      }
+
+      await storage.updateConfig(userId, sanitized);
+
+      if (Array.isArray(importedRooms)) {
+        const existingRooms = await storage.getRooms(userId);
+        for (const room of existingRooms) {
+          await storage.deleteRoom(userId, room.id);
+        }
+        for (const room of importedRooms) {
+          const { id, ...roomData } = room;
+          await storage.createRoom(userId, roomData);
+        }
+      }
+
+      const updatedConfig = await storage.getConfig(userId);
+      const { discordTokens, telegramSessions, ...safeConfig } = updatedConfig;
+      const updatedRooms = await storage.getRooms(userId);
+
+      res.json({ success: true, config: safeConfig, rooms: updatedRooms });
+    } catch (err: any) {
+      res.status(500).json({ error: safeError(err, 'Failed to import settings') });
+    }
+  });
+
   // --- Sound file uploads ---
 
   const validSoundTypes: SoundType[] = ['highlight', 'contractAlert', 'keywordAlert'];

@@ -2,11 +2,12 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay } from '../types';
 import { PUSHOVER_SOUNDS } from '../types';
-import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, PanelLeftOpen, Send } from 'lucide-react';
+import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, PanelLeftOpen, Send, Download } from 'lucide-react';
 import { requestNotificationPermission } from '../utils/desktopNotification';
 import { previewSound, previewPreset, PRESET_SOUNDS } from '../utils/notificationSound';
 import ColorPickerWithAlpha from './ColorPickerWithAlpha';
 import TelegramSetup from './TelegramSetup';
+import { isHostedMode, getAccessToken } from '../lib/supabase';
 
 type Section = 'tokens' | 'general' | 'contracts' | 'sounds' | 'pushover' | 'keywords' | 'users' | 'guilds' | 'help';
 
@@ -42,6 +43,7 @@ export default function GlobalSettings() {
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const authStatus = useAppStore((s) => s.authStatus);
   const telegramDisconnect = useAppStore((s) => s.telegramDisconnect);
+  const fetchRooms = useAppStore((s) => s.fetchRooms);
 
   const userNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -272,6 +274,80 @@ export default function GlobalSettings() {
       });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
+
+  const apiBase = import.meta.env.VITE_API_URL
+    ? `${import.meta.env.VITE_API_URL}/api`
+    : '/api';
+
+  const authedFetch = async (input: string, init?: RequestInit): Promise<Response> => {
+    const headers = new Headers(init?.headers);
+    if (isHostedMode) {
+      const token = await getAccessToken();
+      if (token) headers.set('Authorization', `Bearer ${token}`);
+    }
+    return fetch(input, { ...init, headers });
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await authedFetch(`${apiBase}/config/export`);
+      if (!res.ok) throw new Error('Export failed');
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `trenchcord-settings-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Failed to export settings.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportError(null);
+    setImportSuccess(false);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data.config || typeof data.config !== 'object') {
+        throw new Error('Invalid settings file: missing config.');
+      }
+      const res = await authedFetch(`${apiBase}/config/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: data.config, rooms: data.rooms }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Import failed');
+      }
+      await fetchConfig();
+      await fetchRooms();
+      setImportSuccess(true);
+      setTimeout(() => setImportSuccess(false), 3000);
+    } catch (err: any) {
+      setImportError(err.message || 'Failed to import settings.');
+    } finally {
+      setImporting(false);
+      if (importFileRef.current) importFileRef.current.value = '';
     }
   };
 
@@ -2034,6 +2110,44 @@ export default function GlobalSettings() {
                         </div>
                       </div>
                     </details>
+                  </div>
+
+                  <div className="mt-8 pt-6 border-t border-discord-divider">
+                    <h4 className="text-sm font-semibold text-white mb-1">Backup & Restore</h4>
+                    <p className="text-xs text-discord-text-muted mb-4">
+                      Export your settings and rooms to a file, or import from a previous backup. Sensitive keys (Discord tokens, Telegram credentials, Pushover keys) are never included in exports.
+                    </p>
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        onClick={handleExport}
+                        disabled={exporting}
+                        className="flex items-center gap-2 px-4 py-2 bg-discord-blurple hover:bg-discord-blurple-hover disabled:opacity-50 text-white text-sm font-medium rounded transition-colors"
+                      >
+                        <Download size={15} />
+                        {exporting ? 'Exporting...' : 'Export Settings'}
+                      </button>
+                      <button
+                        onClick={() => importFileRef.current?.click()}
+                        disabled={importing}
+                        className="flex items-center gap-2 px-4 py-2 bg-discord-sidebar hover:bg-discord-hover text-discord-text hover:text-white text-sm font-medium rounded border border-discord-divider transition-colors"
+                      >
+                        <Upload size={15} />
+                        {importing ? 'Importing...' : 'Import Settings'}
+                      </button>
+                      <input
+                        ref={importFileRef}
+                        type="file"
+                        accept=".json"
+                        onChange={handleImportFile}
+                        className="hidden"
+                      />
+                    </div>
+                    {importError && (
+                      <p className="mt-3 text-xs text-discord-red">{importError}</p>
+                    )}
+                    {importSuccess && (
+                      <p className="mt-3 text-xs text-discord-green">Settings imported successfully.</p>
+                    )}
                   </div>
                 </div>
               </>
