@@ -122,6 +122,7 @@ export interface AppConfig {
   messageDisplay: MessageDisplay;
   compactModeAvatars: boolean;
   roleColors: boolean;
+  mobileZoomScale: number;
   telegramApiId?: string;
   telegramApiHash?: string;
   telegramSessions?: string[];

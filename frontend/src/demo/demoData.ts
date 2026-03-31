@@ -185,6 +185,7 @@ export const DEMO_CONFIG: AppConfig = {
   messageDisplay: 'default',
   compactModeAvatars: true,
   roleColors: true,
+  mobileZoomScale: 1,
   telegramColors: {},
 };
 

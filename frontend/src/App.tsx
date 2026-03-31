@@ -15,8 +15,23 @@ import AuthPage from './components/auth/AuthPage';
 
 const MOBILE_BREAKPOINT = 768;
 
+function useZoomScale() {
+  const zoomScale = useAppStore((s) => s.config?.mobileZoomScale ?? 1);
+
+  useEffect(() => {
+    const isMobile = window.innerWidth < MOBILE_BREAKPOINT || 'ontouchstart' in window;
+    if (!isMobile || zoomScale === 1) {
+      document.documentElement.style.zoom = '';
+      return;
+    }
+    document.documentElement.style.zoom = String(zoomScale);
+    return () => { document.documentElement.style.zoom = ''; };
+  }, [zoomScale]);
+}
+
 export default function App() {
   useWebSocket();
+  useZoomScale();
 
   const [supabaseReady, setSupabaseReady] = useState(!isHostedMode);
   const [supabaseSession, setSupabaseSession] = useState<boolean | null>(isHostedMode ? null : true);

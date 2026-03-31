@@ -669,7 +669,7 @@ export function createRouter(wsServer: WsServer): Router {
 
   router.put('/config', async (req, res) => {
     const userId = getUserId(req);
-    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, pushover, contractLinkTemplates, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, pushover, contractLinkTemplates, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale } = req.body;
     const config = await storage.updateConfig(userId, {
       ...(globalHighlightedUsers !== undefined && { globalHighlightedUsers }),
       ...(contractDetection !== undefined && { contractDetection }),
@@ -694,6 +694,7 @@ export function createRouter(wsServer: WsServer): Router {
       ...(messageDisplay !== undefined && { messageDisplay }),
       ...(compactModeAvatars !== undefined && { compactModeAvatars }),
       ...(roleColors !== undefined && { roleColors }),
+      ...(mobileZoomScale !== undefined && { mobileZoomScale }),
     });
     res.json(config);
   });

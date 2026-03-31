@@ -46,6 +46,7 @@ const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   messageDisplay: 'default',
   compactModeAvatars: true,
   roleColors: true,
+  mobileZoomScale: 1,
   telegramColors: {},
 };
 

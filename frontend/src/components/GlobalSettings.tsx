@@ -108,6 +108,7 @@ export default function GlobalSettings() {
   const [messageDisplay, setMessageDisplay] = useState<MessageDisplay>('default');
   const [compactModeAvatars, setCompactModeAvatars] = useState(true);
   const [roleColors, setRoleColors] = useState(true);
+  const [mobileZoomScale, setMobileZoomScale] = useState(1);
   const [newKeywordPattern, setNewKeywordPattern] = useState('');
   const [newKeywordMatchMode, setNewKeywordMatchMode] = useState<KeywordMatchMode>('includes');
   const [newKeywordLabel, setNewKeywordLabel] = useState('');
@@ -167,6 +168,7 @@ export default function GlobalSettings() {
       setMessageDisplay(config.messageDisplay ?? 'default');
       setCompactModeAvatars(config.compactModeAvatars ?? true);
       setRoleColors(config.roleColors ?? true);
+      setMobileZoomScale(config.mobileZoomScale ?? 1);
     }
   }, [config]);
 
@@ -218,12 +220,13 @@ export default function GlobalSettings() {
       chattingEnabled !== (config.chattingEnabled ?? false) ||
       messageDisplay !== (config.messageDisplay ?? 'default') ||
       compactModeAvatars !== (config.compactModeAvatars ?? true) ||
-      roleColors !== (config.roleColors ?? true)
+      roleColors !== (config.roleColors ?? true) ||
+      mobileZoomScale !== (config.mobileZoomScale ?? 1)
     );
   }, [config, globalUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, evmAddressColor, solAddressColor,
     openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters,
     solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, autoOpenHighlightedContracts,
-    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors]);
+    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -271,6 +274,7 @@ export default function GlobalSettings() {
         messageDisplay,
         compactModeAvatars,
         roleColors,
+        mobileZoomScale,
       });
     } finally {
       setSaving(false);
@@ -667,6 +671,35 @@ export default function GlobalSettings() {
                         onChange={setRoleColors}
                         label="Show Discord role colors on usernames"
                       />
+                    </div>
+
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Mobile Zoom Scale</h4>
+                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                        Adjust the zoom level on mobile devices to make everything larger or smaller.
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="range"
+                          min={0.5}
+                          max={1.5}
+                          step={0.05}
+                          value={mobileZoomScale}
+                          onChange={(e) => setMobileZoomScale(parseFloat(e.target.value))}
+                          className="flex-1 h-1.5 bg-discord-dark rounded-full appearance-none cursor-pointer accent-discord-blurple [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-discord-blurple"
+                        />
+                        <span className="text-xs font-mono text-discord-text w-10 text-right">{Math.round(mobileZoomScale * 100)}%</span>
+                      </div>
+                      <div className="flex justify-between mt-1.5">
+                        <span className="text-[10px] text-discord-text-muted">50%</span>
+                        <button
+                          onClick={() => setMobileZoomScale(1)}
+                          className="text-[10px] text-discord-blurple hover:text-discord-blurple/80 transition-colors"
+                        >
+                          Reset
+                        </button>
+                        <span className="text-[10px] text-discord-text-muted">150%</span>
+                      </div>
                     </div>
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">

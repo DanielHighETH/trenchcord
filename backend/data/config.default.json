@@ -47,6 +47,7 @@
   "badgeClickAction": "discord",
   "messageDisplay": "default",
   "compactModeAvatars": true,
+  "mobileZoomScale": 1,
   "telegramApiId": "",
   "telegramApiHash": "",
   "telegramSessions": []
