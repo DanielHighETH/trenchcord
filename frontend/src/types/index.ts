@@ -270,7 +270,8 @@ export interface Alert {
 }
 
 export interface WsIncoming {
-  type: 'message' | 'message_update' | 'alert' | 'reaction_update' | 'contract' | 'chain_update' | 'gateway_ready' | 'telegram_ready';
+  type: 'message' | 'message_update' | 'alert' | 'reaction_update' | 'contract' | 'chain_update' | 'gateway_ready' | 'telegram_ready' | 'gateway_auth_failed';
   data: any;
+  error?: string;
   roomIds?: string[];
 }

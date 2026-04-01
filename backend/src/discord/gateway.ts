@@ -35,21 +35,33 @@ export class DiscordGateway extends EventEmitter {
   private roleNameMap: Map<string, string> = new Map();
   private roleDataMap: Map<string, { name: string; color: number; position: number }> = new Map();
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 10;
+  private maxReconnectAttempts = 30;
+  private stopped = false;
 
   constructor(token: string) {
     super();
     this.token = token;
   }
 
+  private static readonly NON_RECOVERABLE_CODES = new Set([
+    4004, // Authentication failed
+    4010, // Invalid shard
+    4011, // Sharding required
+    4014, // Disallowed intents
+  ]);
+
   connect(): void {
+    if (this.stopped) return;
     const url = this.resumeGatewayUrl ?? GATEWAY_URL;
-    console.log(`[Gateway] Connecting to ${url}...`);
+    if (this.reconnectAttempts === 0) {
+      console.log(`[Gateway] Connecting to ${url}...`);
+    }
     this.ws = new WebSocket(url);
 
     this.ws.on('open', () => {
-      console.log('[Gateway] Connected');
-      this.reconnectAttempts = 0;
+      if (this.reconnectAttempts > 0) {
+        console.log(`[Gateway] Reconnected (after ${this.reconnectAttempts} attempts)`);
+      }
     });
 
     this.ws.on('message', (data) => {
@@ -58,8 +70,23 @@ export class DiscordGateway extends EventEmitter {
     });
 
     this.ws.on('close', (code, reason) => {
-      console.log(`[Gateway] Disconnected: ${code} - ${reason.toString()}`);
       this.cleanup();
+
+      if (DiscordGateway.NON_RECOVERABLE_CODES.has(code)) {
+        const reasonStr = reason.toString() || 'Unknown reason';
+        console.error(`[Gateway] Fatal close code ${code}: ${reasonStr}. Not reconnecting.`);
+        this.stopped = true;
+        if (code === 4004) {
+          this.emit('auth_failed', new Error('Authentication failed. Your Discord token may be invalid or expired — please update it in settings.'));
+        } else {
+          this.emit('fatal', new Error(`${reasonStr} (code ${code})`));
+        }
+        return;
+      }
+
+      if (this.reconnectAttempts === 0) {
+        console.log(`[Gateway] Disconnected: ${code} - ${reason.toString()}`);
+      }
       this.attemptReconnect();
     });
 
@@ -108,6 +135,7 @@ export class DiscordGateway extends EventEmitter {
       case 'READY':
         this.sessionId = data.session_id;
         this.resumeGatewayUrl = data.resume_gateway_url;
+        this.reconnectAttempts = 0;
         console.log(`[Gateway] Ready as ${data.user.username}#${data.user.discriminator}`);
 
         for (const guild of data.guilds ?? []) {
@@ -398,14 +426,18 @@ export class DiscordGateway extends EventEmitter {
   }
 
   private attemptReconnect(): void {
+    if (this.stopped) return;
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('[Gateway] Max reconnect attempts reached');
-      this.emit('fatal', new Error('Max reconnect attempts reached'));
+      console.error(`[Gateway] Max reconnect attempts (${this.maxReconnectAttempts}) reached. Giving up.`);
+      this.stopped = true;
+      this.emit('auth_failed', new Error(`Could not connect after ${this.maxReconnectAttempts} attempts. Your Discord token may be invalid — please update it in settings.`));
       return;
     }
     const delay = Math.min(1000 * 2 ** this.reconnectAttempts, 30000);
     this.reconnectAttempts++;
-    console.log(`[Gateway] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+    if (this.reconnectAttempts <= 3 || this.reconnectAttempts % 5 === 0) {
+      console.log(`[Gateway] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+    }
     setTimeout(() => this.connect(), delay);
   }
 
@@ -517,6 +549,7 @@ export class DiscordGateway extends EventEmitter {
   }
 
   disconnect(): void {
+    this.stopped = true;
     this.cleanup();
     this.ws?.close();
   }

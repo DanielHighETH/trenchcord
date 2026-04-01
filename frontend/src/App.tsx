@@ -8,6 +8,7 @@ import ContractDashboard from './components/ContractDashboard';
 import GlobalSettings from './components/GlobalSettings';
 import RoomConfig from './components/RoomConfig';
 import AlertToast from './components/AlertToast';
+import GatewayAuthBanner from './components/GatewayAuthBanner';
 import TokenSetup from './components/TokenSetup';
 import OnboardingWizard, { isOnboardingComplete } from './components/OnboardingWizard';
 import ProfilePage from './components/ProfilePage';
@@ -131,6 +132,7 @@ export default function App() {
       {activeView === 'settings' ? <GlobalSettings /> : activeView === 'contracts' ? <ContractDashboard /> : activeView === 'profile' ? <ProfilePage /> : <ChatView />}
       <RoomConfig />
       <AlertToast />
+      <GatewayAuthBanner />
     </div>
   );
 }

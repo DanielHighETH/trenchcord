@@ -42,7 +42,9 @@ interface AppState {
   maskedTokens: MaskedToken[];
   sidebarCollapsed: boolean;
   telegramChats: TelegramChatInfo[];
+  gatewayAuthError: string | null;
 
+  setGatewayAuthError: (error: string | null) => void;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   setConnected: (connected: boolean) => void;
@@ -115,7 +117,9 @@ export const useAppStore = create<AppState>((set, get) => {
   maskedTokens: [],
   sidebarCollapsed: false,
   telegramChats: [],
+  gatewayAuthError: null,
 
+  setGatewayAuthError: (error) => set({ gatewayAuthError: error }),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   setConnected: (connected) => set({ connected }),

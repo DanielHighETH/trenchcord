@@ -43,6 +43,7 @@ export function useWebSocket() {
   const fetchHistory = useAppStore((s) => s.fetchHistory);
   const fetchTelegramChats = useAppStore((s) => s.fetchTelegramChats);
   const checkAuth = useAppStore((s) => s.checkAuth);
+  const setGatewayAuthError = useAppStore((s) => s.setGatewayAuthError);
 
   useDemoStream();
 
@@ -159,6 +160,8 @@ export function useWebSocket() {
             fetchTelegramChats();
             fetchHistory();
             checkAuth();
+          } else if (incoming.type === 'gateway_auth_failed') {
+            setGatewayAuthError(incoming.error ?? 'Discord token authentication failed. Please check your token in settings.');
           }
         } catch {
           // ignore malformed
@@ -184,5 +187,5 @@ export function useWebSocket() {
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, [addMessage, updateMessage, addAlert, setConnected, updateReaction, addContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth]);
+  }, [addMessage, updateMessage, addAlert, setConnected, updateReaction, addContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError]);
 }

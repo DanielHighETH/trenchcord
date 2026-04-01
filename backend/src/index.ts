@@ -179,6 +179,11 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
   gw.on('fatal', (err: Error) => {
     console.error('[App] Fatal gateway error:', err.message);
   });
+
+  gw.on('auth_failed', (err: Error) => {
+    console.error('[App] Discord token authentication failed:', err.message);
+    wsServer.broadcastRaw({ type: 'gateway_auth_failed', error: err.message }, userId);
+  });
 }
 
 export function connectGateway(tokens: string[], wsServer: WsServer, userId: string = LOCAL_USER_ID): GatewayManager {
