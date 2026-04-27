@@ -13,6 +13,7 @@ import TokenSetup from './components/TokenSetup';
 import OnboardingWizard, { isOnboardingComplete } from './components/OnboardingWizard';
 import ProfilePage from './components/ProfilePage';
 import AuthPage from './components/auth/AuthPage';
+import { hasTokenEverBeenConfigured, setTokenStateUserId } from './utils/tokenState';
 
 const MOBILE_BREAKPOINT = 768;
 
@@ -67,8 +68,13 @@ export default function App() {
   const fetchDMChannels = useAppStore((s) => s.fetchDMChannels);
   const activeView = useAppStore((s) => s.activeView);
   const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
+  const setGatewayAuthError = useAppStore((s) => s.setGatewayAuthError);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [dataReady, setDataReady] = useState(false);
+
+  useEffect(() => {
+    setTokenStateUserId(supabaseUserId);
+  }, [supabaseUserId]);
 
   useEffect(() => {
     if (window.innerWidth < MOBILE_BREAKPOINT) {
@@ -96,6 +102,17 @@ export default function App() {
     }
   }, [dataReady, rooms.length, supabaseUserId]);
 
+  const tokenPreviouslyConfigured = hasTokenEverBeenConfigured(supabaseUserId);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (authStatus?.configured) return;
+    if (!tokenPreviouslyConfigured) return;
+    setGatewayAuthError(
+      'Your Discord token is missing or expired. Please re-enter it in Settings > Tokens.',
+    );
+  }, [authLoading, authStatus?.configured, tokenPreviouslyConfigured, setGatewayAuthError]);
+
   // Hosted mode: waiting for Supabase session check
   if (isHostedMode && !supabaseReady) {
     return (
@@ -118,7 +135,7 @@ export default function App() {
     );
   }
 
-  if (!authStatus?.configured) {
+  if (!authStatus?.configured && !tokenPreviouslyConfigured) {
     return <TokenSetup />;
   }
 

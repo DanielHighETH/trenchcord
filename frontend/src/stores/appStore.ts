@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Room, FrontendMessage, Alert, AppConfig, GuildInfo, DMChannel, ContractEntry, FrontendReaction, AuthStatus, MaskedToken, TelegramChatInfo } from '../types';
 import { isDemoMode, createDemoOverrides } from '../demo/demoStore';
 import { isHostedMode, getAccessToken } from '../lib/supabase';
+import { markTokenEverConfigured } from '../utils/tokenState';
 
 const API_BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
@@ -131,7 +132,14 @@ export const useAppStore = create<AppState>((set, get) => {
     try {
       set({ authLoading: true });
       const res = await apiFetch(`${API_BASE}/auth/status`);
+      if (!res.ok) {
+        set({ authStatus: null, authLoading: false });
+        return;
+      }
       const status: AuthStatus = await res.json();
+      if (status?.configured) {
+        markTokenEverConfigured();
+      }
       set({ authStatus: status, authLoading: false });
     } catch {
       set({ authStatus: null, authLoading: false });
@@ -148,6 +156,7 @@ export const useAppStore = create<AppState>((set, get) => {
       });
       const data = await res.json();
       if (!res.ok) return { success: false, error: data.error };
+      markTokenEverConfigured();
       set({ authStatus: { configured: true, connected: true } });
       return { success: true };
     } catch (err: any) {
@@ -175,6 +184,7 @@ export const useAppStore = create<AppState>((set, get) => {
       });
       const data = await res.json();
       if (!res.ok) return { success: false, error: data.error };
+      markTokenEverConfigured();
       await get().fetchMaskedTokens();
       set({ authStatus: { configured: true, connected: true } });
       return { success: true };
