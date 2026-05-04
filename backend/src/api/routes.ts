@@ -669,12 +669,13 @@ export function createRouter(wsServer: WsServer): Router {
 
   router.put('/config', async (req, res) => {
     const userId = getUserId(req);
-    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, pushover, contractLinkTemplates, showFullContractAddress, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale } = req.body;
     const config = await storage.updateConfig(userId, {
       ...(globalHighlightedUsers !== undefined && { globalHighlightedUsers }),
       ...(contractDetection !== undefined && { contractDetection }),
       ...(guildColors !== undefined && { guildColors }),
       ...(dmColors !== undefined && { dmColors }),
+      ...(telegramColors !== undefined && { telegramColors }),
       ...(enabledGuilds !== undefined && { enabledGuilds }),
       ...(hiddenUsers !== undefined && { hiddenUsers }),
       ...(evmAddressColor !== undefined && { evmAddressColor }),
@@ -683,8 +684,10 @@ export function createRouter(wsServer: WsServer): Router {
       ...(openInTelegramApp !== undefined && { openInTelegramApp }),
       ...(messageSounds !== undefined && { messageSounds }),
       ...(soundSettings !== undefined && { soundSettings }),
+      ...(channelSounds !== undefined && { channelSounds }),
       ...(pushover !== undefined && { pushover }),
       ...(contractLinkTemplates !== undefined && { contractLinkTemplates }),
+      ...(contractClickAction !== undefined && { contractClickAction }),
       ...(showFullContractAddress !== undefined && { showFullContractAddress }),
       ...(autoOpenHighlightedContracts !== undefined && { autoOpenHighlightedContracts }),
       ...(globalKeywordPatterns !== undefined && { globalKeywordPatterns }),
