@@ -37,7 +37,7 @@ export default function Sidebar() {
       {/* Header */}
       <div className="h-12 px-4 flex items-center shadow-[0_1px_0_rgba(0,0,0,0.2),0_1.5px_0_rgba(0,0,0,0.05),0_2px_0_rgba(0,0,0,0.05)] border-b border-discord-darker/50 shrink-0">
         <h1 className="flex items-center gap-2 text-base font-semibold text-discord-header-primary truncate">
-          <img src="/trenchcord.png" alt="Trenchcord" className="w-6 h-6 rounded" />
+          <img src="/trenchcord.png" alt="Trenchcord" decoding="async" className="w-6 h-6 rounded" />
           Trenchcord
         </h1>
         <div className="ml-auto flex items-center gap-1">
@@ -194,6 +194,8 @@ export default function Sidebar() {
                       <img
                         src={getAvatarUrl(dm.recipients[0].id, dm.recipients[0].avatar)}
                         alt=""
+                        loading="lazy"
+                        decoding="async"
                         className="w-6 h-6 rounded-full shrink-0"
                       />
                     ) : dm && dm.recipients.length > 1 ? (
@@ -201,11 +203,15 @@ export default function Sidebar() {
                         <img
                           src={getAvatarUrl(dm.recipients[0].id, dm.recipients[0].avatar)}
                           alt=""
+                          loading="lazy"
+                          decoding="async"
                           className="absolute top-0 left-0 w-[18px] h-[18px] rounded-full ring-2 ring-discord-sidebar"
                         />
                         <img
                           src={getAvatarUrl(dm.recipients[1].id, dm.recipients[1].avatar)}
                           alt=""
+                          loading="lazy"
+                          decoding="async"
                           className="absolute bottom-0 right-0 w-[18px] h-[18px] rounded-full ring-2 ring-discord-sidebar"
                         />
                       </div>

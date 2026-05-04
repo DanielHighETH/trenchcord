@@ -99,6 +99,7 @@ export default function GlobalSettings() {
   const [customSolUrl, setCustomSolUrl] = useState('');
   const [customEvmUrl, setCustomEvmUrl] = useState('');
   const [contractClickAction, setContractClickAction] = useState<ContractClickAction>('copy_open');
+  const [showFullContractAddress, setShowFullContractAddress] = useState(false);
   const [autoOpenHighlightedContracts, setAutoOpenHighlightedContracts] = useState(false);
   const [globalKeywordPatterns, setGlobalKeywordPatterns] = useState<KeywordPattern[]>([]);
   const [keywordAlertsEnabled, setKeywordAlertsEnabled] = useState(true);
@@ -159,6 +160,7 @@ export default function GlobalSettings() {
       setCustomSolUrl(config.contractLinkTemplates?.sol ?? '');
       setCustomEvmUrl(config.contractLinkTemplates?.evm ?? '');
       setContractClickAction(config.contractClickAction ?? 'copy_open');
+      setShowFullContractAddress(config.showFullContractAddress ?? false);
       setAutoOpenHighlightedContracts(config.autoOpenHighlightedContracts ?? false);
       setGlobalKeywordPatterns(config.globalKeywordPatterns ?? []);
       setKeywordAlertsEnabled(config.keywordAlertsEnabled ?? true);
@@ -212,6 +214,7 @@ export default function GlobalSettings() {
       customSolUrl !== (config.contractLinkTemplates?.sol ?? '') ||
       customEvmUrl !== (config.contractLinkTemplates?.evm ?? '') ||
       contractClickAction !== (config.contractClickAction ?? 'copy_open') ||
+      showFullContractAddress !== (config.showFullContractAddress ?? false) ||
       autoOpenHighlightedContracts !== (config.autoOpenHighlightedContracts ?? false) ||
       !kpEqual(globalKeywordPatterns, config.globalKeywordPatterns ?? []) ||
       keywordAlertsEnabled !== (config.keywordAlertsEnabled ?? true) ||
@@ -225,7 +228,7 @@ export default function GlobalSettings() {
     );
   }, [config, globalUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, evmAddressColor, solAddressColor,
     openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters,
-    solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, autoOpenHighlightedContracts,
+    solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts,
     globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale]);
 
   useEffect(() => {
@@ -265,6 +268,7 @@ export default function GlobalSettings() {
         pushover: { enabled: pushoverEnabled, appToken: pushoverAppToken, userKey: pushoverUserKey, priority: pushoverPriority, sound: pushoverSound, triggers: pushoverTriggers, filters: pushoverFilters },
         contractLinkTemplates: { evm: customEvmUrl, sol: customSolUrl, solPlatform, evmPlatform },
         contractClickAction,
+        showFullContractAddress,
         autoOpenHighlightedContracts,
         globalKeywordPatterns,
         keywordAlertsEnabled,
@@ -811,6 +815,15 @@ export default function GlobalSettings() {
                           </button>
                         ))}
                       </div>
+                    </div>
+
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Display Full Contract Address</h4>
+                      <Toggle
+                        value={showFullContractAddress}
+                        onChange={setShowFullContractAddress}
+                        label="Show the full contract address in chat and the contract list instead of the shortened form (0x1234...abcd)"
+                      />
                     </div>
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">

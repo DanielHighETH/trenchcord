@@ -36,6 +36,7 @@ const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
     evmPlatform: 'gmgn',
   },
   contractClickAction: 'copy_open',
+  showFullContractAddress: false,
   autoOpenHighlightedContracts: false,
   globalKeywordPatterns: [],
   keywordAlertsEnabled: true,

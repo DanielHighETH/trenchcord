@@ -9,6 +9,16 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2026-05-04',
+    added: [
+      '**Display Full Contract Address** — new setting under Settings > Contracts to show contract addresses in their full form instead of the shortened `0x1234...abcd` pill, both in chat and the Contracts dashboard',
+    ],
+    fixed: [
+      '**Memory leak on long sessions** — chat tabs running for hours no longer balloon into multiple GB of RAM. All message images (avatars, attachments, embeds, custom emojis, Telegram stickers) now lazy-load, and only the most recent ~200 messages live in the DOM at rest — scroll up to load more in 200-message chunks',
+      '**Re-render performance** — message rows are memoized so a new incoming WebSocket event no longer re-renders every visible message',
+    ],
+  },
+  {
     date: '2026-03-12',
     fixed: [
       '**Auto-scroll reliability** — chat no longer stops auto-scrolling when a reaction or large image appears, even if the user hasn\'t scrolled up',

@@ -172,6 +172,7 @@ export const DEMO_CONFIG: AppConfig = {
   pushover: { enabled: false, appToken: '', userKey: '', priority: 0, sound: 'pushover', triggers: { highlightedUser: false, highlightedUserContract: false, contract: false, keyword: false }, filters: { userIds: [], channelIds: [], guildIds: [] } },
   contractLinkTemplates: { evm: '', sol: '', solPlatform: 'axiom', evmPlatform: 'gmgn' },
   contractClickAction: 'copy_open',
+  showFullContractAddress: false,
   autoOpenHighlightedContracts: false,
   globalKeywordPatterns: [
     { pattern: 'airdrop', matchMode: 'includes', label: 'airdrop' },

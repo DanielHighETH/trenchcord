@@ -45,6 +45,7 @@ const DEFAULT_CONFIG: AppConfig = {
     evmPlatform: 'gmgn',
   },
   contractClickAction: 'copy_open',
+  showFullContractAddress: false,
   autoOpenHighlightedContracts: false,
   globalKeywordPatterns: [],
   keywordAlertsEnabled: true,
@@ -138,7 +139,7 @@ class ConfigStore {
     return this.config;
   }
 
-  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'telegramApiId' | 'telegramApiHash' | 'telegramSessions'>>): AppConfig {
+  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'telegramApiId' | 'telegramApiHash' | 'telegramSessions'>>): AppConfig {
     Object.assign(this.config, partial);
     this.save();
     return this.config;

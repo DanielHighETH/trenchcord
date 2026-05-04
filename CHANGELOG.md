@@ -2,6 +2,15 @@
 
 All notable changes to Trenchcord are documented here.
 
+## 2026-05-04
+
+### Added
+- **Display Full Contract Address** — new setting under Settings > Contracts to show contract addresses in their full form instead of the shortened `0x1234...abcd` pill, both in chat and the Contracts dashboard
+
+### Fixed
+- **Memory leak on long sessions** — chat tabs running for hours no longer balloon into multiple GB of RAM. All message images (avatars, attachments, embeds, custom emojis, Telegram stickers) now lazy-load, and only the most recent ~200 messages live in the DOM at rest — scroll up to load more in 200-message chunks
+- **Re-render performance** — `Message` rows are memoized, so a new incoming WebSocket event no longer re-renders every visible message
+
 ## 2026-03-12
 
 ### Fixed

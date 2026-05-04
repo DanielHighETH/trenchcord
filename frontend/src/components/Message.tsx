@@ -1,4 +1,4 @@
-import { type ReactNode, Fragment, useState } from 'react';
+import { type ReactNode, Fragment, useState, memo } from 'react';
 import { Eye, MessageSquareReply } from 'lucide-react';
 import type { FrontendMessage, ContractLinkTemplates, ContractClickAction, BadgeClickAction, HighlightMode, MessageDisplay } from '../types';
 import ImageLightbox from './ImageLightbox';
@@ -24,6 +24,7 @@ interface MessageProps {
   solAddressColor?: string;
   contractLinkTemplates?: ContractLinkTemplates;
   contractClickAction?: ContractClickAction;
+  showFullContractAddress?: boolean;
   openInDiscordApp?: boolean;
   openInTelegramApp?: boolean;
   badgeClickAction?: BadgeClickAction;
@@ -154,6 +155,7 @@ function applyInlineFormatting(
   addressColors?: AddressColors,
   linkTemplates: ContractLinkTemplates = DEFAULT_LINK_TEMPLATES,
   clickAction: ContractClickAction = 'copy_open',
+  showFull: boolean = false,
 ): (string | ReactNode)[] {
   // Markdown links [text](url)
   parts = splitByRegex(parts, MARKDOWN_LINK_REGEX, (m, i) => (
@@ -205,6 +207,8 @@ function applyInlineFormatting(
       src={`https://cdn.discordapp.com/emojis/${m[2]}.${m[0].startsWith('<a:') ? 'gif' : 'webp'}?size=20`}
       alt={`:${m[1]}:`}
       title={`:${m[1]}:`}
+      loading="lazy"
+      decoding="async"
       className="inline-block w-5 h-5 align-text-bottom mx-0.5"
     />
   ));
@@ -258,7 +262,7 @@ function applyInlineFormatting(
               title={contractClickTitle(clickAction, addr)}
               onClick={() => handleContractClick(addr, clickAction, linkTemplates)}
             >
-              {addr.slice(0, 6)}...{addr.slice(-4)}
+              {showFull ? addr : `${addr.slice(0, 6)}...${addr.slice(-4)}`}
             </span>
           );
         }
@@ -270,7 +274,7 @@ function applyInlineFormatting(
   return parts;
 }
 
-function renderInlineMarkdown(content: string, contractAddresses: string[], mentions: Record<string, string> = {}, addressColors?: AddressColors, linkTemplates: ContractLinkTemplates = DEFAULT_LINK_TEMPLATES, clickAction: ContractClickAction = 'copy_open'): ReactNode[] {
+function renderInlineMarkdown(content: string, contractAddresses: string[], mentions: Record<string, string> = {}, addressColors?: AddressColors, linkTemplates: ContractLinkTemplates = DEFAULT_LINK_TEMPLATES, clickAction: ContractClickAction = 'copy_open', showFull: boolean = false): ReactNode[] {
   let parts: (string | ReactNode)[] = [content];
 
   // 1. Inline code (protect from other formatting)
@@ -289,7 +293,7 @@ function renderInlineMarkdown(content: string, contractAddresses: string[], ment
           title={contractClickTitle(clickAction, matchedAddr)}
           onClick={() => handleContractClick(matchedAddr, clickAction, linkTemplates)}
         >
-          {matchedAddr.slice(0, 6)}...{matchedAddr.slice(-4)}
+          {showFull ? matchedAddr : `${matchedAddr.slice(0, 6)}...${matchedAddr.slice(-4)}`}
         </span>
       );
     }
@@ -304,17 +308,17 @@ function renderInlineMarkdown(content: string, contractAddresses: string[], ment
   //    Inner content is recursively formatted for links, emojis, etc.
   parts = splitByRegex(parts, BOLD_REGEX, (m, i) => (
     <strong key={`bold-${i}`} className="font-semibold text-white">
-      {applyInlineFormatting([m[1]], contractAddresses, mentions, addressColors, linkTemplates, clickAction)}
+      {applyInlineFormatting([m[1]], contractAddresses, mentions, addressColors, linkTemplates, clickAction, showFull)}
     </strong>
   ));
 
   // 3. Everything else on non-bold text
-  parts = applyInlineFormatting(parts, contractAddresses, mentions, addressColors, linkTemplates, clickAction);
+  parts = applyInlineFormatting(parts, contractAddresses, mentions, addressColors, linkTemplates, clickAction, showFull);
 
   return parts as ReactNode[];
 }
 
-function renderContent(content: string, contractAddresses: string[], mentions: Record<string, string> = {}, addressColors?: AddressColors, linkTemplates: ContractLinkTemplates = DEFAULT_LINK_TEMPLATES, clickAction: ContractClickAction = 'copy_open') {
+function renderContent(content: string, contractAddresses: string[], mentions: Record<string, string> = {}, addressColors?: AddressColors, linkTemplates: ContractLinkTemplates = DEFAULT_LINK_TEMPLATES, clickAction: ContractClickAction = 'copy_open', showFull: boolean = false) {
   if (!content) return null;
 
   // Extract code blocks first, replace with placeholders
@@ -355,7 +359,7 @@ function renderContent(content: string, contractAddresses: string[], mentions: R
       if (placeholderMatch) {
         parts.push(codeBlocks[parseInt(placeholderMatch[1])]);
       } else {
-        parts.push(...renderInlineMarkdown(groupLines[i], contracts, mentions, addressColors, linkTemplates, clickAction));
+        parts.push(...renderInlineMarkdown(groupLines[i], contracts, mentions, addressColors, linkTemplates, clickAction, showFull));
       }
     }
     return <>{parts}</>;
@@ -374,7 +378,7 @@ function renderContent(content: string, contractAddresses: string[], mentions: R
         if (result.length > 0) result.push(<br key={`br-${lineKey++}`} />);
         result.push(
           <Fragment key={`line-${lineKey++}`}>
-            {renderInlineMarkdown(line, contractAddresses, mentions, addressColors, linkTemplates, clickAction)}
+            {renderInlineMarkdown(line, contractAddresses, mentions, addressColors, linkTemplates, clickAction, showFull)}
           </Fragment>
         );
       }
@@ -430,8 +434,8 @@ function detectAddresses(text: string): string[] {
   return addrs;
 }
 
-function renderEmbedDescription(text: string): ReactNode {
-  return renderContent(text, detectAddresses(text));
+function renderEmbedDescription(text: string, showFull: boolean = false): ReactNode {
+  return renderContent(text, detectAddresses(text), {}, undefined, undefined, undefined, showFull);
 }
 
 function ReactionPills({ reactions }: { reactions: FrontendMessage['reactions'] }) {
@@ -443,6 +447,8 @@ function ReactionPills({ reactions }: { reactions: FrontendMessage['reactions'] 
           <img
             src={`https://cdn.discordapp.com/emojis/${r.emoji.id}.${r.emoji.animated ? 'gif' : 'webp'}?size=16`}
             alt={r.emoji.name}
+            loading="lazy"
+            decoding="async"
             className="w-4 h-4"
           />
         ) : (
@@ -483,6 +489,8 @@ function TelegramExtras({ message }: { message: FrontendMessage }) {
             <img
               src={message.sticker.url}
               alt={message.sticker.emoji ?? 'sticker'}
+              loading="lazy"
+              decoding="async"
               className="w-32 h-32 object-contain"
             />
           ) : (
@@ -518,11 +526,12 @@ function TelegramExtras({ message }: { message: FrontendMessage }) {
   );
 }
 
-export default function Message({ message, isCompact, messageDisplay = 'default', compactModeAvatars = true, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, openInDiscordApp, openInTelegramApp, badgeClickAction, onHideUser, onToggleHighlight, isUserHighlighted, onFocus, isFocused, onQuickReply, chattingEnabled, roleColors = true }: MessageProps) {
+function Message({ message, isCompact, messageDisplay = 'default', compactModeAvatars = true, guildColor, highlightMode = 'background', highlightColor, disableEmbeds, evmAddressColor, solAddressColor, contractLinkTemplates, contractClickAction, showFullContractAddress = false, openInDiscordApp, openInTelegramApp, badgeClickAction, onHideUser, onToggleHighlight, isUserHighlighted, onFocus, isFocused, onQuickReply, chattingEnabled, roleColors = true }: MessageProps) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const addrColors: AddressColors = { evm: evmAddressColor ?? '#fee75c', sol: solAddressColor ?? '#14f195' };
   const templates: ContractLinkTemplates = contractLinkTemplates ?? DEFAULT_LINK_TEMPLATES;
   const clickAct: ContractClickAction = contractClickAction ?? 'copy_open';
+  const showFull = showFullContractAddress;
   const [copied, setCopied] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
@@ -679,6 +688,8 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
               <img
                 src={getAvatarUrl(message.author.id, message.author.avatar)}
                 alt=""
+                loading="lazy"
+                decoding="async"
                 className="inline-block w-5 h-5 rounded-full mr-1 align-text-bottom"
               />
             )}
@@ -743,7 +754,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                 {' '}
               </>
             )}
-            {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct)}
+            {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct, showFull)}
           </div>
 
           {message.attachments.length > 0 && (
@@ -754,6 +765,8 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                     key={att.id}
                     src={att.proxy_url}
                     alt={att.filename}
+                    loading="lazy"
+                    decoding="async"
                     className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => setLightboxSrc(att.proxy_url)}
                   />
@@ -798,7 +811,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                   {embed.author?.name && (
                     <div className="flex items-center gap-2 mb-1">
                       {embed.author.icon_url && (
-                        <img src={embed.author.icon_url} alt="" className="w-6 h-6 rounded-full" />
+                        <img src={embed.author.icon_url} alt="" loading="lazy" decoding="async" className="w-6 h-6 rounded-full" />
                       )}
                       {embed.author.url ? (
                         <a href={embed.author.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-white hover:underline">
@@ -822,7 +835,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                   )}
                   {embed.description && (
                     <div className="text-[13px] text-discord-text mt-1 leading-[1.125rem]">
-                      {renderEmbedDescription(embed.description)}
+                      {renderEmbedDescription(embed.description, showFull)}
                     </div>
                   )}
                   {embed.fields && embed.fields.length > 0 && (
@@ -833,7 +846,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                             {renderInlineMarkdown(field.name, [], {})}
                           </div>
                           <div className="text-[13px] text-discord-text leading-[1.125rem]">
-                            {renderEmbedDescription(field.value)}
+                            {renderEmbedDescription(field.value, showFull)}
                           </div>
                         </div>
                       ))}
@@ -843,6 +856,8 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                     <img
                       src={embed.thumbnail.url}
                       alt=""
+                      loading="lazy"
+                      decoding="async"
                       className="max-w-[80px] max-h-[80px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
                       onClick={() => setLightboxSrc(embed.thumbnail!.url)}
                     />
@@ -851,6 +866,8 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                     <img
                       src={embed.image.url}
                       alt=""
+                      loading="lazy"
+                      decoding="async"
                       className="max-w-full sm:max-w-[400px] max-h-[300px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
                       onClick={() => setLightboxSrc(embed.image!.url)}
                     />
@@ -858,7 +875,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                   {embed.footer?.text && (
                     <div className="flex items-center gap-2 mt-2 text-xs text-discord-text-muted">
                       {embed.footer.icon_url && (
-                        <img src={embed.footer.icon_url} alt="" className="w-5 h-5 rounded-full" />
+                        <img src={embed.footer.icon_url} alt="" loading="lazy" decoding="async" className="w-5 h-5 rounded-full" />
                       )}
                       <span>{embed.footer.text}</span>
                     </div>
@@ -924,7 +941,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
           )}
 
           <div className="text-base text-discord-text-normal leading-[1.375rem] break-words">
-            {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct)}
+            {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct, showFull)}
           </div>
 
           {message.attachments.length > 0 && (
@@ -935,6 +952,8 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                     key={att.id}
                     src={att.proxy_url}
                     alt={att.filename}
+                    loading="lazy"
+                    decoding="async"
                     className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => setLightboxSrc(att.proxy_url)}
                   />
@@ -979,7 +998,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                   {embed.author?.name && (
                     <div className="flex items-center gap-2 mb-1">
                       {embed.author.icon_url && (
-                        <img src={embed.author.icon_url} alt="" className="w-6 h-6 rounded-full" />
+                        <img src={embed.author.icon_url} alt="" loading="lazy" decoding="async" className="w-6 h-6 rounded-full" />
                       )}
                       {embed.author.url ? (
                         <a href={embed.author.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-white hover:underline">
@@ -1003,7 +1022,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                   )}
                   {embed.description && (
                     <div className="text-[13px] text-discord-text mt-1 leading-[1.125rem]">
-                      {renderEmbedDescription(embed.description)}
+                      {renderEmbedDescription(embed.description, showFull)}
                     </div>
                   )}
                   {embed.fields && embed.fields.length > 0 && (
@@ -1014,7 +1033,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                             {renderInlineMarkdown(field.name, [], {})}
                           </div>
                           <div className="text-[13px] text-discord-text leading-[1.125rem]">
-                            {renderEmbedDescription(field.value)}
+                            {renderEmbedDescription(field.value, showFull)}
                           </div>
                         </div>
                       ))}
@@ -1024,6 +1043,8 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                     <img
                       src={embed.thumbnail.url}
                       alt=""
+                      loading="lazy"
+                      decoding="async"
                       className="max-w-[80px] max-h-[80px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
                       onClick={() => setLightboxSrc(embed.thumbnail!.url)}
                     />
@@ -1032,6 +1053,8 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                     <img
                       src={embed.image.url}
                       alt=""
+                      loading="lazy"
+                      decoding="async"
                       className="max-w-full sm:max-w-[400px] max-h-[300px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
                       onClick={() => setLightboxSrc(embed.image!.url)}
                     />
@@ -1039,7 +1062,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                   {embed.footer?.text && (
                     <div className="flex items-center gap-2 mt-2 text-xs text-discord-text-muted">
                       {embed.footer.icon_url && (
-                        <img src={embed.footer.icon_url} alt="" className="w-5 h-5 rounded-full" />
+                        <img src={embed.footer.icon_url} alt="" loading="lazy" decoding="async" className="w-5 h-5 rounded-full" />
                       )}
                       <span>{embed.footer.text}</span>
                     </div>
@@ -1087,6 +1110,8 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
       <img
         src={getAvatarUrl(message.author.id, message.author.avatar)}
         alt=""
+        loading="lazy"
+        decoding="async"
         className="absolute left-2 sm:left-4 top-[1.1875rem] w-8 h-8 sm:w-10 sm:h-10 rounded-full"
       />
       <div className="min-w-0">
@@ -1174,7 +1199,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
         )}
 
         <div className="text-base text-discord-text-normal leading-[1.375rem] break-words whitespace-pre-wrap">
-          {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct)}
+          {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct, showFull)}
         </div>
 
         {message.attachments.length > 0 && (
@@ -1185,6 +1210,8 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                   key={att.id}
                   src={att.proxy_url}
                   alt={att.filename}
+                  loading="lazy"
+                  decoding="async"
                   className="max-w-full sm:max-w-[400px] max-h-[300px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                   onClick={() => setLightboxSrc(att.proxy_url)}
                 />
@@ -1229,7 +1256,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                 {embed.author?.name && (
                   <div className="flex items-center gap-2 mb-1">
                     {embed.author.icon_url && (
-                      <img src={embed.author.icon_url} alt="" className="w-6 h-6 rounded-full" />
+                      <img src={embed.author.icon_url} alt="" loading="lazy" decoding="async" className="w-6 h-6 rounded-full" />
                     )}
                     {embed.author.url ? (
                       <a href={embed.author.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-white hover:underline">
@@ -1253,7 +1280,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                 )}
                 {embed.description && (
                   <div className="text-[13px] text-discord-text mt-1 leading-[1.125rem]">
-                    {renderEmbedDescription(embed.description)}
+                    {renderEmbedDescription(embed.description, showFull)}
                   </div>
                 )}
                 {embed.fields && embed.fields.length > 0 && (
@@ -1264,7 +1291,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                           {renderInlineMarkdown(field.name, [], {})}
                         </div>
                         <div className="text-[13px] text-discord-text leading-[1.125rem]">
-                          {renderEmbedDescription(field.value)}
+                          {renderEmbedDescription(field.value, showFull)}
                         </div>
                       </div>
                     ))}
@@ -1274,6 +1301,8 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                   <img
                     src={embed.thumbnail.url}
                     alt=""
+                    loading="lazy"
+                    decoding="async"
                     className="max-w-[80px] max-h-[80px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => setLightboxSrc(embed.thumbnail!.url)}
                   />
@@ -1282,6 +1311,8 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                   <img
                     src={embed.image.url}
                     alt=""
+                    loading="lazy"
+                    decoding="async"
                     className="max-w-full sm:max-w-[400px] max-h-[300px] rounded mt-2 cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => setLightboxSrc(embed.image!.url)}
                   />
@@ -1289,7 +1320,7 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
                 {embed.footer?.text && (
                   <div className="flex items-center gap-2 mt-2 text-xs text-discord-text-muted">
                     {embed.footer.icon_url && (
-                      <img src={embed.footer.icon_url} alt="" className="w-5 h-5 rounded-full" />
+                      <img src={embed.footer.icon_url} alt="" loading="lazy" decoding="async" className="w-5 h-5 rounded-full" />
                     )}
                     <span>{embed.footer.text}</span>
                   </div>
@@ -1330,3 +1361,5 @@ export default function Message({ message, isCompact, messageDisplay = 'default'
     </div>
   );
 }
+
+export default memo(Message);

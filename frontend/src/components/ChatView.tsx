@@ -5,6 +5,9 @@ import ChatInput from './ChatInput';
 import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown, PanelLeftOpen, Send } from 'lucide-react';
 
 const SCROLL_THRESHOLD = 150;
+const WINDOW_INITIAL = 200;
+const WINDOW_GROW = 200;
+const LOAD_MORE_THRESHOLD = 300;
 
 export default function ChatView() {
   const activeRoomId = useAppStore((s) => s.activeRoomId);
@@ -21,6 +24,8 @@ export default function ChatView() {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const programmaticScrollRef = useRef(false);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [renderLimit, setRenderLimit] = useState(WINDOW_INITIAL);
+  const growingRef = useRef(false);
 
   const updateRoom = useAppStore((s) => s.updateRoom);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
@@ -91,7 +96,11 @@ export default function ChatView() {
     return matches;
   }, [afterFocus, trimmedSearch, searchOpen]);
 
-  const roomMessages = searchResults ?? afterFocus;
+  const roomMessages = searchResults
+    ? searchResults
+    : afterFocus.length > renderLimit
+      ? afterFocus.slice(-renderLimit)
+      : afterFocus;
 
   const channelHiddenUsers = activeRoom
     ? activeRoom.channels.flatMap((ch) => {
@@ -113,7 +122,7 @@ export default function ChatView() {
     }
   };
 
-  const toggleHighlightUser = async (userId: string, displayName: string) => {
+  const toggleHighlightUser = useCallback(async (userId: string, displayName: string) => {
     if (!activeRoom) return;
     const current = activeRoom.highlightedUsers ?? [];
     const isAlready = current.includes(userId);
@@ -124,19 +133,19 @@ export default function ChatView() {
       updates.highlightedUserColors = rest;
     }
     await updateRoom(activeRoom.id, updates);
-  };
+  }, [activeRoom, updateRoom]);
 
   const handleQuickReply = useCallback((channelId: string) => {
     setQuickReplyChannelId(channelId);
   }, []);
 
-  const handleFocus = (guildId: string | null, channelId: string, guildName: string | null, channelName: string) => {
+  const handleFocus = useCallback((guildId: string | null, channelId: string, guildName: string | null, channelName: string) => {
     if (focusFilter && focusFilter.guildId === guildId && focusFilter.channelId === channelId) {
       clearFocusFilter();
     } else {
       setFocusFilter({ guildId, channelId, guildName, channelName });
     }
-  };
+  }, [focusFilter, setFocusFilter, clearFocusFilter]);
 
   const openSearch = useCallback(() => {
     setSearchOpen(true);
@@ -187,10 +196,32 @@ export default function ChatView() {
     if (!el) return;
     if (programmaticScrollRef.current) return;
 
+    // Grow the rendered window when the user scrolls near the top, preserving
+    // visual scroll position so the viewport doesn't jump.
+    if (
+      !growingRef.current &&
+      !searchResults &&
+      el.scrollTop < LOAD_MORE_THRESHOLD &&
+      renderLimit < afterFocus.length
+    ) {
+      growingRef.current = true;
+      const prevHeight = el.scrollHeight;
+      const prevTop = el.scrollTop;
+      setRenderLimit((n) => Math.min(n + WINDOW_GROW, afterFocus.length));
+      requestAnimationFrame(() => {
+        const newEl = scrollContainerRef.current;
+        if (newEl) {
+          const delta = newEl.scrollHeight - prevHeight;
+          if (delta > 0) newEl.scrollTop = prevTop + delta;
+        }
+        growingRef.current = false;
+      });
+    }
+
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_THRESHOLD;
     isNearBottomRef.current = nearBottom;
     setShowScrollButton(!nearBottom);
-  }, []);
+  }, [searchResults, renderLimit, afterFocus.length]);
 
   const scrollToEnd = useCallback(() => {
     const el = scrollContainerRef.current;
@@ -244,6 +275,14 @@ export default function ChatView() {
     clearFocusFilter();
     closeSearch();
   }, [activeRoomId, clearFocusFilter, scrollToEnd, closeSearch]);
+
+  // Reset the rendered window so we never carry a stale large window across
+  // rooms, focus filters or search toggles. The bottom-most messages are still
+  // rendered immediately; the user can scroll up to load more.
+  useEffect(() => {
+    setRenderLimit(WINDOW_INITIAL);
+    growingRef.current = false;
+  }, [activeRoomId, focusFilter, searchOpen]);
 
   useEffect(() => {
     return () => clearTimeout(scrollTimeoutRef.current);
@@ -551,6 +590,7 @@ export default function ChatView() {
                   solAddressColor={config?.solAddressColor ?? '#14f195'}
                   contractLinkTemplates={config?.contractLinkTemplates}
                   contractClickAction={config?.contractClickAction ?? 'copy_open'}
+                  showFullContractAddress={config?.showFullContractAddress ?? false}
                   openInDiscordApp={config?.openInDiscordApp ?? false}
                   openInTelegramApp={config?.openInTelegramApp ?? false}
                   badgeClickAction={config?.badgeClickAction ?? 'discord'}

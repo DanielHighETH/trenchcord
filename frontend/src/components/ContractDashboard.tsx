@@ -91,6 +91,7 @@ export default function ContractDashboard() {
     setShowDeleteAll(true);
   };
 
+  const showFull = config?.showFullContractAddress ?? false;
   const evmColor = config?.evmAddressColor ?? '#fee75c';
   const solColor = config?.solAddressColor ?? '#14f195';
 
@@ -191,6 +192,7 @@ export default function ContractDashboard() {
                 entry={entry}
                 evmColor={evmColor}
                 solColor={solColor}
+                showFull={showFull}
                 isCopied={copiedAddr === entry.address}
                 onCopy={handleCopy}
                 onOpen={handleOpen}
@@ -237,6 +239,7 @@ interface ContractItemProps {
   entry: ContractEntry;
   evmColor: string;
   solColor: string;
+  showFull?: boolean;
   isCopied: boolean;
   onCopy: (addr: string) => void;
   onOpen: (addr: string, evmChain?: string) => void;
@@ -248,6 +251,7 @@ function ContractRow({
   entry,
   evmColor,
   solColor,
+  showFull = false,
   isCopied,
   onCopy,
   onOpen,
@@ -281,12 +285,12 @@ function ContractRow({
       </span>
 
       <span
-        className="font-mono text-sm cursor-pointer hover:underline shrink-0"
+        className={`font-mono text-sm cursor-pointer hover:underline ${showFull ? 'min-w-0 break-all' : 'shrink-0'}`}
         style={{ color }}
         title={entry.address}
         onClick={() => onCopy(entry.address)}
       >
-        {entry.address.slice(0, 6)}...{entry.address.slice(-4)}
+        {showFull ? entry.address : `${entry.address.slice(0, 6)}...${entry.address.slice(-4)}`}
       </span>
 
       <div className="flex items-center gap-0.5 shrink-0">

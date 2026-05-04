@@ -197,6 +197,7 @@ export interface AppConfig {
   pushover: PushoverConfig;
   contractLinkTemplates: ContractLinkTemplates;
   contractClickAction: ContractClickAction;
+  showFullContractAddress: boolean;
   autoOpenHighlightedContracts: boolean;
   globalKeywordPatterns: KeywordPattern[];
   keywordAlertsEnabled: boolean;

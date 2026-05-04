@@ -669,7 +669,7 @@ export function createRouter(wsServer: WsServer): Router {
 
   router.put('/config', async (req, res) => {
     const userId = getUserId(req);
-    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, pushover, contractLinkTemplates, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, pushover, contractLinkTemplates, showFullContractAddress, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale } = req.body;
     const config = await storage.updateConfig(userId, {
       ...(globalHighlightedUsers !== undefined && { globalHighlightedUsers }),
       ...(contractDetection !== undefined && { contractDetection }),
@@ -685,6 +685,7 @@ export function createRouter(wsServer: WsServer): Router {
       ...(soundSettings !== undefined && { soundSettings }),
       ...(pushover !== undefined && { pushover }),
       ...(contractLinkTemplates !== undefined && { contractLinkTemplates }),
+      ...(showFullContractAddress !== undefined && { showFullContractAddress }),
       ...(autoOpenHighlightedContracts !== undefined && { autoOpenHighlightedContracts }),
       ...(globalKeywordPatterns !== undefined && { globalKeywordPatterns }),
       ...(keywordAlertsEnabled !== undefined && { keywordAlertsEnabled }),
