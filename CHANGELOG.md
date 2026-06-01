@@ -2,6 +2,11 @@
 
 All notable changes to Trenchcord are documented here.
 
+## 2026-06-01
+
+### Fixed
+- **Auto-scroll reliability** — chat now stays pinned to the newest message in the cases that previously left it stranded a row or two above the bottom: tall multi-row messages and embeds, several messages arriving at the same time, and reactions added to recent messages. Auto-scroll now chases the live content height every frame until the layout settles (including late-loading images) instead of relying on a fixed-delay smooth scroll, and it gracefully steps aside the moment you scroll up
+
 ## 2026-05-04
 
 ### Added

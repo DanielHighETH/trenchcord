@@ -18,12 +18,11 @@ export default function ChatView() {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const prevMessageCountRef = useRef(0);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const programmaticScrollRef = useRef(false);
-  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const settleRafRef = useRef<number | undefined>(undefined);
   const [renderLimit, setRenderLimit] = useState(WINDOW_INITIAL);
   const growingRef = useRef(false);
 
@@ -223,44 +222,91 @@ export default function ChatView() {
     setShowScrollButton(!nearBottom);
   }, [searchResults, renderLimit, afterFocus.length]);
 
-  const scrollToEnd = useCallback(() => {
-    const el = scrollContainerRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+  const cancelSettle = useCallback(() => {
+    if (settleRafRef.current !== undefined) {
+      cancelAnimationFrame(settleRafRef.current);
+      settleRafRef.current = undefined;
+    }
   }, []);
 
+  // Scroll to the bottom and keep chasing it until the layout settles. Tall
+  // embeds and lazy-loaded images grow the content *after* the scroll begins,
+  // so a fixed timeout would either release too early (stranding us mid-list
+  // once checkNearBottom flips isNearBottom during a long smooth animation) or
+  // fight the animation. The rAF loop re-reads scrollHeight every frame and
+  // only finalizes once we're actually at the bottom and the height is stable.
   const performScroll = useCallback((smooth: boolean) => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
     const useSmooth = smooth && !document.hidden;
 
     programmaticScrollRef.current = true;
-    clearTimeout(scrollTimeoutRef.current);
+    cancelSettle();
 
     if (useSmooth) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-
-      scrollTimeoutRef.current = setTimeout(() => {
-        scrollToEnd();
-        programmaticScrollRef.current = false;
-        isNearBottomRef.current = true;
-        setShowScrollButton(false);
-      }, 400);
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     } else {
-      scrollToEnd();
-      requestAnimationFrame(() => {
-        scrollToEnd();
+      el.scrollTop = el.scrollHeight;
+    }
+
+    const startedAt = performance.now();
+    const MAX_DURATION = 2000;
+    let lastHeight = el.scrollHeight;
+    let stableFrames = 0;
+
+    const step = () => {
+      const c = scrollContainerRef.current;
+      if (!c) {
+        programmaticScrollRef.current = false;
+        settleRafRef.current = undefined;
+        return;
+      }
+
+      const height = c.scrollHeight;
+      if (height !== lastHeight) {
+        lastHeight = height;
+        stableFrames = 0;
+        if (useSmooth) {
+          // Content grew (e.g. an image finished loading) — re-target the
+          // smooth animation to the new bottom so we don't land short.
+          c.scrollTo({ top: height, behavior: 'smooth' });
+        }
+      } else {
+        stableFrames++;
+      }
+
+      if (!useSmooth) c.scrollTop = c.scrollHeight;
+
+      const atBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 4;
+      const elapsed = performance.now() - startedAt;
+
+      if ((atBottom && stableFrames >= 3) || elapsed > MAX_DURATION) {
+        c.scrollTop = c.scrollHeight;
         programmaticScrollRef.current = false;
         isNearBottomRef.current = true;
         setShowScrollButton(false);
-      });
-    }
-  }, [scrollToEnd]);
+        settleRafRef.current = undefined;
+      } else {
+        settleRafRef.current = requestAnimationFrame(step);
+      }
+    };
+
+    settleRafRef.current = requestAnimationFrame(step);
+  }, [cancelSettle]);
 
   useEffect(() => {
     const prev = prevMessageCountRef.current;
     if (roomMessages.length !== prev) {
       prevMessageCountRef.current = roomMessages.length;
       if (isNearBottomRef.current) {
-        const isBulkLoad = prev === 0 && roomMessages.length > 1;
-        performScroll(!isBulkLoad);
+        // Instant chase, not a smooth animation. When several messages land at
+        // once (or a multi-row/embed message arrives), a smooth scroll captures
+        // a target that's stale by the time the content finishes growing and
+        // finalizes mid-flight, leaving the newest message clipped below the
+        // fold. The instant settle loop re-pins to the live scrollHeight every
+        // frame, so it can't land short. Smooth is reserved for the manual
+        // jump-to-bottom button, where the content is already laid out.
+        performScroll(false);
       }
     }
   }, [roomMessages.length, performScroll]);
@@ -268,13 +314,13 @@ export default function ChatView() {
   useEffect(() => {
     isNearBottomRef.current = true;
     setShowScrollButton(false);
-    programmaticScrollRef.current = false;
-    clearTimeout(scrollTimeoutRef.current);
-    scrollToEnd();
-    requestAnimationFrame(scrollToEnd);
+    cancelSettle();
+    // Use the chasing scroll so a freshly-opened room with tall embeds/images
+    // still ends up pinned to the bottom once those load.
+    performScroll(false);
     clearFocusFilter();
     closeSearch();
-  }, [activeRoomId, clearFocusFilter, scrollToEnd, closeSearch]);
+  }, [activeRoomId, clearFocusFilter, performScroll, cancelSettle, closeSearch]);
 
   // Reset the rendered window so we never carry a stale large window across
   // rooms, focus filters or search toggles. The bottom-most messages are still
@@ -285,37 +331,52 @@ export default function ChatView() {
   }, [activeRoomId, focusFilter, searchOpen]);
 
   useEffect(() => {
-    return () => clearTimeout(scrollTimeoutRef.current);
-  }, []);
+    return () => cancelSettle();
+  }, [cancelSettle]);
+
+  // Cancel any in-flight programmatic scroll the moment the user takes over, so
+  // the (now longer) chase loop never yanks them back while they scroll up.
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const onUserScroll = () => {
+      if (!programmaticScrollRef.current) return;
+      cancelSettle();
+      programmaticScrollRef.current = false;
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_THRESHOLD;
+      isNearBottomRef.current = nearBottom;
+      setShowScrollButton(!nearBottom);
+    };
+    el.addEventListener('wheel', onUserScroll, { passive: true });
+    el.addEventListener('touchstart', onUserScroll, { passive: true });
+    return () => {
+      el.removeEventListener('wheel', onUserScroll);
+      el.removeEventListener('touchstart', onUserScroll);
+    };
+  }, [cancelSettle]);
 
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
 
     const observer = new ResizeObserver(() => {
+      // A settle loop already owns scrolling (and may be animating smoothly);
+      // don't fight it.
+      if (settleRafRef.current !== undefined) return;
+      // The content height changed: a reaction pill appeared, a late embed or
+      // image arrived/decoded, or a message was edited. If we were pinned, chase
+      // the new bottom. Using the settle loop instead of a one-shot pin keeps us
+      // glued even when the growth lands over several frames (e.g. a reaction's
+      // emoji image decoding a beat after its pill), which previously left us
+      // stranded a little above the newest message.
       if (isNearBottomRef.current) {
-        const container = scrollContainerRef.current;
-        if (container) {
-          // Track whether a performScroll is already managing programmaticScrollRef so
-          // we don't accidentally clear it early when our rAF fires.
-          const wasProgrammatic = programmaticScrollRef.current;
-          programmaticScrollRef.current = true;
-          container.scrollTop = container.scrollHeight;
-          // The assignment above fires onScroll synchronously; force the flag back to
-          // true so checkNearBottom (which may run inside that event) can't flip it.
-          isNearBottomRef.current = true;
-          if (!wasProgrammatic) {
-            requestAnimationFrame(() => {
-              programmaticScrollRef.current = false;
-            });
-          }
-        }
+        performScroll(false);
       }
     });
 
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [performScroll]);
 
   const scrollToBottom = () => {
     isNearBottomRef.current = true;
@@ -611,7 +672,6 @@ export default function ChatView() {
               </div>
             );
           })}
-          <div ref={bottomRef} />
         </div>
       </div>
 
