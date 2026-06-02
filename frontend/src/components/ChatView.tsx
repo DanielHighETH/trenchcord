@@ -19,7 +19,7 @@ export default function ChatView() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
-  const prevMessageCountRef = useRef(0);
+  const prevLastIdRef = useRef<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const programmaticScrollRef = useRef(false);
   const settleRafRef = useRef<number | undefined>(undefined);
@@ -100,6 +100,12 @@ export default function ChatView() {
     : afterFocus.length > renderLimit
       ? afterFocus.slice(-renderLimit)
       : afterFocus;
+
+  // The id of the newest message. We key auto-scroll off this rather than the
+  // rendered count: in busy channels the render window is capped (slice of the
+  // last N), so the count stops changing once it's full and new messages would
+  // otherwise slip in without triggering a scroll.
+  const lastMessageId = roomMessages.length > 0 ? roomMessages[roomMessages.length - 1].id : null;
 
   const channelHiddenUsers = activeRoom
     ? activeRoom.channels.flatMap((ch) => {
@@ -295,21 +301,19 @@ export default function ChatView() {
   }, [cancelSettle]);
 
   useEffect(() => {
-    const prev = prevMessageCountRef.current;
-    if (roomMessages.length !== prev) {
-      prevMessageCountRef.current = roomMessages.length;
-      if (isNearBottomRef.current) {
-        // Instant chase, not a smooth animation. When several messages land at
-        // once (or a multi-row/embed message arrives), a smooth scroll captures
-        // a target that's stale by the time the content finishes growing and
-        // finalizes mid-flight, leaving the newest message clipped below the
-        // fold. The instant settle loop re-pins to the live scrollHeight every
-        // frame, so it can't land short. Smooth is reserved for the manual
-        // jump-to-bottom button, where the content is already laid out.
-        performScroll(false);
-      }
+    if (lastMessageId === prevLastIdRef.current) return;
+    prevLastIdRef.current = lastMessageId;
+    if (lastMessageId && isNearBottomRef.current) {
+      // Instant chase, not a smooth animation. When several messages land at
+      // once (or a multi-row/embed message arrives), a smooth scroll captures
+      // a target that's stale by the time the content finishes growing and
+      // finalizes mid-flight, leaving the newest message clipped below the
+      // fold. The instant settle loop re-pins to the live scrollHeight every
+      // frame, so it can't land short. Smooth is reserved for the manual
+      // jump-to-bottom button, where the content is already laid out.
+      performScroll(false);
     }
-  }, [roomMessages.length, performScroll]);
+  }, [lastMessageId, performScroll]);
 
   useEffect(() => {
     isNearBottomRef.current = true;
