@@ -618,7 +618,7 @@ export default function ChatView() {
         onScroll={checkNearBottom}
         style={{ overflowAnchor: 'none' }}
       >
-        <div ref={contentRef}>
+        <div ref={contentRef} className={chattingEnabled ? 'pb-[1vh]' : 'pb-[3vh]'}>
           {roomMessages.length === 0 && (
             <div className="flex items-center justify-center h-full text-discord-text-muted text-sm">
               {searchOpen && trimmedSearch ? 'No messages match your search.' : 'Waiting for messages...'}
@@ -634,7 +634,7 @@ export default function ChatView() {
             const isCompact = sameAuthor && timeDiff < 5 * 60 * 1000 && prev?.channelId === msg.channelId;
 
             const guildColor = msg.source === 'telegram'
-              ? config?.telegramColors?.[msg.channelId]
+              ? config?.telegramColors?.[msg.channelId] ?? config?.dmColors?.[msg.channelId]
               : msg.guildId
                 ? config?.guildColors?.[msg.guildId]
                 : config?.dmColors?.[msg.channelId];

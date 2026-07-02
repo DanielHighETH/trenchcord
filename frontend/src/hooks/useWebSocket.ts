@@ -33,6 +33,7 @@ export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const addMessage = useAppStore((s) => s.addMessage);
   const updateMessage = useAppStore((s) => s.updateMessage);
+  const markMessageDeleted = useAppStore((s) => s.markMessageDeleted);
   const addAlert = useAppStore((s) => s.addAlert);
   const setConnected = useAppStore((s) => s.setConnected);
   const updateReaction = useAppStore((s) => s.updateReaction);
@@ -143,6 +144,8 @@ export function useWebSocket() {
             addAlert(alert);
           } else if (incoming.type === 'message_update') {
             updateMessage(incoming.data);
+          } else if (incoming.type === 'message_delete') {
+            markMessageDeleted(incoming.data);
           } else if (incoming.type === 'reaction_update') {
             const { channelId, messageId, emoji, delta } = incoming.data;
             updateReaction(channelId, messageId, emoji, delta);
@@ -187,5 +190,5 @@ export function useWebSocket() {
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, [addMessage, updateMessage, addAlert, setConnected, updateReaction, addContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError]);
+  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError]);
 }

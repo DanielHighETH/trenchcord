@@ -522,6 +522,64 @@ function TelegramExtras({ message }: { message: FrontendMessage }) {
           </div>
         </div>
       )}
+
+      {message.buttons && message.buttons.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-1">
+          {message.buttons.map((btn, i) => (
+            <a
+              key={i}
+              href={btn.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center px-2.5 py-1 rounded bg-[#2AABEE]/10 text-[#2AABEE] text-xs font-medium hover:bg-[#2AABEE]/20 transition-colors"
+              title={btn.url}
+            >
+              {btn.text}
+            </a>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function DeletedBadge() {
+  return (
+    <span
+      className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-semibold uppercase tracking-wide"
+      title="This message was deleted on the platform"
+    >
+      deleted
+    </span>
+  );
+}
+
+function EditedIndicator({ message, addrColors, templates, clickAct, showFull }: {
+  message: FrontendMessage;
+  addrColors: AddressColors;
+  templates: ContractLinkTemplates;
+  clickAct: ContractClickAction;
+  showFull: boolean;
+}) {
+  const [showOriginal, setShowOriginal] = useState(false);
+  if (!message.isEdited) return null;
+  const hasOriginal = message.originalContent !== undefined && message.originalContent !== '';
+
+  return (
+    <>
+      <span
+        onClick={hasOriginal ? () => setShowOriginal((v) => !v) : undefined}
+        className={`text-[10px] text-discord-text-muted ml-1 align-baseline select-none${hasOriginal ? ' cursor-pointer hover:underline' : ''}`}
+        title={hasOriginal ? (showOriginal ? 'Hide original message' : 'Show original message') : 'Original message unavailable'}
+      >
+        (edited)
+      </span>
+      {showOriginal && hasOriginal && (
+        <div className="mt-1 border-l-2 border-discord-text-muted/40 pl-2 text-[13px] text-discord-text-muted">
+          <div className="text-[10px] uppercase tracking-wide text-discord-text-muted/70 mb-0.5">Original</div>
+          {renderContent(message.originalContent!, detectAddresses(message.originalContent!), message.mentions, addrColors, templates, clickAct, showFull)}
+        </div>
+      )}
     </>
   );
 }
@@ -579,6 +637,8 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
   const telegramUrl = (() => {
     if (!webTelegramUrl) return null;
     if (!openInTelegramApp) return webTelegramUrl;
+    const inviteMatch = webTelegramUrl.match(/^https:\/\/t\.me\/(?:joinchat\/|\+)(.+)$/);
+    if (inviteMatch) return `tg://join?invite=${inviteMatch[1]}`;
     const privateMatch = webTelegramUrl.match(/^https:\/\/t\.me\/c\/(\d+)\/(\d+)$/);
     if (privateMatch) return `tg://privatepost?channel=${privateMatch[1]}&post=${privateMatch[2]}`;
     const publicMatch = webTelegramUrl.match(/^https:\/\/t\.me\/([^/]+)\/(\d+)$/);
@@ -662,7 +722,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
 
   if (messageDisplay === 'compact') {
     return (
-      <div className={`group/compact relative hover:bg-discord-hover py-[1px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} min-h-[1.375rem]`} style={bgStyle}>
+      <div className={`group/compact relative hover:bg-discord-hover py-[1px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} min-h-[1.375rem]`} style={bgStyle}>
         <span className={`absolute left-0 w-[52px] sm:w-[72px] text-[0.6875rem] text-discord-text-muted text-right pr-2 sm:pr-4 pt-[1px] select-none leading-[1.375rem] ${isCompact ? 'opacity-0 group-hover/compact:opacity-100' : ''}`}>
           {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
@@ -754,7 +814,14 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
                 {' '}
               </>
             )}
+            {message.isDeleted && (
+              <>
+                <DeletedBadge />
+                {' '}
+              </>
+            )}
             {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct, showFull)}
+            <EditedIndicator message={message} addrColors={addrColors} templates={templates} clickAct={clickAct} showFull={showFull} />
           </div>
 
           {message.attachments.length > 0 && (
@@ -919,7 +986,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
 
   if (isCompact) {
     return (
-      <div className={`group/compact relative hover:bg-discord-hover py-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} min-h-[1.375rem]`} style={bgStyle}>
+      <div className={`group/compact relative hover:bg-discord-hover py-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} min-h-[1.375rem]`} style={bgStyle}>
         <span className="absolute left-0 w-[52px] sm:w-[72px] text-[0.6875rem] text-discord-text-muted text-right pr-2 sm:pr-4 pt-[2px] opacity-0 group-hover/compact:opacity-100 select-none leading-[1.375rem]">
           {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
@@ -941,7 +1008,14 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
           )}
 
           <div className="text-base text-discord-text-normal leading-[1.375rem] break-words">
+            {message.isDeleted && (
+              <>
+                <DeletedBadge />
+                {' '}
+              </>
+            )}
             {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct, showFull)}
+            <EditedIndicator message={message} addrColors={addrColors} templates={templates} clickAct={clickAct} showFull={showFull} />
           </div>
 
           {message.attachments.length > 0 && (
@@ -1084,7 +1158,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
   }
 
   return (
-    <div className={`relative hover:bg-discord-hover pt-[1.0625rem] pb-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} group`} style={bgStyle}>
+    <div className={`relative hover:bg-discord-hover pt-[1.0625rem] pb-[2px] pr-2 sm:pr-[48px] pl-[52px] sm:pl-[72px] ${highlightClass} ${message.isDeleted ? 'opacity-60' : ''} group`} style={bgStyle}>
       <div className={`absolute right-0 top-0.5 flex items-center gap-0.5 rounded px-0.5 py-0.5 z-10 sm:hidden ${isFocused ? 'opacity-100' : ''}`}>
         <button
           onClick={() => onFocus?.(message.guildId, message.channelId, message.guildName, message.channelName)}
@@ -1176,6 +1250,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
               {message.matchedKeywords!.join(', ')}
             </span>
           )}
+          {message.isDeleted && <DeletedBadge />}
         </div>
 
         {message.referencedMessage && (
@@ -1200,6 +1275,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
 
         <div className="text-base text-discord-text-normal leading-[1.375rem] break-words whitespace-pre-wrap">
           {renderContent(message.content, message.contractAddresses, message.mentions, addrColors, templates, clickAct, showFull)}
+          <EditedIndicator message={message} addrColors={addrColors} templates={templates} clickAct={clickAct} showFull={showFull} />
         </div>
 
         {message.attachments.length > 0 && (

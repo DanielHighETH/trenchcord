@@ -102,5 +102,7 @@ export function processDiscordMessage(
       count: r.count,
     })),
     matchedKeywords: matchedKeywords.length > 0 ? matchedKeywords : undefined,
+    isEdited: !!rawMsg.edited_timestamp,
+    editedTimestamp: rawMsg.edited_timestamp ?? null,
   };
 }

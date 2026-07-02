@@ -64,6 +64,8 @@ export function processTelegramMessage(
     platformUrl = `https://t.me/${raw.chatUsername}/${raw.id}`;
   } else if (raw.chatId.startsWith('-100')) {
     platformUrl = `https://t.me/c/${raw.chatId.slice(4)}/${raw.id}`;
+  } else if (raw.chatInviteLink) {
+    platformUrl = raw.chatInviteLink;
   }
 
   return {
@@ -94,5 +96,6 @@ export function processTelegramMessage(
     sticker: raw.sticker ?? undefined,
     poll: raw.poll ?? undefined,
     forwardFrom: raw.forward ? { name: raw.forward.senderName, chatTitle: raw.forward.chatTitle } : undefined,
+    buttons: raw.buttons ?? undefined,
   };
 }

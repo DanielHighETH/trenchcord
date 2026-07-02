@@ -54,7 +54,8 @@ interface AppState {
   setActiveRoom: (roomId: string | null) => void;
   setActiveView: (view: 'chat' | 'contracts' | 'settings' | 'profile', settingsSection?: string) => void;
   addMessage: (message: FrontendMessage, roomIds: string[]) => void;
-  updateMessage: (update: { messageId: string; channelId: string; embeds?: FrontendMessage['embeds']; content?: string; attachments?: FrontendMessage['attachments'] }) => void;
+  updateMessage: (update: { messageId: string; channelId: string; embeds?: FrontendMessage['embeds']; content?: string; attachments?: FrontendMessage['attachments']; editedTimestamp?: string | null }) => void;
+  markMessageDeleted: (data: { messageId: string; channelId: string }) => void;
   addAlert: (alert: Alert) => void;
   dismissAlert: (alertId: string) => void;
   updateReaction: (channelId: string, messageId: string, emoji: FrontendReaction['emoji'], delta: number) => void;
@@ -236,11 +237,36 @@ export const useAppStore = create<AppState>((set, get) => {
         if (idx === -1) continue;
         changed = true;
         const msg = { ...msgs[idx] };
+        const isGenuineEdit = !!update.editedTimestamp;
+        const contentChanged = update.content !== undefined && update.content !== msg.content;
+        if (isGenuineEdit && contentChanged) {
+          if (msg.originalContent === undefined) msg.originalContent = msg.content;
+          msg.isEdited = true;
+          msg.editedTimestamp = update.editedTimestamp;
+        }
         if (update.embeds !== undefined) msg.embeds = update.embeds;
         if (update.content !== undefined) msg.content = update.content;
         if (update.attachments !== undefined) msg.attachments = update.attachments;
         const updated = [...msgs];
         updated[idx] = msg;
+        newMessages[roomId] = updated;
+      }
+      return changed ? { messages: newMessages } : state;
+    });
+  },
+
+  markMessageDeleted: (data) => {
+    set((state) => {
+      const newMessages = { ...state.messages };
+      let changed = false;
+      for (const roomId of Object.keys(newMessages)) {
+        const msgs = newMessages[roomId];
+        const idx = msgs.findIndex((m) => m.id === data.messageId && m.channelId === data.channelId);
+        if (idx === -1) continue;
+        if (msgs[idx].isDeleted) continue;
+        changed = true;
+        const updated = [...msgs];
+        updated[idx] = { ...msgs[idx], isDeleted: true };
         newMessages[roomId] = updated;
       }
       return changed ? { messages: newMessages } : state;

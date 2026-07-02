@@ -184,6 +184,11 @@ export interface TelegramForward {
   chatTitle?: string;
 }
 
+export interface TelegramButton {
+  text: string;
+  url: string;
+}
+
 export interface FrontendMessage {
   id: string;
   channelId: string;
@@ -237,6 +242,11 @@ export interface FrontendMessage {
   sticker?: TelegramSticker;
   poll?: TelegramPoll;
   forwardFrom?: TelegramForward;
+  buttons?: TelegramButton[];
+  isEdited?: boolean;
+  originalContent?: string;
+  editedTimestamp?: string | null;
+  isDeleted?: boolean;
 }
 
 export interface TelegramChatInfo {
@@ -271,7 +281,7 @@ export interface Alert {
 }
 
 export interface WsIncoming {
-  type: 'message' | 'message_update' | 'alert' | 'reaction_update' | 'contract' | 'chain_update' | 'gateway_ready' | 'telegram_ready' | 'gateway_auth_failed';
+  type: 'message' | 'message_update' | 'message_delete' | 'alert' | 'reaction_update' | 'contract' | 'chain_update' | 'gateway_ready' | 'telegram_ready' | 'gateway_auth_failed';
   data: any;
   error?: string;
   roomIds?: string[];

@@ -288,6 +288,28 @@ export class DiscordGateway extends EventEmitter {
         break;
       }
 
+      case 'MESSAGE_DELETE': {
+        const guildId = data.guild_id ?? this.channelGuildMap.get(data.channel_id) ?? null;
+        this.emit('messageDelete', {
+          id: data.id,
+          channel_id: data.channel_id,
+          guild_id: guildId,
+        });
+        break;
+      }
+
+      case 'MESSAGE_DELETE_BULK': {
+        const guildId = data.guild_id ?? this.channelGuildMap.get(data.channel_id) ?? null;
+        for (const id of (data.ids ?? []) as string[]) {
+          this.emit('messageDelete', {
+            id,
+            channel_id: data.channel_id,
+            guild_id: guildId,
+          });
+        }
+        break;
+      }
+
       case 'MESSAGE_REACTION_ADD': {
         this.emit('reactionUpdate', {
           channelId: data.channel_id,

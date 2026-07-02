@@ -2,6 +2,16 @@
 
 All notable changes to Trenchcord are documented here.
 
+## 2026-07-02
+
+### Added
+- **Deleted message indicator** — messages removed on Discord now stay in the feed with a red `deleted` badge and dimmed styling, so you never miss something that was posted and then pulled
+- **Edited message history** — edited messages now show an `(edited)` label; click it to reveal the original text from before the edit
+- **Telegram link buttons** — inline keyboard URL buttons (dashboards, charts, etc.) now render as clickable buttons beneath the message
+- **Telegram in-text links** — hyperlinks embedded inside Telegram message text now render as clickable links instead of plain text
+- **Telegram chat colors** — color-code messages per Telegram chat, just like Discord servers and DMs
+- **Telegram basic group support** — legacy Telegram groups now resolve an invite link so their messages link back to the chat and open in the Telegram app
+
 ## 2026-06-01
 
 ### Fixed

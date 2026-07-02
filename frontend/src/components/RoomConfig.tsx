@@ -380,7 +380,7 @@ export default function RoomConfig() {
 
               {/* DM message colors */}
               {(() => {
-                const roomDmChannelIds = selectedChannels.filter((c) => !c.guildId).map((c) => c.channelId);
+                const roomDmChannelIds = selectedChannels.filter((c) => !c.guildId && c.source !== 'telegram').map((c) => c.channelId);
                 if (roomDmChannelIds.length === 0) return null;
                 const dmColors = config?.dmColors ?? {};
                 return (
@@ -411,6 +411,52 @@ export default function RoomConfig() {
                                 onClick={() => {
                                   const { [channelId]: _, ...rest } = dmColors;
                                   updateConfig({ dmColors: rest });
+                                }}
+                                className="text-discord-text-muted hover:text-white shrink-0"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Telegram chat colors */}
+              {(() => {
+                const roomTgChannelIds = [...new Set(
+                  selectedChannels.filter((c) => c.source === 'telegram').map((c) => c.channelId)
+                )];
+                if (roomTgChannelIds.length === 0) return null;
+                const telegramColors = config?.telegramColors ?? {};
+                return (
+                  <div className="mb-4 border border-discord-divider rounded p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2 flex items-center gap-1.5">
+                      <Send size={12} className="text-[#2AABEE]" />
+                      Telegram Chat Colors
+                    </div>
+                    <p className="text-xs text-discord-text-muted mb-2">
+                      Color-code messages by Telegram chat. Changes apply globally.
+                    </p>
+                    <div className="space-y-1.5">
+                      {roomTgChannelIds.map((channelId) => {
+                        const chatName = selectedChannels.find((c) => c.channelId === channelId)?.channelName ?? channelId;
+                        return (
+                          <div key={channelId} className="flex items-center gap-2.5 px-2 py-1.5 rounded bg-discord-dark/50">
+                            <ColorPickerWithAlpha
+                              value={telegramColors[channelId] || '#313338'}
+                              onChange={(c) => updateConfig({ telegramColors: { ...telegramColors, [channelId]: c } })}
+                              defaultColor="#313338"
+                            />
+                            <span className="text-sm text-discord-text flex-1 truncate">{chatName}</span>
+                            {telegramColors[channelId] && (
+                              <button
+                                onClick={() => {
+                                  const { [channelId]: _, ...rest } = telegramColors;
+                                  updateConfig({ telegramColors: rest });
                                 }}
                                 className="text-discord-text-muted hover:text-white shrink-0"
                               >

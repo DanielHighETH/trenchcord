@@ -33,6 +33,7 @@ export interface DiscordMessage {
   member?: { roles: string[] };
   content: string;
   timestamp: string;
+  edited_timestamp?: string | null;
   attachments: DiscordAttachment[];
   embeds: DiscordEmbed[];
   mentions?: DiscordUser[];
@@ -254,6 +255,11 @@ export interface TelegramForward {
   chatTitle?: string;
 }
 
+export interface TelegramButton {
+  text: string;
+  url: string;
+}
+
 export interface FrontendMessage {
   id: string;
   channelId: string;
@@ -288,4 +294,9 @@ export interface FrontendMessage {
   sticker?: TelegramSticker;
   poll?: TelegramPoll;
   forwardFrom?: TelegramForward;
+  buttons?: TelegramButton[];
+  isEdited?: boolean;
+  originalContent?: string;
+  editedTimestamp?: string | null;
+  isDeleted?: boolean;
 }

@@ -1,10 +1,10 @@
 import { EventEmitter } from 'events';
-import { TelegramClient as GramJSClient } from 'telegram';
-import { StringSession } from 'telegram/sessions/index.js';
-import { NewMessage } from 'telegram/events/index.js';
-import { EditedMessage } from 'telegram/events/EditedMessage.js';
-import { Api } from 'telegram/tl/index.js';
-import type { TelegramChat, TelegramSender, TelegramRawMessage, TelegramMedia } from './types.js';
+import { TelegramClient as GramJSClient } from 'teleproto';
+import { StringSession } from 'teleproto/sessions/index.js';
+import { NewMessage } from 'teleproto/events/index.js';
+import { EditedMessage } from 'teleproto/events/EditedMessage.js';
+import { Api } from 'teleproto/tl/index.js';
+import type { TelegramChat, TelegramSender, TelegramRawMessage, TelegramMedia, TelegramButton } from './types.js';
 
 export class TelegramClientWrapper extends EventEmitter {
   private client: GramJSClient;
@@ -40,6 +40,10 @@ export class TelegramClientWrapper extends EventEmitter {
       });
 
       this.setupEventHandlers();
+      // Prime the entity/chat cache once so resolveChat's getEntity can resolve
+      // channels. teleproto's UpdateManager keeps the update stream live on its
+      // own, so no recurring polling is needed.
+      await this.client.getDialogs({ limit: 200 }).catch(() => {});
     } catch (err: any) {
       console.error('[Telegram] Connection failed:', err.message);
       this.emit('fatal', new Error(`Telegram connection failed: ${err.message}`));
@@ -132,6 +136,7 @@ export class TelegramClientWrapper extends EventEmitter {
     }
     const sticker = await this.resolveSticker(message);
     const poll = this.resolvePoll(message);
+    const buttons = this.resolveButtons(message);
 
     return {
       id: message.id,
@@ -139,15 +144,67 @@ export class TelegramClientWrapper extends EventEmitter {
       chatTitle: chat.title,
       chatType: chat.type,
       chatUsername: chat.username ?? null,
+      chatInviteLink: chat.inviteLink ?? null,
       sender,
-      text: message.text ?? '',
+      text: this.applyLinkEntities(message),
       date: message.date,
       replyTo,
       forward,
       media,
       sticker,
       poll,
+      buttons,
     };
+  }
+
+  // Telegram carries in-text hyperlinks (e.g. "[dash]"/"[chart]") as message
+  // entities, not in the plain text. Convert text_url entities into markdown
+  // links so the frontend renders them as clickable links. Entity offsets are
+  // UTF-16 units, which matches JS string indexing.
+  private applyLinkEntities(message: Api.Message): string {
+    const text = message.text ?? '';
+    const entities = message.entities;
+    if (!entities || entities.length === 0) return text;
+
+    const links = entities
+      .filter((e): e is Api.MessageEntityTextUrl => e instanceof Api.MessageEntityTextUrl)
+      .map((e) => ({ offset: e.offset, length: e.length, url: e.url }))
+      .sort((a, b) => a.offset - b.offset);
+    if (links.length === 0) return text;
+
+    let result = '';
+    let cursor = 0;
+    for (const link of links) {
+      if (link.offset < cursor) continue; // skip overlapping entities
+      result += text.substring(cursor, link.offset);
+      const rawLabel = text.substring(link.offset, link.offset + link.length);
+      // Strip brackets/newlines so we don't produce nested "[[...]]" markdown.
+      const label = rawLabel.replace(/[[\]\n]/g, '').trim() || 'link';
+      result += `[${label}](${link.url})`;
+      cursor = link.offset + link.length;
+    }
+    result += text.substring(cursor);
+    return result;
+  }
+
+  // Inline keyboard URL buttons (e.g. "dash", "chart") carry links that aren't
+  // part of the message text. Extract the ones that resolve to an actual URL.
+  private resolveButtons(message: Api.Message): TelegramButton[] | null {
+    const markup = message.replyMarkup;
+    if (!(markup instanceof Api.ReplyInlineMarkup)) return null;
+
+    const buttons: TelegramButton[] = [];
+    for (const row of markup.rows) {
+      for (const button of row.buttons) {
+        if (button instanceof Api.KeyboardButtonUrl) {
+          buttons.push({ text: button.text, url: button.url });
+        } else if (button instanceof Api.KeyboardButtonUrlAuth) {
+          buttons.push({ text: button.text, url: button.url });
+        }
+      }
+    }
+
+    return buttons.length > 0 ? buttons : null;
   }
 
   private async resolveChat(message: Api.Message): Promise<TelegramChat | null> {
@@ -174,6 +231,7 @@ export class TelegramClientWrapper extends EventEmitter {
           id: chatId,
           title: entity.title ?? 'Group',
           type: 'group',
+          inviteLink: await this.resolveGroupInviteLink(entity.id),
         };
       } else if (entity instanceof Api.Channel) {
         chat = {
@@ -191,6 +249,28 @@ export class TelegramClientWrapper extends EventEmitter {
     } catch {
       return null;
     }
+  }
+
+  // Basic (legacy) groups have no public per-message permalink, so the only way
+  // to open them in Telegram is via an invite link. Prefer an existing exported
+  // invite; fall back to exporting one (requires invite permission).
+  private async resolveGroupInviteLink(chatId: Api.Chat['id']): Promise<string | null> {
+    try {
+      const full = await this.client.invoke(new Api.messages.GetFullChat({ chatId }));
+      const existing = (full.fullChat as any)?.exportedInvite;
+      if (existing instanceof Api.ChatInviteExported) return existing.link;
+    } catch {
+      // ignore - fall through to export attempt
+    }
+    try {
+      const exported = await this.client.invoke(
+        new Api.messages.ExportChatInvite({ peer: new Api.InputPeerChat({ chatId }) }),
+      );
+      if (exported instanceof Api.ChatInviteExported) return exported.link;
+    } catch {
+      // ignore - no permission or unavailable
+    }
+    return null;
   }
 
   private async resolveSender(message: Api.Message): Promise<TelegramSender | null> {
@@ -473,7 +553,7 @@ export class TelegramClientWrapper extends EventEmitter {
     const entity = await this.client.getEntity(chatId);
 
     if (attachments && attachments.length > 0) {
-      const { CustomFile } = await import('telegram/client/uploads.js');
+      const { CustomFile } = await import('teleproto/client/uploads.js');
       const first = attachments[0];
       const customFile = new CustomFile(first.filename, first.data.length, '', first.data);
       const result = await this.client.sendFile(entity, {

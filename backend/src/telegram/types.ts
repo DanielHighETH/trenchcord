@@ -4,6 +4,7 @@ export interface TelegramChat {
   type: 'user' | 'group' | 'supergroup' | 'channel';
   photo?: string | null;
   username?: string | null;
+  inviteLink?: string | null;
 }
 
 export interface TelegramSender {
@@ -20,6 +21,7 @@ export interface TelegramRawMessage {
   chatTitle: string;
   chatType: TelegramChat['type'];
   chatUsername?: string | null;
+  chatInviteLink?: string | null;
   sender: TelegramSender;
   text: string;
   date: number;
@@ -42,6 +44,12 @@ export interface TelegramRawMessage {
     question: string;
     options: { text: string; voters: number }[];
   } | null;
+  buttons?: TelegramButton[] | null;
+}
+
+export interface TelegramButton {
+  text: string;
+  url: string;
 }
 
 export type TelegramMediaType = 'photo' | 'video' | 'document' | 'audio' | 'voice' | 'gif';

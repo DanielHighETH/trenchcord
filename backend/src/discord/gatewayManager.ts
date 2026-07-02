@@ -37,6 +37,7 @@ export class GatewayManager extends EventEmitter {
     });
 
     gw.on('messageUpdate', (data) => this.emit('messageUpdate', data));
+    gw.on('messageDelete', (data) => this.emit('messageDelete', data));
     gw.on('ready', (user) => {
       this.readyCount++;
       if (this.readyCount >= this.gateways.length) {

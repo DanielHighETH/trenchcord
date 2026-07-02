@@ -169,6 +169,21 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
       embeds: rawMsg.embeds,
       content: rawMsg.content,
       attachments: rawMsg.attachments,
+      editedTimestamp: rawMsg.edited_timestamp ?? null,
+    }, roomIds, userId);
+  });
+
+  gw.on('messageDelete', async (data: { id: string; channel_id: string; guild_id?: string | null }) => {
+    const rooms = await storage.getRoomsForChannel(userId, data.channel_id);
+    const isDM = !data.guild_id && gw.getDMChannels().some((dm) => dm.id === data.channel_id);
+    if (rooms.length === 0 && !isDM) return;
+
+    const roomIds = rooms.map((r) => r.id);
+    if (isDM) roomIds.push(`dm:${data.channel_id}`);
+
+    wsServer.broadcastMessageDelete({
+      messageId: data.id,
+      channelId: data.channel_id,
     }, roomIds, userId);
   });
 

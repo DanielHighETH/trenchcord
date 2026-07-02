@@ -9,6 +9,17 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2026-07-02',
+    added: [
+      '**Deleted message indicator** — messages removed on Discord now stay in the feed with a red `deleted` badge and dimmed styling, so you never miss something that was posted and then pulled',
+      '**Edited message history** — edited messages now show an `(edited)` label; click it to reveal the original text from before the edit',
+      '**Telegram link buttons** — inline keyboard URL buttons (dashboards, charts, etc.) now render as clickable buttons beneath the message',
+      '**Telegram in-text links** — hyperlinks embedded inside Telegram message text now render as clickable links instead of plain text',
+      '**Telegram chat colors** — color-code messages per Telegram chat, just like Discord servers and DMs',
+      '**Telegram basic group support** — legacy Telegram groups now resolve an invite link so their messages link back to the chat and open in the Telegram app',
+    ],
+  },
+  {
     date: '2026-06-01',
     fixed: [
       '**Auto-scroll reliability** — chat now stays pinned to the newest message in the cases that previously left it stranded a row or two above the bottom: tall multi-row messages and embeds, several messages arriving at the same time, and reactions added to recent messages. Auto-scroll now chases the live content height until the layout settles (including late-loading images) instead of relying on a fixed-delay smooth scroll, and it gracefully steps aside the moment you scroll up',

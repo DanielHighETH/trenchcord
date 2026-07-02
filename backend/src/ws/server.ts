@@ -125,8 +125,18 @@ export class WsServer {
     }
   }
 
-  broadcastMessageUpdate(update: { messageId: string; channelId: string; embeds?: FrontendMessage['embeds']; content?: string; attachments?: FrontendMessage['attachments'] }, roomIds: string[], userId?: string): void {
+  broadcastMessageUpdate(update: { messageId: string; channelId: string; embeds?: FrontendMessage['embeds']; content?: string; attachments?: FrontendMessage['attachments']; editedTimestamp?: string | null }, roomIds: string[], userId?: string): void {
     const payload = JSON.stringify({ type: 'message_update', data: update, roomIds });
+    for (const [ws, state] of this.clients) {
+      if (ws.readyState !== WebSocket.OPEN) continue;
+      if (this.shouldSendToClient(state, roomIds, userId)) {
+        ws.send(payload);
+      }
+    }
+  }
+
+  broadcastMessageDelete(data: { messageId: string; channelId: string }, roomIds: string[], userId?: string): void {
+    const payload = JSON.stringify({ type: 'message_delete', data, roomIds });
     for (const [ws, state] of this.clients) {
       if (ws.readyState !== WebSocket.OPEN) continue;
       if (this.shouldSendToClient(state, roomIds, userId)) {

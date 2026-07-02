@@ -10,8 +10,8 @@ import type { WsServer } from '../ws/server.js';
 import { processDiscordMessage } from '../utils/messageProcessor.js';
 import { processTelegramMessage } from '../telegram/messageProcessor.js';
 import type { FrontendMessage, SoundType, ChannelRef } from '../discord/types.js';
-import { TelegramClient } from 'telegram';
-import { StringSession } from 'telegram/sessions/index.js';
+import { TelegramClient } from 'teleproto';
+import { StringSession } from 'teleproto/sessions/index.js';
 import type { TelegramClientManager } from '../telegram/clientManager.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -322,7 +322,7 @@ export function createRouter(wsServer: WsServer): Router {
 
       try {
         await pending.client.invoke(
-          new (await import('telegram/tl/index.js')).Api.auth.SignIn({
+          new (await import('teleproto/tl/index.js')).Api.auth.SignIn({
             phoneNumber: pending.phone,
             phoneCodeHash: pending.phoneCodeHash,
             phoneCode,
