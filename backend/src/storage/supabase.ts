@@ -41,6 +41,10 @@ const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   globalKeywordPatterns: [],
   keywordAlertsEnabled: true,
   desktopNotifications: false,
+  mentionsUserEnabled: true,
+  mentionsRoleEnabled: true,
+  mentionsHereEnabled: false,
+  mentionsEveryoneEnabled: false,
   badgeClickAction: 'discord',
   userNameCache: {},
   chattingEnabled: false,
@@ -48,6 +52,10 @@ const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   compactModeAvatars: true,
   roleColors: true,
   mobileZoomScale: 1,
+  splitLayout: 'row',
+  paneRoomIds: [],
+  paneLocks: [],
+  gridMirror: false,
   telegramColors: {},
 };
 

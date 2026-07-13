@@ -1,0 +1,26 @@
+Trenchcord for macOS — First Launch
+====================================
+
+Trenchcord is not signed with an Apple Developer certificate, so macOS will
+block it the first time ("Trenchcord is damaged" or "from an unidentified
+developer"). This is expected. Clear it once with the steps below and you're
+set.
+
+1. Drag Trenchcord.app into your Applications folder (or wherever you'd like).
+
+2. Open Spotlight (press Command + Space) and open "Terminal" — the system
+   Terminal, not the Trenchcord app.
+
+3. Type the following, including a space at the end:
+
+       xattr -cr
+
+   (Then just drag and drop Trenchcord.app onto the Terminal window — it will
+   fill in the path for you. So the full command looks like:
+
+       xattr -cr /Applications/Trenchcord.app  )
+
+4. Press Enter, then open Trenchcord — enjoy!
+
+------------------------------------
+Need help? Join our Discord: https://discord.gg/cDhrRVZ9xg

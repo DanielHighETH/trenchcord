@@ -1,0 +1,72 @@
+appId: app.trenchcord.desktop
+productName: Trenchcord
+copyright: Copyright © Trenchcord
+
+# Populates the GitHub Release body (install / macOS first-launch instructions).
+releaseInfo:
+  releaseNotesFile: build/release-notes.md
+
+directories:
+  output: release
+
+# App sources that go into the asar. Backend bundle + frontend are shipped
+# unpacked via extraResources below. Dev-only dependencies (electron,
+# electron-builder, esbuild) are pruned automatically.
+files:
+  - "**/*"
+  - "!dist-backend/**"
+  - "!release/**"
+  - "!build/**"
+  - "!build-backend.mjs"
+  - "!electron-builder.yml"
+
+extraResources:
+  - from: "dist-backend/index.mjs"
+    to: "backend/dist/index.mjs"
+  - from: "../backend/data/config.default.json"
+    to: "backend/data/config.default.json"
+  - from: "../frontend/dist"
+    to: "frontend/dist"
+
+publish:
+  provider: github
+  owner: DanielHighETH
+  repo: trenchcord
+  # Publish a real (non-draft) release so it appears at /releases/latest, which
+  # the in-app download button links to. Set to `draft` to review before going live.
+  releaseType: release
+
+win:
+  target:
+    - nsis
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+mac:
+  category: public.app-category.finance
+  target:
+    - dmg
+    - zip
+
+# The app is unsigned, so ship first-launch (xattr) instructions inside the DMG
+# next to the app + Applications shortcut.
+dmg:
+  window:
+    width: 540
+    height: 420
+  contents:
+    - x: 130
+      y: 180
+      type: file
+    - x: 410
+      y: 180
+      type: link
+      path: /Applications
+    - x: 270
+      y: 350
+      type: file
+      path: build/READ ME FIRST.txt
+      name: READ ME FIRST.txt

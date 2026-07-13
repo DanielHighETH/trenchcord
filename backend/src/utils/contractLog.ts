@@ -3,7 +3,8 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const LOG_PATH = join(__dirname, '../../data/contracts.json');
+const DATA_DIR = process.env.TRENCHCORD_DATA_DIR || join(__dirname, '../../data');
+const LOG_PATH = join(DATA_DIR, 'contracts.json');
 const MAX_ENTRIES = 2000;
 
 export interface ContractEntry {

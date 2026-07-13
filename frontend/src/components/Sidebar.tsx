@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useState, type DragEvent } from 'react';
 import { useAppStore } from '../stores/appStore';
-import { Hash, Plus, Settings, Trash2, FileText, HelpCircle, PanelLeftClose, User, Send } from 'lucide-react';
+import { Hash, Plus, Settings, Trash2, FileText, HelpCircle, PanelLeftClose, User, Send, AtSign, LayoutGrid } from 'lucide-react';
 import { isHostedMode } from '../lib/supabase';
 import { getAvatarUrl } from './Message';
 import ConfirmModal from './ConfirmModal';
 
 export default function Sidebar() {
   const rooms = useAppStore((s) => s.rooms);
-  const activeRoomId = useAppStore((s) => s.activeRoomId);
+  const paneRoomIds = useAppStore((s) => s.paneRoomIds);
+  const unreadCounts = useAppStore((s) => s.unreadCounts);
+  const layoutEditMode = useAppStore((s) => s.layoutEditMode);
+  const toggleLayoutEditMode = useAppStore((s) => s.toggleLayoutEditMode);
   const activeView = useAppStore((s) => s.activeView);
   const setActiveRoom = useAppStore((s) => s.setActiveRoom);
   const setActiveView = useAppStore((s) => s.setActiveView);
@@ -25,6 +28,27 @@ export default function Sidebar() {
   const closeMobile = () => {
     if (window.innerWidth < 768) toggleSidebar();
   };
+
+  const isRoomActive = (id: string) => activeView === 'chat' && paneRoomIds.includes(id);
+
+  // In layout edit mode, sidebar entries can be dragged into a split pane.
+  const dragProps = (key: string) =>
+    layoutEditMode
+      ? {
+          draggable: true,
+          onDragStart: (e: DragEvent) => {
+            e.dataTransfer.setData('text/plain', `room:${key}`);
+            e.dataTransfer.effectAllowed = 'copy';
+          },
+        }
+      : {};
+
+  const renderUnread = (count: number) =>
+    count > 0 ? (
+      <span className="min-w-[18px] h-[18px] px-1.5 flex items-center justify-center rounded-full bg-discord-blurple text-white text-[11px] font-bold leading-none shrink-0">
+        {count > 99 ? '99+' : count}
+      </span>
+    ) : null;
 
   if (collapsed) {
     return null;
@@ -79,6 +103,21 @@ export default function Sidebar() {
           )}
         </div>
 
+        {/* Mentions link */}
+        <div
+          className={`flex items-center gap-1.5 px-2 py-[6px] rounded cursor-pointer mb-2 ${
+            isRoomActive('mentions')
+              ? 'bg-discord-hover-light text-discord-header-primary font-medium'
+              : 'text-discord-channel-icon hover:bg-discord-hover hover:text-discord-header-secondary'
+          } ${layoutEditMode ? 'cursor-grab active:cursor-grabbing' : ''}`}
+          onClick={() => { setActiveRoom('mentions'); closeMobile(); }}
+          {...dragProps('mentions')}
+        >
+          <AtSign size={20} className="shrink-0 opacity-70" />
+          <span className="text-base leading-5 truncate flex-1">Mentions</span>
+          {renderUnread(unreadCounts['mentions'] ?? 0)}
+        </div>
+
         <div className="flex items-center justify-between px-2 mb-1">
           <span className="text-xs font-bold uppercase tracking-[0.02em] text-discord-channel-icon">
             Rooms
@@ -106,8 +145,8 @@ export default function Sidebar() {
         )}
 
         {rooms.map((room) => {
-          const isActive = room.id === activeRoomId && activeView === 'chat';
-          const msgCount = messages[room.id]?.length ?? 0;
+          const isActive = isRoomActive(room.id);
+          const unread = unreadCounts[room.id] ?? 0;
 
           return (
             <div
@@ -116,14 +155,13 @@ export default function Sidebar() {
                 isActive
                   ? 'bg-discord-hover-light text-discord-header-primary font-medium'
                   : 'text-discord-channel-icon hover:bg-discord-hover hover:text-discord-header-secondary'
-              }`}
+              } ${layoutEditMode ? 'cursor-grab active:cursor-grabbing' : ''}`}
               onClick={() => { setActiveRoom(room.id); closeMobile(); }}
+              {...dragProps(room.id)}
             >
               <Hash size={20} className="shrink-0 opacity-70" />
               <span className="text-base leading-5 truncate flex-1">{room.name}</span>
-              {msgCount > 0 && (
-                <span className="text-[10px] text-discord-text-muted">{msgCount}</span>
-              )}
+              {renderUnread(unread)}
               <div className="hidden group-hover:flex items-center gap-0.5">
                 <button
                   onClick={(e) => {
@@ -177,8 +215,8 @@ export default function Sidebar() {
                 const recipientNames = dm
                   ? dm.recipients.map((r) => r.global_name || r.username || 'Unknown').join(', ')
                   : messages[dmRoomId]?.[0]?.author.displayName ?? 'DM';
-                const isActive = activeRoomId === dmRoomId && activeView === 'chat';
-                const msgCount = messages[dmRoomId]?.length ?? 0;
+                const isActive = isRoomActive(dmRoomId);
+                const unread = unreadCounts[dmRoomId] ?? 0;
 
                 return (
                   <div
@@ -187,8 +225,9 @@ export default function Sidebar() {
                       isActive
                         ? 'bg-discord-hover-light text-discord-header-primary font-medium'
                         : 'text-discord-channel-icon hover:bg-discord-hover hover:text-discord-header-secondary'
-                    }`}
+                    } ${layoutEditMode ? 'cursor-grab active:cursor-grabbing' : ''}`}
                     onClick={() => { setActiveRoom(dmRoomId); closeMobile(); }}
+                    {...dragProps(dmRoomId)}
                   >
                     {dm && dm.recipients.length === 1 ? (
                       <img
@@ -221,9 +260,7 @@ export default function Sidebar() {
                       </div>
                     )}
                     <span className="text-base leading-5 truncate flex-1">{recipientNames}</span>
-                    {msgCount > 0 && (
-                      <span className="text-[10px] text-discord-text-muted">{msgCount}</span>
-                    )}
+                    {renderUnread(unread)}
                   </div>
                 );
               })}
@@ -253,8 +290,8 @@ export default function Sidebar() {
                 </span>
               </div>
               {activeTgDMs.map(({ chatId, tgDmRoomId, displayName }) => {
-                const isActive = activeRoomId === tgDmRoomId && activeView === 'chat';
-                const msgCount = messages[tgDmRoomId]?.length ?? 0;
+                const isActive = isRoomActive(tgDmRoomId);
+                const unread = unreadCounts[tgDmRoomId] ?? 0;
 
                 return (
                   <div
@@ -263,20 +300,45 @@ export default function Sidebar() {
                       isActive
                         ? 'bg-discord-hover-light text-discord-header-primary font-medium'
                         : 'text-discord-channel-icon hover:bg-discord-hover hover:text-discord-header-secondary'
-                    }`}
+                    } ${layoutEditMode ? 'cursor-grab active:cursor-grabbing' : ''}`}
                     onClick={() => { setActiveRoom(tgDmRoomId); closeMobile(); }}
+                    {...dragProps(tgDmRoomId)}
                   >
                     <Send size={16} className="shrink-0 text-[#2AABEE]" />
                     <span className="text-base leading-5 truncate flex-1">{displayName}</span>
-                    {msgCount > 0 && (
-                      <span className="text-[10px] text-discord-text-muted">{msgCount}</span>
-                    )}
+                    {renderUnread(unread)}
                   </div>
                 );
               })}
             </>
           );
         })()}
+      </div>
+
+      {/* Social links */}
+      <div className="px-2 pb-1 pt-2 flex items-center gap-1.5 shrink-0">
+        <a
+          href="https://discord.gg/cDhrRVZ9xg"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2 flex-1 px-2 py-1.5 rounded text-sm font-medium text-white bg-discord-blurple hover:bg-discord-blurple-hover transition-colors"
+        >
+          <svg width="18" height="18" viewBox="0 0 127.14 96.36" fill="currentColor" aria-hidden="true">
+            <path d="M107.7 8.07A105.15 105.15 0 0 0 81.47 0a72.06 72.06 0 0 0-3.36 6.83 97.68 97.68 0 0 0-29.11 0A72.37 72.37 0 0 0 45.64 0a105.89 105.89 0 0 0-26.25 8.09C2.79 32.65-1.71 56.6.54 80.21a105.73 105.73 0 0 0 32.17 16.15 77.7 77.7 0 0 0 6.89-11.11 68.42 68.42 0 0 1-10.85-5.18c.91-.66 1.8-1.34 2.66-2a75.57 75.57 0 0 0 64.32 0c.87.71 1.76 1.39 2.66 2a68.68 68.68 0 0 1-10.87 5.19 77 77 0 0 0 6.89 11.1 105.25 105.25 0 0 0 32.19-16.14c2.64-27.38-4.51-51.11-18.9-72.15ZM42.45 65.69C36.18 65.69 31 60 31 53s5-12.74 11.43-12.74S54 46 53.89 53s-5.05 12.69-11.44 12.69Zm42.24 0C78.41 65.69 73.25 60 73.25 53s5-12.74 11.44-12.74S96.23 46 96.12 53s-5.04 12.69-11.43 12.69Z" />
+          </svg>
+          Join Discord
+        </a>
+        <a
+          href="https://x.com/trenchcordapp"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="p-1.5 rounded text-discord-header-secondary hover:text-discord-header-primary hover:bg-discord-hover transition-colors"
+          title="Follow on X"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z" />
+          </svg>
+        </a>
       </div>
 
       {/* Footer */}
@@ -305,6 +367,17 @@ export default function Sidebar() {
             <User size={16} />
           </button>
         )}
+        <button
+          onClick={toggleLayoutEditMode}
+          className={`p-1.5 rounded transition-colors ${
+            layoutEditMode
+              ? 'text-white bg-discord-blurple hover:bg-discord-blurple-hover'
+              : 'text-discord-header-secondary hover:text-discord-header-primary hover:bg-discord-hover'
+          }`}
+          title={layoutEditMode ? 'Layout edit mode ON - resize & drag panes' : 'Edit layout (resize & drag panes)'}
+        >
+          <LayoutGrid size={16} />
+        </button>
         <button
           onClick={() => { setActiveView('settings', 'help'); closeMobile(); }}
           className="p-1.5 rounded text-discord-header-secondary hover:text-discord-header-primary hover:bg-discord-hover transition-colors"

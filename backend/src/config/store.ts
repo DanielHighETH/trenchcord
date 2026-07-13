@@ -5,9 +5,12 @@ import type { AppConfig, Room } from '../discord/types.js';
 import { v4 as uuidv4 } from 'uuid';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = join(__dirname, '../../data');
+const BUNDLED_DATA_DIR = join(__dirname, '../../data');
+// Writable data dir can be relocated (e.g. Electron userData) so a packaged,
+// read-only install can still persist config. Defaults to the bundled dir.
+const DATA_DIR = process.env.TRENCHCORD_DATA_DIR || BUNDLED_DATA_DIR;
 const CONFIG_PATH = join(DATA_DIR, 'config.json');
-const DEFAULT_CONFIG_PATH = join(DATA_DIR, 'config.default.json');
+const DEFAULT_CONFIG_PATH = join(BUNDLED_DATA_DIR, 'config.default.json');
 
 const DEFAULT_SOUND_CONFIG = { enabled: true, volume: 80, useCustom: false };
 
@@ -50,6 +53,10 @@ const DEFAULT_CONFIG: AppConfig = {
   globalKeywordPatterns: [],
   keywordAlertsEnabled: true,
   desktopNotifications: false,
+  mentionsUserEnabled: true,
+  mentionsRoleEnabled: true,
+  mentionsHereEnabled: false,
+  mentionsEveryoneEnabled: false,
   badgeClickAction: 'discord',
   userNameCache: {},
   chattingEnabled: false,
@@ -57,6 +64,10 @@ const DEFAULT_CONFIG: AppConfig = {
   compactModeAvatars: true,
   roleColors: true,
   mobileZoomScale: 1,
+  splitLayout: 'row',
+  paneRoomIds: [],
+  paneLocks: [],
+  gridMirror: false,
 };
 
 class ConfigStore {
@@ -139,7 +150,7 @@ class ConfigStore {
     return this.config;
   }
 
-  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'telegramApiId' | 'telegramApiHash' | 'telegramSessions'>>): AppConfig {
+  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout' | 'paneRoomIds' | 'paneLocks' | 'gridMirror' | 'telegramApiId' | 'telegramApiHash' | 'telegramSessions'>>): AppConfig {
     Object.assign(this.config, partial);
     this.save();
     return this.config;

@@ -38,6 +38,7 @@ export interface DiscordMessage {
   embeds: DiscordEmbed[];
   mentions?: DiscordUser[];
   mention_roles?: string[];
+  mention_everyone?: boolean;
   mention_channels?: { id: string; guild_id: string; name: string; type: number }[];
   referenced_message?: DiscordMessage | null;
   reactions?: DiscordReaction[];
@@ -97,6 +98,7 @@ export interface ChannelRef {
 
 export type HighlightMode = 'background' | 'username';
 export type MessageDisplay = 'default' | 'compact';
+export type SplitLayout = 'row' | 'grid';
 
 export type KeywordMatchMode = 'includes' | 'exact' | 'regex';
 
@@ -118,6 +120,7 @@ export interface Room {
   keywordPatterns?: KeywordPattern[];
   highlightMode?: HighlightMode;
   highlightedUserColors?: Record<string, string>;
+  hotkey?: string | null;
 }
 
 export type PushoverPriority = -2 | -1 | 0 | 1 | 2;
@@ -203,6 +206,10 @@ export interface AppConfig {
   globalKeywordPatterns: KeywordPattern[];
   keywordAlertsEnabled: boolean;
   desktopNotifications: boolean;
+  mentionsUserEnabled: boolean;
+  mentionsRoleEnabled: boolean;
+  mentionsHereEnabled: boolean;
+  mentionsEveryoneEnabled: boolean;
   badgeClickAction: BadgeClickAction;
   userNameCache: Record<string, string>;
   chattingEnabled: boolean;
@@ -210,6 +217,10 @@ export interface AppConfig {
   compactModeAvatars: boolean;
   roleColors: boolean;
   mobileZoomScale: number;
+  splitLayout: SplitLayout;
+  paneRoomIds: string[];
+  paneLocks: boolean[];
+  gridMirror: boolean;
   telegramApiId?: string;
   telegramApiHash?: string;
   telegramSessions?: string[];
@@ -282,6 +293,7 @@ export interface FrontendMessage {
   hasContractAddress: boolean;
   contractAddresses: string[];
   mentions: Record<string, string>;
+  mentionTypes?: ('user' | 'role' | 'here' | 'everyone')[];
   referencedMessage?: {
     id: string;
     author: string;

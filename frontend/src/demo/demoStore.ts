@@ -44,7 +44,8 @@ export function createDemoOverrides(set: SetFn, get: GetFn) {
       const rooms = (state.rooms as Room[]);
       if (rooms.length === 0) {
         const demoRooms = clone(DEMO_ROOMS);
-        set({ rooms: demoRooms, activeRoomId: demoRooms[0]?.id ?? null });
+        const firstId = demoRooms[0]?.id ?? null;
+        set({ rooms: demoRooms, activeRoomId: firstId, paneRoomIds: firstId ? [firstId] : [] });
       }
     },
 
@@ -113,10 +114,9 @@ export function createDemoOverrides(set: SetFn, get: GetFn) {
     deleteRoom: (id: string) => {
       set((state: Record<string, unknown>) => {
         const rooms = (state.rooms as Room[]).filter((r) => r.id !== id);
-        const activeRoomId = state.activeRoomId === id
-          ? rooms[0]?.id ?? null
-          : state.activeRoomId;
-        return { rooms, activeRoomId };
+        let panes = (state.paneRoomIds as string[]).filter((p) => p !== id);
+        if (panes.length === 0 && rooms[0]) panes = [rooms[0].id];
+        return { rooms, paneRoomIds: panes, activeRoomId: panes[0] ?? null };
       });
     },
 

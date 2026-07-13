@@ -1,0 +1,23 @@
+{
+  "name": "trenchcord-desktop",
+  "productName": "Trenchcord",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Trenchcord desktop app",
+  "author": "Trenchcord",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "bundle:backend": "node build-backend.mjs",
+    "pack": "npm run bundle:backend && electron-builder --dir",
+    "dist": "npm run bundle:backend && electron-builder"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.2"
+  }
+}

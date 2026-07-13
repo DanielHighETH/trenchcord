@@ -267,8 +267,13 @@ Trenchcord takes token security seriously:
 
 Trenchcord is an independent project and is not affiliated with Discord Inc. Using self-bots is against Discord's Terms of Service. This tool is for personal and educational use only. Use at your own risk.
 
-## Open Source
+## License
 
-Trenchcord is fully open source. Inspect the code, build on top of it, add your own features, and share with the community.
+This release of Trenchcord is open source under the [GNU AGPL-3.0](LICENSE). You're free to inspect, run, modify, and share it — with the condition that derivative works and network-deployed versions are also made available under the AGPL.
+
+A few things to note:
+
+- **Future releases may be distributed under a different, proprietary license** (for example, the upcoming paid desktop version). This does not affect your rights to this release, which remains under the AGPL.
+- The **"Trenchcord" name and logo are trademarks** and are not covered by the code license.
 
 [Website](https://trenchcord.app) · [Launch App](https://app.trenchcord.app) · [Live Demo](https://demo.trenchcord.app) · [GitHub](https://github.com/DanielHighETH/trenchcord) · [Twitter / X](https://x.com/trenchcordapp)

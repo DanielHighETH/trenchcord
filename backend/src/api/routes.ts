@@ -190,13 +190,15 @@ export function createRouter(wsServer: WsServer): Router {
   router.get('/auth/tokens', async (req, res) => {
     const userId = getUserId(req);
     const tokens = await storage.getTokens(userId);
+    const { getUserGateway } = await import('../index.js');
+    const invalidIndices = new Set(getUserGateway(userId)?.getInvalidTokenIndices() ?? []);
     const masked = tokens.map((t, index) => {
       const len = t.length;
       const visible = Math.min(4, Math.floor(len / 4));
       const maskedToken = len <= 8
         ? '*'.repeat(len)
         : t.slice(0, visible) + '*'.repeat(Math.max(4, len - visible * 2)) + t.slice(-visible);
-      return { index, masked: maskedToken };
+      return { index, masked: maskedToken, invalid: invalidIndices.has(index) };
     });
     res.json({ tokens: masked, count: tokens.length });
   });
@@ -603,6 +605,36 @@ export function createRouter(wsServer: WsServer): Router {
     res.json(dms);
   });
 
+  // Users who reacted to a Discord message with a specific emoji.
+  // `name` is the emoji name (unicode char for standard emoji); `id` is the
+  // custom emoji id (omitted for standard emoji).
+  router.get('/reactions/:channelId/:messageId', async (req, res) => {
+    const { channelId, messageId } = req.params;
+    const name = typeof req.query.name === 'string' ? req.query.name : '';
+    const id = typeof req.query.id === 'string' ? req.query.id : '';
+    if (!name) return res.status(400).json({ error: 'emoji name is required' });
+
+    const gateway = await requireGateway(req, res);
+    if (!gateway) return;
+    await gateway.waitUntilReady();
+
+    const emoji = id ? `${name}:${id}` : name;
+    try {
+      const users = await gateway.fetchReactionUsers(channelId, messageId, emoji);
+      res.json(
+        users.map((u) => ({
+          id: u.id,
+          username: u.username,
+          displayName: u.global_name || u.username,
+          avatar: u.avatar,
+          discriminator: u.discriminator,
+        })),
+      );
+    } catch (err: any) {
+      res.status(500).json({ error: safeError(err, 'Failed to fetch reaction users') });
+    }
+  });
+
   // --- Rooms CRUD ---
 
   router.get('/rooms', async (req, res) => {
@@ -635,7 +667,7 @@ export function createRouter(wsServer: WsServer): Router {
 
   router.put('/rooms/:id', async (req, res) => {
     const userId = getUserId(req);
-    const { name, channels, highlightedUsers, filteredUsers, filterEnabled, color, keywordPatterns, highlightMode, highlightedUserColors } = req.body;
+    const { name, channels, highlightedUsers, filteredUsers, filterEnabled, color, keywordPatterns, highlightMode, highlightedUserColors, hotkey } = req.body;
     const room = await storage.updateRoom(userId, req.params.id, {
       ...(name !== undefined && { name }),
       ...(channels !== undefined && { channels }),
@@ -646,6 +678,7 @@ export function createRouter(wsServer: WsServer): Router {
       ...(keywordPatterns !== undefined && { keywordPatterns }),
       ...(highlightMode !== undefined && { highlightMode }),
       ...(highlightedUserColors !== undefined && { highlightedUserColors }),
+      ...(hotkey !== undefined && { hotkey }),
     });
     if (!room) return res.status(404).json({ error: 'Room not found' });
     res.json(room);
@@ -669,7 +702,7 @@ export function createRouter(wsServer: WsServer): Router {
 
   router.put('/config', async (req, res) => {
     const userId = getUserId(req);
-    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror } = req.body;
     const config = await storage.updateConfig(userId, {
       ...(globalHighlightedUsers !== undefined && { globalHighlightedUsers }),
       ...(contractDetection !== undefined && { contractDetection }),
@@ -693,27 +726,38 @@ export function createRouter(wsServer: WsServer): Router {
       ...(globalKeywordPatterns !== undefined && { globalKeywordPatterns }),
       ...(keywordAlertsEnabled !== undefined && { keywordAlertsEnabled }),
       ...(desktopNotifications !== undefined && { desktopNotifications }),
+      ...(mentionsUserEnabled !== undefined && { mentionsUserEnabled }),
+      ...(mentionsRoleEnabled !== undefined && { mentionsRoleEnabled }),
+      ...(mentionsHereEnabled !== undefined && { mentionsHereEnabled }),
+      ...(mentionsEveryoneEnabled !== undefined && { mentionsEveryoneEnabled }),
       ...(badgeClickAction !== undefined && { badgeClickAction }),
       ...(chattingEnabled !== undefined && { chattingEnabled }),
       ...(messageDisplay !== undefined && { messageDisplay }),
       ...(compactModeAvatars !== undefined && { compactModeAvatars }),
       ...(roleColors !== undefined && { roleColors }),
       ...(mobileZoomScale !== undefined && { mobileZoomScale }),
+      ...(splitLayout !== undefined && { splitLayout }),
+      ...(paneRoomIds !== undefined && { paneRoomIds }),
+      ...(paneLocks !== undefined && { paneLocks }),
+      ...(gridMirror !== undefined && { gridMirror }),
     });
     res.json(config);
   });
 
   // --- Settings Export / Import ---
 
-  const SENSITIVE_CONFIG_KEYS = [
+  // Discord/Telegram credentials. In hosted mode these are managed/encrypted
+  // server-side and must never leave the server. In local mode they are part of
+  // a backup so a restore can fully re-establish Discord/Telegram access.
+  const CREDENTIAL_CONFIG_KEYS = [
     'discordTokens',
     'telegramSessions',
     'telegramApiId',
     'telegramApiHash',
-    'userNameCache',
   ] as const;
 
-  const SENSITIVE_PUSHOVER_KEYS = ['appToken', 'userKey'] as const;
+  // Machine-generated caches that are never part of a settings backup.
+  const NON_PORTABLE_CONFIG_KEYS = ['userNameCache'] as const;
 
   router.get('/config/export', async (req, res) => {
     const userId = getUserId(req);
@@ -721,9 +765,13 @@ export function createRouter(wsServer: WsServer): Router {
       const fullConfig = await storage.getConfig(userId);
       const rooms = await storage.getRooms(userId);
 
+      const stripKeys: string[] = isHostedMode()
+        ? [...CREDENTIAL_CONFIG_KEYS, ...NON_PORTABLE_CONFIG_KEYS]
+        : [...NON_PORTABLE_CONFIG_KEYS];
+
       const exportConfig: Record<string, any> = {};
       for (const [key, value] of Object.entries(fullConfig)) {
-        if ((SENSITIVE_CONFIG_KEYS as readonly string[]).includes(key)) continue;
+        if (stripKeys.includes(key)) continue;
         if (key === 'rooms') continue;
         exportConfig[key] = value;
       }
@@ -753,8 +801,10 @@ export function createRouter(wsServer: WsServer): Router {
     }
 
     try {
+      // Credentials are applied separately (and only in local mode); everything
+      // else goes through the generic config merge.
+      const blockedKeys: string[] = [...CREDENTIAL_CONFIG_KEYS, ...NON_PORTABLE_CONFIG_KEYS, 'rooms'];
       const sanitized: Record<string, any> = {};
-      const blockedKeys = [...SENSITIVE_CONFIG_KEYS, 'rooms'] as readonly string[];
       for (const [key, value] of Object.entries(importedConfig)) {
         if (blockedKeys.includes(key)) continue;
         sanitized[key] = value;
@@ -779,6 +829,55 @@ export function createRouter(wsServer: WsServer): Router {
         for (const room of importedRooms) {
           const { id, ...roomData } = room;
           await storage.createRoom(userId, roomData);
+        }
+      }
+
+      // Local mode: restore Discord/Telegram credentials from the backup and
+      // (re)connect. Hosted mode keeps credentials encrypted server-side, so
+      // any credentials present in the import are ignored.
+      if (!isHostedMode()) {
+        const tgUpdate: Record<string, any> = {};
+        if (typeof importedConfig.telegramApiId === 'string') {
+          tgUpdate.telegramApiId = importedConfig.telegramApiId;
+        }
+        if (typeof importedConfig.telegramApiHash === 'string') {
+          tgUpdate.telegramApiHash = importedConfig.telegramApiHash;
+        }
+        if (Array.isArray(importedConfig.telegramSessions)) {
+          tgUpdate.telegramSessions = importedConfig.telegramSessions.filter(
+            (s: unknown) => typeof s === 'string',
+          );
+        }
+        if (Object.keys(tgUpdate).length > 0) {
+          await storage.updateConfig(userId, tgUpdate);
+        }
+
+        const cfg = await storage.getConfig(userId);
+        const numericApiId = parseInt(cfg.telegramApiId ?? '0', 10);
+        const apiHash = cfg.telegramApiHash ?? '';
+        const sessions = cfg.telegramSessions ?? [];
+        if (numericApiId && apiHash && sessions.length > 0) {
+          try {
+            const { connectTelegram } = await import('../index.js');
+            await connectTelegram(numericApiId, apiHash, sessions, wsServer, userId);
+          } catch (err) {
+            console.error('[Import] Failed to connect Telegram after import:', err);
+          }
+        }
+
+        if (Array.isArray(importedConfig.discordTokens)) {
+          const validTokens = importedConfig.discordTokens
+            .map((t: unknown) => (typeof t === 'string' ? t.trim() : ''))
+            .filter(Boolean);
+          if (validTokens.length > 0) {
+            await storage.setTokens(userId, validTokens);
+            try {
+              const { connectGateway } = await import('../index.js');
+              connectGateway(validTokens, wsServer, userId);
+            } catch (err) {
+              console.error('[Import] Failed to connect Discord gateway after import:', err);
+            }
+          }
         }
       }
 

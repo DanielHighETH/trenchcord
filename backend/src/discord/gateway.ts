@@ -6,6 +6,7 @@ import type {
   DiscordMessage,
   DiscordGuild,
   DiscordChannel,
+  DiscordUser,
   GuildInfo,
   DMChannel,
 } from './types.js';
@@ -21,9 +22,18 @@ function isTextChannel(type: number): boolean {
   return TEXT_CHANNEL_TYPES.has(type);
 }
 
+export interface GatewayAuthFailure {
+  tokenIndex: number;
+  message: string;
+  // true only when Discord explicitly rejected the token (close code 4004).
+  // Connection-exhaustion failures are ambiguous and must not flag a token.
+  invalid: boolean;
+}
+
 export class DiscordGateway extends EventEmitter {
   private ws: WebSocket | null = null;
   private token: string;
+  private tokenIndex: number;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private lastSequence: number | null = null;
   private sessionId: string | null = null;
@@ -34,13 +44,18 @@ export class DiscordGateway extends EventEmitter {
   private channelNameMap: Map<string, string> = new Map();
   private roleNameMap: Map<string, string> = new Map();
   private roleDataMap: Map<string, { name: string; color: number; position: number }> = new Map();
+  private selfUserId: string | null = null;
+  // guildId -> { roleIds, fetchedAt }. Lazily fetched via REST, refreshed periodically.
+  private selfGuildRoles: Map<string, { roleIds: Set<string>; fetchedAt: number }> = new Map();
+  private static readonly SELF_ROLES_TTL_MS = 10 * 60 * 1000;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 30;
   private stopped = false;
 
-  constructor(token: string) {
+  constructor(token: string, tokenIndex = 0) {
     super();
     this.token = token;
+    this.tokenIndex = tokenIndex;
   }
 
   private static readonly NON_RECOVERABLE_CODES = new Set([
@@ -77,7 +92,11 @@ export class DiscordGateway extends EventEmitter {
         console.error(`[Gateway] Fatal close code ${code}: ${reasonStr}. Not reconnecting.`);
         this.stopped = true;
         if (code === 4004) {
-          this.emit('auth_failed', new Error('Authentication failed. Your Discord token may be invalid or expired — please update it in settings.'));
+          this.emit('auth_failed', {
+            tokenIndex: this.tokenIndex,
+            message: 'Authentication failed. This token is invalid or expired — please update it in settings.',
+            invalid: true,
+          } satisfies GatewayAuthFailure);
         } else {
           this.emit('fatal', new Error(`${reasonStr} (code ${code})`));
         }
@@ -136,6 +155,7 @@ export class DiscordGateway extends EventEmitter {
         this.sessionId = data.session_id;
         this.resumeGatewayUrl = data.resume_gateway_url;
         this.reconnectAttempts = 0;
+        this.selfUserId = data.user?.id ?? null;
         console.log(`[Gateway] Ready as ${data.user.username}#${data.user.discriminator}`);
 
         for (const guild of data.guilds ?? []) {
@@ -452,7 +472,11 @@ export class DiscordGateway extends EventEmitter {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error(`[Gateway] Max reconnect attempts (${this.maxReconnectAttempts}) reached. Giving up.`);
       this.stopped = true;
-      this.emit('auth_failed', new Error(`Could not connect after ${this.maxReconnectAttempts} attempts. Your Discord token may be invalid — please update it in settings.`));
+      this.emit('auth_failed', {
+        tokenIndex: this.tokenIndex,
+        message: `Could not connect after ${this.maxReconnectAttempts} attempts. The token may be invalid, or Discord may be unreachable — please check it in settings.`,
+        invalid: false,
+      } satisfies GatewayAuthFailure);
       return;
     }
     const delay = Math.min(1000 * 2 ** this.reconnectAttempts, 30000);
@@ -499,6 +523,37 @@ export class DiscordGateway extends EventEmitter {
     }
     if (!best) return null;
     return `#${best.color.toString(16).padStart(6, '0')}`;
+  }
+
+  getSelfUserId(): string | null {
+    return this.selfUserId;
+  }
+
+  // Returns the logged-in user's role IDs for a guild, lazily fetched via REST and cached.
+  async getSelfRoleIds(guildId: string): Promise<Set<string>> {
+    const cached = this.selfGuildRoles.get(guildId);
+    if (cached && Date.now() - cached.fetchedAt < DiscordGateway.SELF_ROLES_TTL_MS) {
+      return cached.roleIds;
+    }
+    try {
+      const res = await fetch(`${REST_BASE}/users/@me/guilds/${guildId}/member`, {
+        headers: { Authorization: this.token },
+      });
+      if (!res.ok) {
+        // Cache an empty set to avoid hammering the API on repeated failures.
+        const empty = cached?.roleIds ?? new Set<string>();
+        this.selfGuildRoles.set(guildId, { roleIds: empty, fetchedAt: Date.now() });
+        return empty;
+      }
+      const member = await res.json();
+      const roleIds = new Set<string>(Array.isArray(member.roles) ? member.roles : []);
+      this.selfGuildRoles.set(guildId, { roleIds, fetchedAt: Date.now() });
+      return roleIds;
+    } catch {
+      const empty = cached?.roleIds ?? new Set<string>();
+      this.selfGuildRoles.set(guildId, { roleIds: empty, fetchedAt: Date.now() });
+      return empty;
+    }
   }
 
   async sendChannelMessage(channelId: string, content: string, attachments?: { filename: string; data: Buffer; contentType: string }[]): Promise<any> {
@@ -568,6 +623,26 @@ export class DiscordGateway extends EventEmitter {
         guild_id: guildId,
       };
     });
+  }
+
+  // Fetches the users who reacted to a message with a specific emoji.
+  // `emoji` must be the raw Discord identifier: `name:id` for custom emoji or
+  // the unicode character for standard emoji. Returns up to `limit` users.
+  async fetchReactionUsers(
+    channelId: string,
+    messageId: string,
+    emoji: string,
+    limit = 100,
+  ): Promise<DiscordUser[]> {
+    const url = `${REST_BASE}/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}?limit=${limit}`;
+    const res = await fetch(url, {
+      headers: { Authorization: this.token },
+    });
+    if (!res.ok) {
+      console.error(`[Gateway] Failed to fetch reaction users for ${messageId}: ${res.status}`);
+      return [];
+    }
+    return res.json();
   }
 
   disconnect(): void {

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Room, FrontendMessage, Alert, AppConfig, GuildInfo, DMChannel, ContractEntry, FrontendReaction, AuthStatus, MaskedToken, TelegramChatInfo } from '../types';
+import type { Room, FrontendMessage, Alert, AppConfig, GuildInfo, DMChannel, ContractEntry, FrontendReaction, ReactionUser, AuthStatus, MaskedToken, TelegramChatInfo } from '../types';
 import { isDemoMode, createDemoOverrides } from '../demo/demoStore';
 import { isHostedMode, getAccessToken } from '../lib/supabase';
 import { markTokenEverConfigured } from '../utils/tokenState';
@@ -10,6 +10,47 @@ const API_BASE = import.meta.env.VITE_API_URL
 const MAX_MESSAGES_PER_ROOM = 1000;
 const MAX_ALERTS = 50;
 const MAX_CONTRACTS = 2000;
+const MAX_PANES = 4;
+const PANE_STORAGE_KEY = 'trenchcord.paneRoomIds';
+
+function loadPaneRoomIds(): string[] {
+  try {
+    const raw = localStorage.getItem(PANE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter((x): x is string => typeof x === 'string').slice(0, MAX_PANES);
+  } catch {}
+  return [];
+}
+
+function savePaneRoomIds(ids: string[]): void {
+  try { localStorage.setItem(PANE_STORAGE_KEY, JSON.stringify(ids)); } catch {}
+}
+
+const EDIT_MODE_STORAGE_KEY = 'trenchcord.layoutEditMode';
+const GRID_MIRROR_STORAGE_KEY = 'trenchcord.gridMirror';
+
+function loadLayoutEditMode(): boolean {
+  try { return localStorage.getItem(EDIT_MODE_STORAGE_KEY) === '1'; } catch { return false; }
+}
+
+function loadGridMirror(): boolean {
+  try { return localStorage.getItem(GRID_MIRROR_STORAGE_KEY) === '1'; } catch { return false; }
+}
+
+// Picks a room/DM/mentions key to fill a new pane slot, avoiding the ones
+// already shown when possible, falling back to duplicates.
+function pickPaneFill(state: { rooms: Room[]; messages: Record<string, FrontendMessage[]> }, taken: string[]): string {
+  const takenSet = new Set(taken);
+  for (const r of state.rooms) if (!takenSet.has(r.id)) return r.id;
+  for (const key of Object.keys(state.messages)) {
+    if ((key.startsWith('dm:') || key.startsWith('tg-dm:')) && (state.messages[key]?.length ?? 0) > 0 && !takenSet.has(key)) {
+      return key;
+    }
+  }
+  if (!takenSet.has('mentions')) return 'mentions';
+  return taken[0] ?? state.rooms[0]?.id ?? 'mentions';
+}
 
 async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
@@ -27,6 +68,13 @@ interface AppState {
   authLoading: boolean;
   rooms: Room[];
   activeRoomId: string | null;
+  paneRoomIds: string[];
+  paneLocks: boolean[];
+  activePaneIndex: number;
+  unreadCounts: Record<string, number>;
+  layoutEditMode: boolean;
+  gridMirror: boolean;
+  _layoutHydrated: boolean;
   activeView: 'chat' | 'contracts' | 'settings' | 'profile';
   settingsSection: string | null;
   messages: Record<string, FrontendMessage[]>;
@@ -44,7 +92,10 @@ interface AppState {
   sidebarCollapsed: boolean;
   telegramChats: TelegramChatInfo[];
   gatewayAuthError: string | null;
+  previewMode: boolean;
 
+  setPreviewMode: (value: boolean) => void;
+  importSettings: (raw: unknown) => Promise<{ success: boolean; error?: string }>;
   setGatewayAuthError: (error: string | null) => void;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -52,8 +103,18 @@ interface AppState {
   setFocusFilter: (filter: AppState['focusFilter']) => void;
   clearFocusFilter: () => void;
   setActiveRoom: (roomId: string | null) => void;
+  setPaneRoom: (index: number, roomId: string) => void;
+  setActivePane: (index: number) => void;
+  togglePaneLock: (index: number) => void;
+  addPane: () => void;
+  removePane: (index: number) => void;
+  swapPanes: (a: number, b: number) => void;
+  toggleLayoutEditMode: () => void;
+  setGridMirror: (value: boolean) => void;
+  moveGridBottomChat: () => void;
+  persistLayout: () => void;
   setActiveView: (view: 'chat' | 'contracts' | 'settings' | 'profile', settingsSection?: string) => void;
-  addMessage: (message: FrontendMessage, roomIds: string[]) => void;
+  addMessage: (message: FrontendMessage, roomIds: string[], isLive?: boolean) => void;
   updateMessage: (update: { messageId: string; channelId: string; embeds?: FrontendMessage['embeds']; content?: string; attachments?: FrontendMessage['attachments']; editedTimestamp?: string | null }) => void;
   markMessageDeleted: (data: { messageId: string; channelId: string }) => void;
   addAlert: (alert: Alert) => void;
@@ -76,11 +137,12 @@ interface AppState {
   fetchDMChannels: () => Promise<void>;
   fetchConfig: () => Promise<void>;
   fetchContracts: () => Promise<void>;
+  fetchReactionUsers: (channelId: string, messageId: string, emoji: FrontendReaction['emoji']) => Promise<ReactionUser[]>;
 
   createRoom: (name: string, channels: Room['channels'], highlightedUsers: string[], color?: string | null, filteredUsers?: string[], filterEnabled?: boolean) => Promise<Room>;
   updateRoom: (id: string, data: Partial<Omit<Room, 'id'>>) => Promise<void>;
   deleteRoom: (id: string) => Promise<void>;
-  updateConfig: (data: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'telegramColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale'>>) => Promise<void>;
+  updateConfig: (data: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'telegramColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout'>>) => Promise<void>;
   sendMessage: (channelId: string, content: string, files?: File[], source?: 'discord' | 'telegram') => Promise<{ success: boolean; error?: string }>;
   hideUser: (guildId: string | null, channelId: string, userId: string, displayName: string) => Promise<void>;
   unhideUser: (guildId: string | null, channelId: string, userId: string) => Promise<void>;
@@ -102,7 +164,14 @@ export const useAppStore = create<AppState>((set, get) => {
   authStatus: null,
   authLoading: true,
   rooms: [],
-  activeRoomId: null,
+  activeRoomId: loadPaneRoomIds()[0] ?? null,
+  paneRoomIds: loadPaneRoomIds(),
+  paneLocks: [],
+  activePaneIndex: 0,
+  unreadCounts: {},
+  layoutEditMode: loadLayoutEditMode(),
+  gridMirror: loadGridMirror(),
+  _layoutHydrated: false,
   activeView: 'chat',
   settingsSection: null,
   messages: {},
@@ -120,6 +189,75 @@ export const useAppStore = create<AppState>((set, get) => {
   sidebarCollapsed: false,
   telegramChats: [],
   gatewayAuthError: null,
+  previewMode: false,
+
+  setPreviewMode: (value) => set({ previewMode: value }),
+
+  importSettings: async (raw) => {
+    try {
+      if (!raw || typeof raw !== 'object') {
+        return { success: false, error: 'Invalid settings file.' };
+      }
+
+      // Support both the sanitized export ({ config, rooms }) and a raw local
+      // backend/data/config.json (flat AppConfig with discordTokens + rooms).
+      const data = raw as Record<string, any>;
+      let configPayload: Record<string, any>;
+      let roomsPayload: unknown;
+      let tokens: unknown[] = [];
+
+      if (data.config && typeof data.config === 'object') {
+        configPayload = data.config;
+        roomsPayload = Array.isArray(data.rooms) ? data.rooms : undefined;
+        if (Array.isArray(data.config.discordTokens)) tokens = data.config.discordTokens;
+      } else {
+        const { rooms, discordTokens, ...rest } = data;
+        configPayload = rest;
+        roomsPayload = Array.isArray(rooms) ? rooms : undefined;
+        if (Array.isArray(discordTokens)) tokens = discordTokens;
+      }
+
+      const res = await apiFetch(`${API_BASE}/config/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: configPayload, rooms: roomsPayload }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        return { success: false, error: err.error || 'Failed to import settings.' };
+      }
+
+      const validTokens = tokens
+        .map((t) => (typeof t === 'string' ? t.trim() : ''))
+        .filter(Boolean);
+
+      if (validTokens.length > 0) {
+        const tokenResult = await get().submitToken(validTokens.join(','));
+        await get().fetchConfig();
+        await get().fetchRooms();
+        if (!tokenResult.success) {
+          // Settings imported, but the token didn't connect. Keep the user on
+          // the setup screen (with a clear error) rather than silently entering.
+          return {
+            success: false,
+            error:
+              tokenResult.error ??
+              'Settings imported, but the Discord token could not connect. Enter a token or continue without one.',
+          };
+        }
+        await get().checkAuth();
+        return { success: true };
+      }
+
+      // No token in the file: enter the app in preview so imported settings show.
+      set({ previewMode: true });
+      await get().fetchConfig();
+      await get().fetchRooms();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message ?? 'Failed to import settings.' };
+    }
+  },
 
   setGatewayAuthError: (error) => set({ gatewayAuthError: error }),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
@@ -208,12 +346,175 @@ export const useAppStore = create<AppState>((set, get) => {
     }
   },
 
-  setActiveRoom: (roomId) => set({ activeRoomId: roomId, activeView: 'chat' }),
-  setActiveView: (view, settingsSection) => set({ activeView: view, settingsSection: settingsSection ?? null }),
+  // Opening a room from the sidebar replaces the first (primary) pane and keeps
+  // any additional split panes intact, so a built layout survives a sidebar click.
+  // Opening a room from the sidebar/hotkey changes the currently focused pane
+  // (not always the first), and never changes a locked pane.
+  setActiveRoom: (roomId) => {
+    set((state) => {
+      if (roomId === null) return { activeRoomId: null, activeView: 'chat' };
+      if (state.paneRoomIds.length === 0) {
+        savePaneRoomIds([roomId]);
+        return { activeRoomId: roomId, activeView: 'chat', paneRoomIds: [roomId], activePaneIndex: 0, unreadCounts: { ...state.unreadCounts, [roomId]: 0 } };
+      }
+      const idx = Math.min(state.activePaneIndex, state.paneRoomIds.length - 1);
+      if (state.paneLocks[idx]) {
+        // Focused pane is locked: just make sure we're on the chat view.
+        return { activeView: 'chat' };
+      }
+      const panes = [...state.paneRoomIds];
+      panes[idx] = roomId;
+      savePaneRoomIds(panes);
+      return {
+        activeRoomId: panes[0] ?? null,
+        activeView: 'chat',
+        paneRoomIds: panes,
+        unreadCounts: { ...state.unreadCounts, [roomId]: 0 },
+      };
+    });
+    get().persistLayout();
+  },
 
-  addMessage: (message, roomIds) => {
+  setPaneRoom: (index, roomId) => {
+    set((state) => {
+      if (index < 0 || index >= state.paneRoomIds.length) return state;
+      if (state.paneLocks[index]) return state;
+      const panes = [...state.paneRoomIds];
+      panes[index] = roomId;
+      savePaneRoomIds(panes);
+      return {
+        paneRoomIds: panes,
+        activeRoomId: panes[0] ?? null,
+        activePaneIndex: index,
+        unreadCounts: { ...state.unreadCounts, [roomId]: 0 },
+      };
+    });
+    get().persistLayout();
+  },
+
+  setActivePane: (index) => set((state) => {
+    if (index < 0 || index >= state.paneRoomIds.length || index === state.activePaneIndex) return state;
+    return { activePaneIndex: index };
+  }),
+
+  togglePaneLock: (index) => {
+    set((state) => {
+      if (index < 0 || index >= state.paneRoomIds.length) return state;
+      const locks = [...state.paneLocks];
+      while (locks.length < state.paneRoomIds.length) locks.push(false);
+      locks[index] = !locks[index];
+      return { paneLocks: locks };
+    });
+    get().persistLayout();
+  },
+
+  // Add a new pane (up to MAX_PANES), auto-filling with a room not already shown.
+  addPane: () => {
+    set((state) => {
+      if (state.paneRoomIds.length >= MAX_PANES) return { activeView: 'chat' };
+      const fill = pickPaneFill(state, state.paneRoomIds);
+      const panes = [...state.paneRoomIds, fill];
+      const locks = [...state.paneLocks];
+      while (locks.length < panes.length) locks.push(false);
+      savePaneRoomIds(panes);
+      const unreadCounts = { ...state.unreadCounts };
+      if (state.activeView === 'chat') unreadCounts[fill] = 0;
+      return { paneRoomIds: panes, paneLocks: locks, activeView: 'chat', unreadCounts };
+    });
+    get().persistLayout();
+  },
+
+  removePane: (index) => {
+    set((state) => {
+      if (state.paneRoomIds.length <= 1) return state;
+      const panes = state.paneRoomIds.filter((_, i) => i !== index);
+      const locks = state.paneLocks.filter((_, i) => i !== index);
+      savePaneRoomIds(panes);
+      const activePaneIndex = Math.min(state.activePaneIndex, panes.length - 1);
+      return { paneRoomIds: panes, paneLocks: locks, activeRoomId: panes[0] ?? null, activePaneIndex };
+    });
+    get().persistLayout();
+  },
+
+  swapPanes: (a, b) => {
+    set((state) => {
+      if (a === b || a < 0 || b < 0 || a >= state.paneRoomIds.length || b >= state.paneRoomIds.length) return state;
+      if (state.paneLocks[a] || state.paneLocks[b]) return state;
+      const panes = [...state.paneRoomIds];
+      [panes[a], panes[b]] = [panes[b], panes[a]];
+      const locks = [...state.paneLocks];
+      while (locks.length < panes.length) locks.push(false);
+      [locks[a], locks[b]] = [locks[b], locks[a]];
+      savePaneRoomIds(panes);
+      return { paneRoomIds: panes, paneLocks: locks, activeRoomId: panes[0] ?? null };
+    });
+    get().persistLayout();
+  },
+
+  toggleLayoutEditMode: () => set((state) => {
+    const next = !state.layoutEditMode;
+    try { localStorage.setItem(EDIT_MODE_STORAGE_KEY, next ? '1' : '0'); } catch {}
+    return { layoutEditMode: next };
+  }),
+
+  setGridMirror: (value) => {
+    try { localStorage.setItem(GRID_MIRROR_STORAGE_KEY, value ? '1' : '0'); } catch {}
+    set({ gridMirror: value });
+    get().persistLayout();
+  },
+
+  // In a 3-pane two-rows grid, move the bottom stacked chat to the other
+  // column's bottom (the remaining chats re-fill). With only two columns this
+  // is exactly reversing the pane order and flipping the mirror.
+  moveGridBottomChat: () => {
+    set((state) => {
+      const panes = [...state.paneRoomIds].reverse();
+      const locks = [...state.paneLocks];
+      while (locks.length < state.paneRoomIds.length) locks.push(false);
+      const newLocks = locks.slice(0, state.paneRoomIds.length).reverse();
+      const mirror = !state.gridMirror;
+      savePaneRoomIds(panes);
+      try { localStorage.setItem(GRID_MIRROR_STORAGE_KEY, mirror ? '1' : '0'); } catch {}
+      return {
+        paneRoomIds: panes,
+        paneLocks: newLocks,
+        gridMirror: mirror,
+        activeRoomId: panes[0] ?? null,
+        activePaneIndex: Math.max(0, state.paneRoomIds.length - 1 - state.activePaneIndex),
+      };
+    });
+    get().persistLayout();
+  },
+
+  // Persist the current split layout (panes + mirror) to the backend config so
+  // it survives restarts even when localStorage is unavailable (desktop app).
+  persistLayout: () => {
+    if (demo) return;
+    const { paneRoomIds, paneLocks, gridMirror } = get();
+    apiFetch(`${API_BASE}/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paneRoomIds, paneLocks, gridMirror }),
+    }).catch(() => {});
+  },
+
+  setActiveView: (view, settingsSection) => set((state) => {
+    // Returning to the chat view means the open panes are visible again, so
+    // clear their unread badges.
+    if (view === 'chat' && state.paneRoomIds.length > 0) {
+      const unreadCounts = { ...state.unreadCounts };
+      for (const id of state.paneRoomIds) unreadCounts[id] = 0;
+      return { activeView: view, settingsSection: settingsSection ?? null, unreadCounts };
+    }
+    return { activeView: view, settingsSection: settingsSection ?? null };
+  }),
+
+  addMessage: (message, roomIds, isLive = false) => {
     set((state) => {
       const newMessages = { ...state.messages };
+      const newUnread = { ...state.unreadCounts };
+      let unreadChanged = false;
+      const visible = state.activeView === 'chat' ? new Set(state.paneRoomIds) : new Set<string>();
       for (const roomId of roomIds) {
         const existing = newMessages[roomId] ?? [];
         if (existing.some((m) => m.id === message.id)) continue;
@@ -222,8 +523,12 @@ export const useAppStore = create<AppState>((set, get) => {
           updated.splice(0, updated.length - MAX_MESSAGES_PER_ROOM);
         }
         newMessages[roomId] = updated;
+        if (isLive && !visible.has(roomId)) {
+          newUnread[roomId] = (newUnread[roomId] ?? 0) + 1;
+          unreadChanged = true;
+        }
       }
-      return { messages: newMessages };
+      return unreadChanged ? { messages: newMessages, unreadCounts: newUnread } : { messages: newMessages };
     });
   },
 
@@ -367,7 +672,9 @@ export const useAppStore = create<AppState>((set, get) => {
       const rooms: Room[] = await res.json();
       set({ rooms });
       if (rooms.length > 0 && !get().activeRoomId) {
-        set({ activeRoomId: rooms[0].id });
+        const firstId = rooms[0].id;
+        savePaneRoomIds([firstId]);
+        set({ activeRoomId: firstId, paneRoomIds: [firstId] });
       }
     } catch {}
   },
@@ -426,7 +733,22 @@ export const useAppStore = create<AppState>((set, get) => {
       const res = await apiFetch(`${API_BASE}/config`);
       if (!res.ok) return;
       const config: AppConfig = await res.json();
-      set({ config });
+      set((state) => {
+        // Hydrate the split layout from the server config once on startup. This
+        // is the durable source of truth (localStorage is lost on desktop since
+        // the app runs on a random port each launch → a fresh origin).
+        if (state._layoutHydrated) return { config };
+        const patch: Partial<AppState> = { config, _layoutHydrated: true };
+        if (Array.isArray(config.paneRoomIds) && config.paneRoomIds.length > 0) {
+          const panes = config.paneRoomIds.slice(0, MAX_PANES);
+          savePaneRoomIds(panes);
+          patch.paneRoomIds = panes;
+          patch.activeRoomId = panes[0] ?? state.activeRoomId;
+          patch.paneLocks = Array.isArray(config.paneLocks) ? config.paneLocks.slice(0, panes.length) : [];
+        }
+        if (typeof config.gridMirror === 'boolean') patch.gridMirror = config.gridMirror;
+        return patch;
+      });
     } catch {}
   },
 
@@ -440,6 +762,15 @@ export const useAppStore = create<AppState>((set, get) => {
     } catch (err) {
       console.error('[Store] Failed to fetch contracts:', err);
     }
+  },
+
+  fetchReactionUsers: async (channelId, messageId, emoji) => {
+    if (demo) return [];
+    const params = new URLSearchParams({ name: emoji.name });
+    if (emoji.id) params.set('id', emoji.id);
+    const res = await apiFetch(`${API_BASE}/reactions/${channelId}/${messageId}?${params.toString()}`);
+    if (!res.ok) throw new Error('Failed to fetch reaction users');
+    return res.json();
   },
 
   createRoom: async (name, channels, highlightedUsers, color, filteredUsers, filterEnabled) => {
@@ -468,10 +799,15 @@ export const useAppStore = create<AppState>((set, get) => {
     if (demo) return demo.deleteRoom(id);
     await apiFetch(`${API_BASE}/rooms/${id}`, { method: 'DELETE' });
     const state = get();
-    if (state.activeRoomId === id) {
-      const remaining = state.rooms.filter((r) => r.id !== id);
-      set({ activeRoomId: remaining[0]?.id ?? null });
+    const remaining = state.rooms.filter((r) => r.id !== id);
+    let panes = state.paneRoomIds.filter((p) => p !== id);
+    if (panes.length === 0) {
+      const fallback = remaining[0]?.id;
+      panes = fallback ? [fallback] : [];
     }
+    savePaneRoomIds(panes);
+    set({ paneRoomIds: panes, activeRoomId: panes[0] ?? null });
+    get().persistLayout();
     await get().fetchRooms();
   },
 

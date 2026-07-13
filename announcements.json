@@ -1,0 +1,14 @@
+{
+  "announcements": [
+    {
+      "id": "join-discord-2026-07",
+      "title": "Join the Trenchcord Discord",
+      "body": "Get updates, help, and downloads for the desktop app straight from our community.",
+      "level": "info",
+      "ctaLabel": "Join Discord",
+      "ctaUrl": "https://discord.gg/cDhrRVZ9xg",
+      "createdAt": "2026-07-13T00:00:00Z",
+      "expiresAt": null
+    }
+  ]
+}

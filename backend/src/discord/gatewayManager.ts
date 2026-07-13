@@ -1,12 +1,14 @@
 import { EventEmitter } from 'events';
 import { DiscordGateway } from './gateway.js';
-import type { GuildInfo, DMChannel, DiscordMessage } from './types.js';
+import type { GatewayAuthFailure } from './gateway.js';
+import type { GuildInfo, DMChannel, DiscordMessage, DiscordUser } from './types.js';
 
 const DEDUP_WINDOW_MS = 10_000;
 const DEDUP_MAX_SIZE = 5_000;
 
 export class GatewayManager extends EventEmitter {
   private gateways: DiscordGateway[] = [];
+  private invalidTokenIndices = new Set<number>();
   private recentMessageIds = new Map<string, number>();
   private dedupeTimer: ReturnType<typeof setInterval> | null = null;
   private readyCount = 0;
@@ -18,11 +20,11 @@ export class GatewayManager extends EventEmitter {
     this.readyPromise = new Promise<void>((resolve) => {
       this.readyResolve = resolve;
     });
-    for (const token of tokens) {
-      const gw = new DiscordGateway(token);
+    tokens.forEach((token, index) => {
+      const gw = new DiscordGateway(token, index);
       this.gateways.push(gw);
       this.wireEvents(gw);
-    }
+    });
     if (tokens.length === 0) {
       this.readyResolve?.();
     }
@@ -46,7 +48,10 @@ export class GatewayManager extends EventEmitter {
       this.emit('ready', user);
     });
     gw.on('fatal', (err: Error) => this.emit('fatal', err));
-    gw.on('auth_failed', (err: Error) => this.emit('auth_failed', err));
+    gw.on('auth_failed', (failure: GatewayAuthFailure) => {
+      if (failure.invalid) this.invalidTokenIndices.add(failure.tokenIndex);
+      this.emit('auth_failed', failure);
+    });
     gw.on('reactionUpdate', (data) => this.emit('reactionUpdate', data));
   }
 
@@ -84,6 +89,10 @@ export class GatewayManager extends EventEmitter {
       const toRemove = entries.slice(0, entries.length - DEDUP_MAX_SIZE);
       for (const [id] of toRemove) this.recentMessageIds.delete(id);
     }
+  }
+
+  getInvalidTokenIndices(): number[] {
+    return Array.from(this.invalidTokenIndices);
   }
 
   getGuilds(): GuildInfo[] {
@@ -149,6 +158,25 @@ export class GatewayManager extends EventEmitter {
     return null;
   }
 
+  getSelfUserIds(): Set<string> {
+    const ids = new Set<string>();
+    for (const gw of this.gateways) {
+      const id = gw.getSelfUserId();
+      if (id) ids.add(id);
+    }
+    return ids;
+  }
+
+  // Union of the logged-in accounts' role IDs for a guild (across all tokens).
+  async getSelfRoleIds(guildId: string): Promise<Set<string>> {
+    const merged = new Set<string>();
+    const results = await Promise.all(this.gateways.map((gw) => gw.getSelfRoleIds(guildId)));
+    for (const roleIds of results) {
+      for (const id of roleIds) merged.add(id);
+    }
+    return merged;
+  }
+
   async sendChannelMessage(channelId: string, content: string, attachments?: { filename: string; data: Buffer; contentType: string }[]): Promise<any> {
     for (const gw of this.gateways) {
       if (gw.getGuildForChannel(channelId) || gw.getDMChannels().some((dm) => dm.id === channelId)) {
@@ -169,6 +197,18 @@ export class GatewayManager extends EventEmitter {
     }
     if (this.gateways.length > 0) {
       return this.gateways[0].fetchChannelMessages(channelId, limit);
+    }
+    return [];
+  }
+
+  async fetchReactionUsers(channelId: string, messageId: string, emoji: string, limit = 100): Promise<DiscordUser[]> {
+    for (const gw of this.gateways) {
+      if (gw.getGuildForChannel(channelId) || gw.getDMChannels().some((dm) => dm.id === channelId)) {
+        return gw.fetchReactionUsers(channelId, messageId, emoji, limit);
+      }
+    }
+    if (this.gateways.length > 0) {
+      return this.gateways[0].fetchReactionUsers(channelId, messageId, emoji, limit);
     }
     return [];
   }

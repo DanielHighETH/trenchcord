@@ -111,6 +111,30 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
       roomIds.push(`dm:${rawMsg.channel_id}`);
     }
 
+    // Mentions: collect guild messages where the logged-in user / their role / @here / @everyone
+    // was mentioned, per enabled settings, into a virtual "mentions" room.
+    if (rawMsg.guild_id) {
+      const selfIds = gw.getSelfUserIds();
+      if (!selfIds.has(rawMsg.author.id)) {
+        const mentionTypes: ('user' | 'role' | 'here' | 'everyone')[] = [];
+        if (config.mentionsUserEnabled && rawMsg.mentions?.some((u) => selfIds.has(u.id))) {
+          mentionTypes.push('user');
+        }
+        if (rawMsg.mention_everyone) {
+          if (config.mentionsHereEnabled && rawMsg.content.includes('@here')) mentionTypes.push('here');
+          if (config.mentionsEveryoneEnabled && rawMsg.content.includes('@everyone')) mentionTypes.push('everyone');
+        }
+        if (config.mentionsRoleEnabled && rawMsg.mention_roles && rawMsg.mention_roles.length > 0) {
+          const selfRoles = await gw.getSelfRoleIds(rawMsg.guild_id);
+          if (rawMsg.mention_roles.some((r) => selfRoles.has(r))) mentionTypes.push('role');
+        }
+        if (mentionTypes.length > 0) {
+          frontendMsg.mentionTypes = mentionTypes;
+          roomIds.push('mentions');
+        }
+      }
+    }
+
     if (frontendMsg.hasContractAddress) {
       for (const addr of frontendMsg.contractAddresses) {
         const isEvm = addr.startsWith('0x');
@@ -195,9 +219,14 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
     console.error('[App] Fatal gateway error:', err.message);
   });
 
-  gw.on('auth_failed', (err: Error) => {
-    console.error('[App] Discord token authentication failed:', err.message);
-    wsServer.broadcastRaw({ type: 'gateway_auth_failed', error: err.message }, userId);
+  gw.on('auth_failed', (failure: { tokenIndex: number; message: string; invalid: boolean }) => {
+    const tokenNumber = failure.tokenIndex + 1;
+    const error = `Token #${tokenNumber}: ${failure.message}`;
+    console.error('[App] Discord token authentication failed:', error);
+    wsServer.broadcastRaw(
+      { type: 'gateway_auth_failed', error, tokenIndex: failure.tokenIndex, tokenInvalid: failure.invalid },
+      userId,
+    );
   });
 }
 
@@ -444,7 +473,7 @@ app.use('/api', authMiddleware, createRouter(wsServer));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
-const frontendDist = path.resolve(__dirname, '../../frontend/dist');
+const frontendDist = process.env.TRENCHCORD_FRONTEND_DIST || path.resolve(__dirname, '../../frontend/dist');
 app.use(express.static(frontendDist));
 app.get('*', (_req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'));

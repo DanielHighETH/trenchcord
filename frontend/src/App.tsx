@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useAppStore } from './stores/appStore';
 import { isHostedMode, getSupabase } from './lib/supabase';
+import { isDemoMode } from './demo/demoStore';
+import DiscontinuedNotice from './components/DiscontinuedNotice';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import ContractDashboard from './components/ContractDashboard';
@@ -62,6 +64,7 @@ export default function App() {
   const authLoading = useAppStore((s) => s.authLoading);
   const checkAuth = useAppStore((s) => s.checkAuth);
   const rooms = useAppStore((s) => s.rooms);
+  const setActiveRoom = useAppStore((s) => s.setActiveRoom);
   const fetchRooms = useAppStore((s) => s.fetchRooms);
   const fetchHistory = useAppStore((s) => s.fetchHistory);
   const fetchConfig = useAppStore((s) => s.fetchConfig);
@@ -69,6 +72,7 @@ export default function App() {
   const activeView = useAppStore((s) => s.activeView);
   const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
   const setGatewayAuthError = useAppStore((s) => s.setGatewayAuthError);
+  const previewMode = useAppStore((s) => s.previewMode);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [dataReady, setDataReady] = useState(false);
 
@@ -82,6 +86,25 @@ export default function App() {
     }
   }, [setSidebarCollapsed]);
 
+  // Room hotkeys: pressing a room's configured key (outside a text field) jumps
+  // the focused pane to that room.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (e.key.length !== 1) return;
+      const key = e.key.toLowerCase();
+      const room = rooms.find((r) => r.hotkey && r.hotkey.toLowerCase() === key);
+      if (room) {
+        e.preventDefault();
+        setActiveRoom(room.id);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [rooms, setActiveRoom]);
+
   useEffect(() => {
     if (!isHostedMode || supabaseSession) {
       checkAuth();
@@ -89,18 +112,18 @@ export default function App() {
   }, [checkAuth, supabaseSession]);
 
   useEffect(() => {
-    if (authStatus?.configured) {
+    if (authStatus?.configured || previewMode) {
       Promise.all([fetchRooms(), fetchConfig()]).then(() => setDataReady(true));
       fetchDMChannels();
       fetchHistory();
     }
-  }, [authStatus?.configured, fetchRooms, fetchHistory, fetchConfig, fetchDMChannels]);
+  }, [authStatus?.configured, previewMode, fetchRooms, fetchHistory, fetchConfig, fetchDMChannels]);
 
   useEffect(() => {
-    if (dataReady && rooms.length === 0 && !isOnboardingComplete(supabaseUserId)) {
+    if (dataReady && !previewMode && rooms.length === 0 && !isOnboardingComplete(supabaseUserId)) {
       setShowOnboarding(true);
     }
-  }, [dataReady, rooms.length, supabaseUserId]);
+  }, [dataReady, previewMode, rooms.length, supabaseUserId]);
 
   const tokenPreviouslyConfigured = hasTokenEverBeenConfigured(supabaseUserId);
 
@@ -112,6 +135,12 @@ export default function App() {
       'Your Discord token is missing or expired. Please re-enter it in Settings > Tokens.',
     );
   }, [authLoading, authStatus?.configured, tokenPreviouslyConfigured, setGatewayAuthError]);
+
+  // The hosted web app is discontinued: send users to the desktop app instead.
+  // The public demo build (demo.trenchcord.app) stays available.
+  if (isHostedMode && !isDemoMode) {
+    return <DiscontinuedNotice />;
+  }
 
   // Hosted mode: waiting for Supabase session check
   if (isHostedMode && !supabaseReady) {
@@ -135,7 +164,7 @@ export default function App() {
     );
   }
 
-  if (!authStatus?.configured && !tokenPreviouslyConfigured) {
+  if (!authStatus?.configured && !tokenPreviouslyConfigured && !previewMode) {
     return <TokenSetup />;
   }
 

@@ -1,15 +1,15 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAppStore } from '../stores/appStore';
-import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay } from '../types';
+import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, SplitLayout } from '../types';
 import { PUSHOVER_SOUNDS } from '../types';
-import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, PanelLeftOpen, Send, Download } from 'lucide-react';
+import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, PanelLeftOpen, Send, Download, AlertTriangle, AtSign } from 'lucide-react';
 import { requestNotificationPermission } from '../utils/desktopNotification';
 import { previewSound, previewPreset, PRESET_SOUNDS } from '../utils/notificationSound';
 import ColorPickerWithAlpha from './ColorPickerWithAlpha';
 import TelegramSetup from './TelegramSetup';
 import { isHostedMode, getAccessToken } from '../lib/supabase';
 
-type Section = 'tokens' | 'general' | 'contracts' | 'sounds' | 'pushover' | 'keywords' | 'users' | 'guilds' | 'help';
+type Section = 'tokens' | 'general' | 'contracts' | 'sounds' | 'pushover' | 'keywords' | 'mentions' | 'users' | 'guilds' | 'help';
 
 const SECTIONS: { id: Section; label: string; icon: typeof Key }[] = [
   { id: 'tokens', label: 'Tokens', icon: Key },
@@ -18,6 +18,7 @@ const SECTIONS: { id: Section; label: string; icon: typeof Key }[] = [
   { id: 'sounds', label: 'Sounds & Notifications', icon: Volume2 },
   { id: 'pushover', label: 'Pushover', icon: Bell },
   { id: 'keywords', label: 'Keywords', icon: Tag },
+  { id: 'mentions', label: 'Mentions', icon: AtSign },
   { id: 'users', label: 'Highlighted Users', icon: Users },
   { id: 'guilds', label: 'Guilds', icon: Shield },
   { id: 'help', label: 'Help & Features', icon: HelpCircle },
@@ -104,12 +105,17 @@ export default function GlobalSettings() {
   const [globalKeywordPatterns, setGlobalKeywordPatterns] = useState<KeywordPattern[]>([]);
   const [keywordAlertsEnabled, setKeywordAlertsEnabled] = useState(true);
   const [desktopNotifications, setDesktopNotifications] = useState(false);
+  const [mentionsUserEnabled, setMentionsUserEnabled] = useState(true);
+  const [mentionsRoleEnabled, setMentionsRoleEnabled] = useState(true);
+  const [mentionsHereEnabled, setMentionsHereEnabled] = useState(false);
+  const [mentionsEveryoneEnabled, setMentionsEveryoneEnabled] = useState(false);
   const [badgeClickAction, setBadgeClickAction] = useState<BadgeClickAction>('discord');
   const [chattingEnabled, setChattingEnabled] = useState(false);
   const [messageDisplay, setMessageDisplay] = useState<MessageDisplay>('default');
   const [compactModeAvatars, setCompactModeAvatars] = useState(true);
   const [roleColors, setRoleColors] = useState(true);
   const [mobileZoomScale, setMobileZoomScale] = useState(1);
+  const [splitLayout, setSplitLayout] = useState<SplitLayout>('row');
   const [newKeywordPattern, setNewKeywordPattern] = useState('');
   const [newKeywordMatchMode, setNewKeywordMatchMode] = useState<KeywordMatchMode>('includes');
   const [newKeywordLabel, setNewKeywordLabel] = useState('');
@@ -165,12 +171,17 @@ export default function GlobalSettings() {
       setGlobalKeywordPatterns(config.globalKeywordPatterns ?? []);
       setKeywordAlertsEnabled(config.keywordAlertsEnabled ?? true);
       setDesktopNotifications(config.desktopNotifications ?? false);
+      setMentionsUserEnabled(config.mentionsUserEnabled ?? true);
+      setMentionsRoleEnabled(config.mentionsRoleEnabled ?? true);
+      setMentionsHereEnabled(config.mentionsHereEnabled ?? false);
+      setMentionsEveryoneEnabled(config.mentionsEveryoneEnabled ?? false);
       setBadgeClickAction(config.badgeClickAction ?? 'discord');
       setChattingEnabled(config.chattingEnabled ?? false);
       setMessageDisplay(config.messageDisplay ?? 'default');
       setCompactModeAvatars(config.compactModeAvatars ?? true);
       setRoleColors(config.roleColors ?? true);
       setMobileZoomScale(config.mobileZoomScale ?? 1);
+      setSplitLayout(config.splitLayout === 'grid' ? 'grid' : 'row');
     }
   }, [config]);
 
@@ -219,17 +230,22 @@ export default function GlobalSettings() {
       !kpEqual(globalKeywordPatterns, config.globalKeywordPatterns ?? []) ||
       keywordAlertsEnabled !== (config.keywordAlertsEnabled ?? true) ||
       desktopNotifications !== (config.desktopNotifications ?? false) ||
+      mentionsUserEnabled !== (config.mentionsUserEnabled ?? true) ||
+      mentionsRoleEnabled !== (config.mentionsRoleEnabled ?? true) ||
+      mentionsHereEnabled !== (config.mentionsHereEnabled ?? false) ||
+      mentionsEveryoneEnabled !== (config.mentionsEveryoneEnabled ?? false) ||
       badgeClickAction !== (config.badgeClickAction ?? 'discord') ||
       chattingEnabled !== (config.chattingEnabled ?? false) ||
       messageDisplay !== (config.messageDisplay ?? 'default') ||
       compactModeAvatars !== (config.compactModeAvatars ?? true) ||
       roleColors !== (config.roleColors ?? true) ||
-      mobileZoomScale !== (config.mobileZoomScale ?? 1)
+      mobileZoomScale !== (config.mobileZoomScale ?? 1) ||
+      splitLayout !== (config.splitLayout === 'grid' ? 'grid' : 'row')
     );
   }, [config, globalUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, evmAddressColor, solAddressColor,
     openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters,
     solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts,
-    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale]);
+    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -273,12 +289,17 @@ export default function GlobalSettings() {
         globalKeywordPatterns,
         keywordAlertsEnabled,
         desktopNotifications,
+        mentionsUserEnabled,
+        mentionsRoleEnabled,
+        mentionsHereEnabled,
+        mentionsEveryoneEnabled,
         badgeClickAction,
         chattingEnabled,
         messageDisplay,
         compactModeAvatars,
         roleColors,
         mobileZoomScale,
+        splitLayout,
       });
     } finally {
       setSaving(false);
@@ -489,13 +510,22 @@ export default function GlobalSettings() {
                   {maskedTokens.length > 0 && (
                     <div className="space-y-1.5 mb-4">
                       {maskedTokens.map((t) => (
-                        <div key={t.index} className="flex items-center justify-between gap-2 px-2 sm:px-3 py-2 sm:py-2.5 bg-discord-sidebar rounded">
+                        <div
+                          key={t.index}
+                          className={`flex items-center justify-between gap-2 px-2 sm:px-3 py-2 sm:py-2.5 rounded ${t.invalid ? 'bg-discord-red/10 ring-1 ring-discord-red/40' : 'bg-discord-sidebar'}`}
+                        >
                           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-                            <Key size={14} className="shrink-0 text-discord-blurple" />
+                            <Key size={14} className={`shrink-0 ${t.invalid ? 'text-discord-red' : 'text-discord-blurple'}`} />
                             <span className="text-xs sm:text-sm text-discord-text font-mono tracking-wider truncate">{t.masked}</span>
-                            <span className="text-[10px] px-1 sm:px-1.5 py-0.5 rounded bg-discord-blurple/20 text-discord-blurple font-semibold shrink-0">
+                            <span className={`text-[10px] px-1 sm:px-1.5 py-0.5 rounded font-semibold shrink-0 ${t.invalid ? 'bg-discord-red/20 text-discord-red' : 'bg-discord-blurple/20 text-discord-blurple'}`}>
                               #{t.index + 1}
                             </span>
+                            {t.invalid && (
+                              <span className="flex items-center gap-1 text-[10px] px-1 sm:px-1.5 py-0.5 rounded bg-discord-red/20 text-discord-red font-semibold shrink-0">
+                                <AlertTriangle size={11} />
+                                Invalid
+                              </span>
+                            )}
                           </div>
                           <button
                             onClick={async () => { await removeToken(t.index); }}
@@ -666,6 +696,31 @@ export default function GlobalSettings() {
                           />
                         </div>
                       )}
+                    </div>
+
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Split Screen Layout</h4>
+                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                        Use the <strong className="text-discord-text">+</strong> button in a chat header to add up to 4 panes, and the layout button next to Help in the sidebar to resize and drag them. Choose how panes are arranged:
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {([
+                          ['row', 'Single row'],
+                          ['grid', 'Two rows'],
+                        ] as [SplitLayout, string][]).map(([mode, label]) => (
+                          <button
+                            key={mode}
+                            onClick={() => setSplitLayout(mode)}
+                            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                              splitLayout === mode
+                                ? 'bg-discord-blurple text-white'
+                                : 'bg-discord-dark text-discord-text-muted hover:text-discord-text'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
@@ -1845,6 +1900,40 @@ export default function GlobalSettings() {
               </>
             )}
 
+            {section === 'mentions' && (
+              <>
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Mentions</h3>
+                  <p className="text-sm text-discord-text-muted mb-4">
+                    Collect messages where you were mentioned into the <strong className="text-discord-text">Mentions</strong> room. Only channels already added to your rooms are scanned.
+                  </p>
+
+                  <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-3">
+                    <Toggle
+                      value={mentionsUserEnabled}
+                      onChange={setMentionsUserEnabled}
+                      label="User mentions — when someone @-mentions you directly"
+                    />
+                    <Toggle
+                      value={mentionsRoleEnabled}
+                      onChange={setMentionsRoleEnabled}
+                      label="Role mentions — when one of your roles is mentioned"
+                    />
+                    <Toggle
+                      value={mentionsHereEnabled}
+                      onChange={setMentionsHereEnabled}
+                      label="@here — when @here is used in a channel you monitor"
+                    />
+                    <Toggle
+                      value={mentionsEveryoneEnabled}
+                      onChange={setMentionsEveryoneEnabled}
+                      label="@everyone — when @everyone is used in a channel you monitor"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
             {section === 'users' && (
               <>
                 <div>
@@ -2161,7 +2250,10 @@ export default function GlobalSettings() {
                   <div className="mt-8 pt-6 border-t border-discord-divider">
                     <h4 className="text-sm font-semibold text-white mb-1">Backup & Restore</h4>
                     <p className="text-xs text-discord-text-muted mb-4">
-                      Export your settings and rooms to a file, or import from a previous backup. Sensitive keys (Discord tokens, Telegram credentials, Pushover keys) are never included in exports.
+                      Export your settings and rooms to a file, or import from a previous backup.{' '}
+                      {isHostedMode
+                        ? 'Sensitive keys (Discord tokens, Telegram credentials, Pushover keys) are never included in exports.'
+                        : 'This includes your Discord tokens and Telegram credentials (API ID, hash, and session), so keep the file somewhere safe. Pushover keys are not included.'}
                     </p>
                     <div className="flex flex-wrap gap-3">
                       <button

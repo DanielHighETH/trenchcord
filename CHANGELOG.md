@@ -2,6 +2,26 @@
 
 All notable changes to Trenchcord are documented here.
 
+## 2026-07-13
+
+### Added
+- **Split-screen layout** — watch up to 4 rooms, DMs, or your Mentions feed side by side. Add panes with the `+` button in a chat header, then use the layout button in the sidebar to drag, resize, lock, and rearrange them in a single row or two rows. Your layout is saved and restored across restarts
+- **Mentions room** — a dedicated room that gathers every message where you, one of your roles, `@here`, or `@everyone` was mentioned across the channels you already monitor. Toggle each mention type under Settings > Mentions
+- **Room hotkeys** — assign a single key to any room and press it anywhere (outside a text field) to jump straight to it
+- **See who reacted** — click a reaction on a Discord message to see the list of users who reacted with that emoji
+- **Unread badges** — the sidebar now shows a blue unread counter on rooms, DMs, and Mentions, clearing the moment you open them
+- **Desktop app** — Trenchcord is now available as a native desktop app for Windows and macOS, with auto-updates, keeping your token and data fully on your machine
+- **In-app announcements** — important updates and notices can now surface in a dismissible in-app modal
+- **Import on setup** — the welcome screen now lets you import an existing `config.json` (token, rooms, and settings) to get going in one step, or continue without a token to explore the app first
+- **Local backups include credentials** — in self-hosted mode, settings backups now include your Discord tokens and Telegram credentials so a restore fully reconnects you (hosted mode still never exports credentials — keep local backups somewhere safe)
+- **Invalid token indicator** — when Discord rejects a token, it's flagged with a red `Invalid` badge in Settings > Tokens, and errors now name the specific token
+- **Community links** — quick Join Discord and X / Twitter buttons in the sidebar
+- **Open source under AGPL-3.0** — this release is now licensed under the GNU AGPL-3.0
+
+### Fixed
+- **Stable scroll while reading back** — scrolling up now pauses the feed and holds your position instead of drifting as new messages arrive. An `X new messages` pill (with the time of the first one) and a `Jump To Present` banner let you catch up whenever you're ready
+- **Smarter token error handling** — connection problems (Discord unreachable, too many connections) are no longer mistaken for an invalid token; only Discord's explicit rejection flags a token as invalid
+
 ## 2026-07-02
 
 ### Added

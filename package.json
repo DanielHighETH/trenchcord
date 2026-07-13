@@ -2,6 +2,7 @@
   "name": "trenchcord",
   "version": "1.0.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "workspaces": ["backend", "frontend", "landing"],
   "scripts": {
     "dev": "npm run dev:backend & npm run dev:frontend",
@@ -13,6 +14,9 @@
     "build:frontend": "npm run build -w frontend",
     "build:landing": "npm run build -w landing",
     "start": "npm run build && npm run start -w backend",
-    "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend"
+    "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend",
+    "dev:desktop": "npm --prefix desktop run start",
+    "pack:desktop": "npm run build:backend && npm run build:frontend && npm --prefix desktop run pack",
+    "build:desktop": "npm run build:backend && npm run build:frontend && npm --prefix desktop run dist"
   }
 }

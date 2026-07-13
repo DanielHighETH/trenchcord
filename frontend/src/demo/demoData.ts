@@ -179,6 +179,10 @@ export const DEMO_CONFIG: AppConfig = {
   ],
   keywordAlertsEnabled: true,
   desktopNotifications: false,
+  mentionsUserEnabled: true,
+  mentionsRoleEnabled: true,
+  mentionsHereEnabled: false,
+  mentionsEveryoneEnabled: false,
   badgeClickAction: 'discord',
   channelSounds: {},
   userNameCache: {},
@@ -187,6 +191,10 @@ export const DEMO_CONFIG: AppConfig = {
   compactModeAvatars: true,
   roleColors: true,
   mobileZoomScale: 1,
+  splitLayout: 'row',
+  paneRoomIds: [],
+  paneLocks: [],
+  gridMirror: false,
   telegramColors: {},
 };
 

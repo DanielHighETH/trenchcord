@@ -11,6 +11,7 @@ export interface ChannelRef {
 
 export type HighlightMode = 'background' | 'username';
 export type MessageDisplay = 'default' | 'compact';
+export type SplitLayout = 'row' | 'grid';
 
 export type KeywordMatchMode = 'includes' | 'exact' | 'regex';
 
@@ -32,6 +33,7 @@ export interface Room {
   keywordPatterns?: KeywordPattern[];
   highlightMode?: HighlightMode;
   highlightedUserColors?: Record<string, string>;
+  hotkey?: string | null;
 }
 
 export type PushoverPriority = -2 | -1 | 0 | 1 | 2;
@@ -117,6 +119,10 @@ export interface AppConfig {
   globalKeywordPatterns: KeywordPattern[];
   keywordAlertsEnabled: boolean;
   desktopNotifications: boolean;
+  mentionsUserEnabled: boolean;
+  mentionsRoleEnabled: boolean;
+  mentionsHereEnabled: boolean;
+  mentionsEveryoneEnabled: boolean;
   badgeClickAction: BadgeClickAction;
   userNameCache: Record<string, string>;
   chattingEnabled: boolean;
@@ -124,6 +130,10 @@ export interface AppConfig {
   compactModeAvatars: boolean;
   roleColors: boolean;
   mobileZoomScale: number;
+  splitLayout: SplitLayout;
+  paneRoomIds: string[];
+  paneLocks: boolean[];
+  gridMirror: boolean;
   telegramApiId?: string;
   telegramApiHash?: string;
   telegramSessions?: string[];
@@ -139,6 +149,7 @@ export interface AuthStatus {
 export interface MaskedToken {
   index: number;
   masked: string;
+  invalid?: boolean;
 }
 
 export interface MaskedTokensResponse {
@@ -166,6 +177,14 @@ export interface DMChannel {
 export interface FrontendReaction {
   emoji: { id: string | null; name: string; animated?: boolean };
   count: number;
+}
+
+export interface ReactionUser {
+  id: string;
+  username: string;
+  displayName: string;
+  avatar: string | null;
+  discriminator: string;
 }
 
 export interface TelegramSticker {
@@ -230,6 +249,7 @@ export interface FrontendMessage {
   hasContractAddress: boolean;
   contractAddresses: string[];
   mentions: Record<string, string>;
+  mentionTypes?: ('user' | 'role' | 'here' | 'everyone')[];
   referencedMessage?: {
     id: string;
     author: string;
@@ -284,5 +304,7 @@ export interface WsIncoming {
   type: 'message' | 'message_update' | 'message_delete' | 'alert' | 'reaction_update' | 'contract' | 'chain_update' | 'gateway_ready' | 'telegram_ready' | 'gateway_auth_failed';
   data: any;
   error?: string;
+  tokenIndex?: number;
+  tokenInvalid?: boolean;
   roomIds?: string[];
 }

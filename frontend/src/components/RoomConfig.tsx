@@ -44,6 +44,7 @@ export default function RoomConfig() {
   const [filteredUsers, setFilteredUsers] = useState<string[]>([]);
   const [filterEnabled, setFilterEnabled] = useState(false);
   const [roomColor, setRoomColor] = useState('');
+  const [hotkey, setHotkey] = useState('');
   const [newUserId, setNewUserId] = useState('');
   const [newFilterUser, setNewFilterUser] = useState('');
   const [search, setSearch] = useState('');
@@ -76,6 +77,7 @@ export default function RoomConfig() {
       setFilteredUsers([...(editingRoom.filteredUsers ?? [])]);
       setFilterEnabled(editingRoom.filterEnabled ?? false);
       setRoomColor(editingRoom.color ?? '');
+      setHotkey(editingRoom.hotkey ?? '');
       setRoomKeywordPatterns([...(editingRoom.keywordPatterns ?? [])]);
       setHighlightMode(editingRoom.highlightMode ?? 'background');
       setHighlightedUserColors({ ...(editingRoom.highlightedUserColors ?? {}) });
@@ -86,6 +88,7 @@ export default function RoomConfig() {
       setFilteredUsers([]);
       setFilterEnabled(false);
       setRoomColor('');
+      setHotkey('');
       setRoomKeywordPatterns([]);
       setHighlightMode('background');
       setHighlightedUserColors({});
@@ -151,7 +154,7 @@ export default function RoomConfig() {
     setSaving(true);
     try {
       if (editingRoom) {
-        await updateRoom(editingRoom.id, { name, channels: selectedChannels, highlightedUsers, filteredUsers, filterEnabled, color: roomColor || null, keywordPatterns: roomKeywordPatterns, highlightMode, highlightedUserColors });
+        await updateRoom(editingRoom.id, { name, channels: selectedChannels, highlightedUsers, filteredUsers, filterEnabled, color: roomColor || null, keywordPatterns: roomKeywordPatterns, highlightMode, highlightedUserColors, hotkey: hotkey || null });
       } else {
         if (!name.trim()) return;
         await createRoom(name.trim(), selectedChannels, highlightedUsers, roomColor || null, filteredUsers, filterEnabled);
@@ -289,6 +292,38 @@ export default function RoomConfig() {
                     </button>
                   )}
                 </div>
+              </div>
+
+              {/* Hotkey */}
+              <div className="mb-4">
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
+                  Hotkey
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="text"
+                    readOnly
+                    value={hotkey ? hotkey.toUpperCase() : ''}
+                    onKeyDown={(e) => {
+                      e.preventDefault();
+                      if (['Backspace', 'Delete', 'Escape'].includes(e.key)) { setHotkey(''); return; }
+                      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) setHotkey(e.key.toLowerCase());
+                    }}
+                    placeholder="Press a key"
+                    className="w-24 bg-discord-dark border-none rounded px-3 py-2 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple text-center cursor-pointer caret-transparent"
+                  />
+                  {hotkey && (
+                    <button
+                      onClick={() => setHotkey('')}
+                      className="text-[11px] text-discord-text-muted hover:text-white"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-discord-text-muted mt-1.5">
+                  Press this key anywhere (outside a text field) to jump to this room.
+                </p>
               </div>
 
               {/* Selected count */}

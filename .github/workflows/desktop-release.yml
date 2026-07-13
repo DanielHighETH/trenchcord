@@ -1,0 +1,59 @@
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Build backend and frontend
+        run: |
+          npm run build:backend
+          npm run build:frontend
+
+      - name: Install desktop dependencies
+        run: npm --prefix desktop install
+
+      - name: Bundle backend
+        run: npm --prefix desktop run bundle:backend
+
+      - name: Build and publish desktop app
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --publish always
+
+      # The macOS .zip target only contains the bare .app, so add the first-launch
+      # instructions to it and re-upload (the .dmg already includes them).
+      - name: Add README to macOS download zip
+        if: runner.os == 'macOS'
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for z in release/*mac*.zip; do
+            [ -e "$z" ] || continue
+            zip -j "$z" "build/READ ME FIRST.txt"
+            gh release upload "${{ github.ref_name }}" "$z" --clobber
+          done
