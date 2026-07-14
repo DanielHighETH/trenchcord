@@ -11,6 +11,8 @@ import type {
   DMChannel,
 } from './types.js';
 import { GatewayOpcodes } from './types.js';
+import { fetch as undiciFetch } from 'undici';
+import type { ProxyBundle } from './proxy.js';
 
 const GATEWAY_URL = 'wss://gateway.discord.gg/?v=10&encoding=json';
 const REST_BASE = 'https://discord.com/api/v10';
@@ -28,6 +30,9 @@ export interface GatewayAuthFailure {
   // true only when Discord explicitly rejected the token (close code 4004).
   // Connection-exhaustion failures are ambiguous and must not flag a token.
   invalid: boolean;
+  // true when the failure looks like Discord/Cloudflare refusing the connection
+  // (HTTP 403/429 on the gateway handshake), typically a VPN/datacenter IP block.
+  blocked?: boolean;
 }
 
 export class DiscordGateway extends EventEmitter {
@@ -51,11 +56,16 @@ export class DiscordGateway extends EventEmitter {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 30;
   private stopped = false;
+  private proxy: ProxyBundle | null;
+  // Set when the gateway handshake is rejected with an HTTP status (403/429),
+  // which is how a Cloudflare/VPN IP block surfaces. Cleared on a clean open.
+  private lastBlockStatus: number | null = null;
 
-  constructor(token: string, tokenIndex = 0) {
+  constructor(token: string, tokenIndex = 0, proxy: ProxyBundle | null = null) {
     super();
     this.token = token;
     this.tokenIndex = tokenIndex;
+    this.proxy = proxy;
   }
 
   private static readonly NON_RECOVERABLE_CODES = new Set([
@@ -67,15 +77,27 @@ export class DiscordGateway extends EventEmitter {
 
   connect(): void {
     if (this.stopped) return;
+    // Cleared per-attempt so a block status only reflects the current handshake.
+    this.lastBlockStatus = null;
     const url = this.resumeGatewayUrl ?? GATEWAY_URL;
     if (this.reconnectAttempts === 0) {
-      console.log(`[Gateway] Connecting to ${url}...`);
+      console.log(`[Gateway] Connecting to ${url}${this.proxy ? ' via proxy' : ''}...`);
     }
-    this.ws = new WebSocket(url);
+    this.ws = new WebSocket(url, this.proxy ? { agent: this.proxy.wsAgent } : undefined);
 
     this.ws.on('open', () => {
       if (this.reconnectAttempts > 0) {
         console.log(`[Gateway] Reconnected (after ${this.reconnectAttempts} attempts)`);
+      }
+    });
+
+    // Fires when Discord/Cloudflare rejects the WS upgrade with an HTTP response
+    // (e.g. 403/429/1015). This is the signature of a VPN/datacenter IP block.
+    this.ws.on('unexpected-response', (_req, res) => {
+      this.lastBlockStatus = res.statusCode ?? null;
+      res.resume();
+      if (this.reconnectAttempts === 0) {
+        console.error(`[Gateway] Handshake rejected with HTTP ${res.statusCode}`);
       }
     });
 
@@ -469,14 +491,34 @@ export class DiscordGateway extends EventEmitter {
 
   private attemptReconnect(): void {
     if (this.stopped) return;
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error(`[Gateway] Max reconnect attempts (${this.maxReconnectAttempts}) reached. Giving up.`);
+
+    // A handshake rejected with 403/429 won't heal by retrying the same IP, so
+    // fail fast (after a few tries) with actionable guidance instead of burning
+    // the full retry budget and then blaming the token.
+    const isBlocked = this.lastBlockStatus === 403 || this.lastBlockStatus === 429;
+    const attemptsBudget = isBlocked ? Math.min(5, this.maxReconnectAttempts) : this.maxReconnectAttempts;
+
+    if (this.reconnectAttempts >= attemptsBudget) {
       this.stopped = true;
-      this.emit('auth_failed', {
-        tokenIndex: this.tokenIndex,
-        message: `Could not connect after ${this.maxReconnectAttempts} attempts. The token may be invalid, or Discord may be unreachable — please check it in settings.`,
-        invalid: false,
-      } satisfies GatewayAuthFailure);
+      if (isBlocked) {
+        console.error(`[Gateway] Discord refused the connection (HTTP ${this.lastBlockStatus}). Giving up.`);
+        this.emit('auth_failed', {
+          tokenIndex: this.tokenIndex,
+          message:
+            `Discord refused the connection (HTTP ${this.lastBlockStatus}). This usually means your IP is blocked — ` +
+            `common on VPNs and datacenter IPs. Try turning the VPN off (or split-tunnel discord.com and gateway.discord.gg), ` +
+            `or set an HTTP/HTTPS proxy under Settings → Tokens → Connection.`,
+          invalid: false,
+          blocked: true,
+        } satisfies GatewayAuthFailure);
+      } else {
+        console.error(`[Gateway] Max reconnect attempts (${this.maxReconnectAttempts}) reached. Giving up.`);
+        this.emit('auth_failed', {
+          tokenIndex: this.tokenIndex,
+          message: `Could not connect after ${this.maxReconnectAttempts} attempts. The token may be invalid, or Discord may be unreachable — please check it in settings.`,
+          invalid: false,
+        } satisfies GatewayAuthFailure);
+      }
       return;
     }
     const delay = Math.min(1000 * 2 ** this.reconnectAttempts, 30000);
@@ -529,6 +571,17 @@ export class DiscordGateway extends EventEmitter {
     return this.selfUserId;
   }
 
+  // Routes REST calls through the configured proxy when set. We use undici's own
+  // fetch in the proxy path so the ProxyAgent dispatcher is guaranteed compatible
+  // (mixing it with Node's bundled fetch can silently ignore the dispatcher). The
+  // undici Response shape used here (ok/status/json/text) matches the DOM one.
+  private fetch(url: string, init?: RequestInit): Promise<Response> {
+    if (this.proxy) {
+      return undiciFetch(url, { ...(init as any), dispatcher: this.proxy.dispatcher }) as unknown as Promise<Response>;
+    }
+    return fetch(url, init);
+  }
+
   // Returns the logged-in user's role IDs for a guild, lazily fetched via REST and cached.
   async getSelfRoleIds(guildId: string): Promise<Set<string>> {
     const cached = this.selfGuildRoles.get(guildId);
@@ -536,7 +589,7 @@ export class DiscordGateway extends EventEmitter {
       return cached.roleIds;
     }
     try {
-      const res = await fetch(`${REST_BASE}/users/@me/guilds/${guildId}/member`, {
+      const res = await this.fetch(`${REST_BASE}/users/@me/guilds/${guildId}/member`, {
         headers: { Authorization: this.token },
       });
       if (!res.ok) {
@@ -576,7 +629,7 @@ export class DiscordGateway extends EventEmitter {
       parts.push(Buffer.from(`--${boundary}--\r\n`));
       const body = Buffer.concat(parts);
 
-      const res = await fetch(`${REST_BASE}/channels/${channelId}/messages`, {
+      const res = await this.fetch(`${REST_BASE}/channels/${channelId}/messages`, {
         method: 'POST',
         headers: {
           Authorization: this.token,
@@ -591,7 +644,7 @@ export class DiscordGateway extends EventEmitter {
       return res.json();
     }
 
-    const res = await fetch(`${REST_BASE}/channels/${channelId}/messages`, {
+    const res = await this.fetch(`${REST_BASE}/channels/${channelId}/messages`, {
       method: 'POST',
       headers: {
         Authorization: this.token,
@@ -608,7 +661,7 @@ export class DiscordGateway extends EventEmitter {
 
   async fetchChannelMessages(channelId: string, limit = 30): Promise<DiscordMessage[]> {
     const url = `${REST_BASE}/channels/${channelId}/messages?limit=${limit}`;
-    const res = await fetch(url, {
+    const res = await this.fetch(url, {
       headers: { Authorization: this.token },
     });
     if (!res.ok) {
@@ -635,7 +688,7 @@ export class DiscordGateway extends EventEmitter {
     limit = 100,
   ): Promise<DiscordUser[]> {
     const url = `${REST_BASE}/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}?limit=${limit}`;
-    const res = await fetch(url, {
+    const res = await this.fetch(url, {
       headers: { Authorization: this.token },
     });
     if (!res.ok) {

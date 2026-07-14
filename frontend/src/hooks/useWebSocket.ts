@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useAppStore } from '../stores/appStore';
+import { useAppStore, IS_POPOUT } from '../stores/appStore';
 import { playHighlightSound, playContractAlertSound, playKeywordAlertSound, playSound } from '../utils/notificationSound';
 import { buildContractUrl } from '../utils/contractUrl';
 import { showDesktopNotification } from '../utils/desktopNotification';
@@ -97,6 +97,13 @@ export function useWebSocket() {
             const roomIds = incoming.roomIds ?? [];
             const config = useAppStore.getState().config;
 
+            // Popout windows share the main window's live stream but must not
+            // duplicate sounds, notifications, or contract auto-open.
+            if (IS_POPOUT) {
+              addMessage(msg, roomIds, true);
+              return;
+            }
+
             const ss = config?.soundSettings;
 
             let eventSoundPlayed = false;
@@ -104,9 +111,12 @@ export function useWebSocket() {
             if (msg.isHighlighted && msg.hasContractAddress) {
               if (config?.messageSounds) { playContractAlertSound(ss?.contractAlert); eventSoundPlayed = true; }
               if (config?.autoOpenHighlightedContracts && msg.contractAddresses.length > 0) {
+                const addr = msg.contractAddresses[0];
+                const evmChain = useAppStore.getState().addressChains[addr.toLowerCase()];
                 const url = buildContractUrl(
-                  msg.contractAddresses[0],
+                  addr,
                   config.contractLinkTemplates,
+                  evmChain,
                 );
                 window.open(url, '_blank');
               }
@@ -165,7 +175,10 @@ export function useWebSocket() {
             fetchHistory();
             checkAuth();
           } else if (incoming.type === 'gateway_auth_failed') {
-            setGatewayAuthError(incoming.error ?? 'Discord token authentication failed. Please check your token in settings.');
+            setGatewayAuthError(
+              incoming.error ?? 'Discord token authentication failed. Please check your token in settings.',
+              incoming.tokenBlocked,
+            );
             fetchMaskedTokens();
           }
         } catch {

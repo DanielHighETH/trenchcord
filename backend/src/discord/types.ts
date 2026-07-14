@@ -221,9 +221,13 @@ export interface AppConfig {
   paneRoomIds: string[];
   paneLocks: boolean[];
   gridMirror: boolean;
+  seenAnnouncements: string[];
   telegramApiId?: string;
   telegramApiHash?: string;
   telegramSessions?: string[];
+  // Optional HTTP/HTTPS proxy for the Discord gateway + REST connection. Local
+  // mode only — lets VPN-blocked users route Discord traffic through a proxy.
+  discordProxyUrl?: string;
 }
 
 export interface TelegramChatInfo {

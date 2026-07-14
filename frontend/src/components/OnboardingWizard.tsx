@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { ChannelRef } from '../types';
-import { Check, ChevronRight, ChevronLeft, Hash, Search, Sparkles, Layers, Eye, Zap } from 'lucide-react';
+import { Check, ChevronRight, ChevronLeft, Hash, Search, Sparkles, Layers, Eye, Zap, AlertTriangle, Settings2 } from 'lucide-react';
 
 const ONBOARDING_KEY = 'trenchcord_onboarding_complete';
 
@@ -35,6 +35,8 @@ export default function OnboardingWizard({ onComplete, userId }: { onComplete: (
   const updateConfig = useAppStore((s) => s.updateConfig);
   const createRoom = useAppStore((s) => s.createRoom);
   const fetchHistory = useAppStore((s) => s.fetchHistory);
+  const gatewayAuthError = useAppStore((s) => s.gatewayAuthError);
+  const setActiveView = useAppStore((s) => s.setActiveView);
 
   const [step, setStep] = useState<Step>('welcome');
   const [enabledGuilds, setEnabledGuilds] = useState<string[]>([]);
@@ -180,10 +182,32 @@ export default function OnboardingWizard({ onComplete, userId }: { onComplete: (
               </p>
 
               {guilds.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-discord-text-muted">
-                  <div className="w-6 h-6 border-2 border-discord-blurple border-t-transparent rounded-full animate-spin mb-3" />
-                  <span className="text-sm">Loading your servers...</span>
-                </div>
+                gatewayAuthError ? (
+                  <div className="flex flex-col items-center justify-center py-10 px-2 text-center">
+                    <div className="w-11 h-11 rounded-full bg-discord-red/10 flex items-center justify-center mb-4">
+                      <AlertTriangle size={22} className="text-discord-red" />
+                    </div>
+                    <h3 className="text-sm font-semibold text-white mb-1.5">Couldn't load your servers</h3>
+                    <p className="text-xs text-discord-text-muted leading-relaxed max-w-sm mb-4">
+                      {gatewayAuthError}
+                    </p>
+                    <button
+                      onClick={() => {
+                        handleSkip();
+                        setActiveView('settings', 'tokens');
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-discord-blurple hover:bg-discord-blurple-hover rounded-lg text-sm font-medium text-white transition-colors"
+                    >
+                      <Settings2 size={15} />
+                      Open connection settings
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-12 text-discord-text-muted">
+                    <div className="w-6 h-6 border-2 border-discord-blurple border-t-transparent rounded-full animate-spin mb-3" />
+                    <span className="text-sm">Loading your servers...</span>
+                  </div>
+                )
               ) : (
                 <>
                   <div className="relative mb-3">

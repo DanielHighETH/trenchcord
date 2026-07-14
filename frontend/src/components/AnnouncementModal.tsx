@@ -1,9 +1,11 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Megaphone, AlertTriangle, X } from 'lucide-react';
+import { useAppStore } from '../stores/appStore';
 import {
   fetchAnnouncements,
-  selectUnseen,
+  selectNewestUnseen,
   markSeen,
+  getSeenIds,
   type Announcement,
 } from '../utils/announcements';
 
@@ -16,11 +18,17 @@ const LEVEL_STYLES: Record<string, { accent: string; ring: string }> = {
 };
 
 export default function AnnouncementModal() {
-  const [queue, setQueue] = useState<Announcement[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [sessionDismissed, setSessionDismissed] = useState<string[]>([]);
+  const config = useAppStore((s) => s.config);
+  const updateConfig = useAppStore((s) => s.updateConfig);
+  // Whether server config is expected to load. When it is, config is the durable
+  // source of truth for dismissals; localStorage is unreliable on desktop where
+  // each launch runs on a fresh origin.
+  const configExpected = useAppStore((s) => !!(s.authStatus?.configured || s.previewMode));
 
   const load = useCallback(async () => {
-    const all = await fetchAnnouncements();
-    setQueue(selectUnseen(all));
+    setAnnouncements(await fetchAnnouncements());
   }, []);
 
   useEffect(() => {
@@ -34,12 +42,28 @@ export default function AnnouncementModal() {
     };
   }, [load]);
 
-  const current = queue[0];
+  const current = useMemo(() => {
+    // Wait for config before deciding, so we don't briefly flash an announcement
+    // the user already dismissed on a previous run.
+    if (configExpected && !config) return null;
+    const seen = new Set<string>([
+      ...getSeenIds(),
+      ...(config?.seenAnnouncements ?? []),
+      ...sessionDismissed,
+    ]);
+    return selectNewestUnseen(announcements, seen);
+  }, [announcements, config, configExpected, sessionDismissed]);
+
   if (!current) return null;
 
   const dismiss = () => {
-    markSeen(current.id);
-    setQueue((q) => q.slice(1));
+    const id = current.id;
+    markSeen(id);
+    setSessionDismissed((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    if (config) {
+      const next = Array.from(new Set([...(config.seenAnnouncements ?? []), id]));
+      void updateConfig({ seenAnnouncements: next });
+    }
   };
 
   const openCta = () => {

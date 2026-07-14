@@ -9,6 +9,20 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2026-07-14',
+    added: [
+      '**Pop-out chat windows** — detach any room, DM, or your Mentions feed into its own native window that keeps streaming live, so you can watch a caller channel on a second monitor while you trade. Click the pop-out icon in a chat header; the chat re-docks automatically when you close the window (desktop app)',
+      '**Automatic EVM chain detection** — when a contract is posted as a bare `0x…` address with no chain mentioned, Trenchcord now resolves its real chain from on-chain liquidity (DexScreener, with a GeckoTerminal fallback), so the trade link opens on the correct network instead of a default',
+      '**Proxy support** — if Discord won\'t load behind a VPN, route the gateway and history connection through an HTTP/HTTPS proxy under Settings > General > Connection. Leave it blank to connect directly (desktop app)',
+    ],
+    fixed: [
+      '**Connection blocks no longer look like a bad token** — a VPN or datacenter IP block (Discord/Cloudflare rejecting the connection) now shows a distinct `Connection blocked` banner instead of falsely flagging your token as invalid',
+      '**Richer Telegram text** — bold, code blocks, and inline links now render correctly; a formatting-offset bug that could mangle or misplace styled text is fixed, and noise-only links (bare numbers) are dropped to plain text',
+      '**Announcements stay dismissed** — dismissed in-app announcements now persist across restarts instead of reappearing every launch (desktop app)',
+      '**Setup no longer hangs on a spinner** — if your servers can\'t load during onboarding (for example, a blocked connection), the welcome screen now shows the error with a shortcut to connection settings instead of spinning forever',
+    ],
+  },
+  {
     date: '2026-07-13',
     added: [
       '**Split-screen layout** — watch up to 4 rooms, DMs, or your Mentions feed side by side. Add panes with the `+` button in a chat header, then use the layout button in the sidebar to drag, resize, lock, and rearrange them in a single row or two rows. Your layout is saved and restored across restarts',

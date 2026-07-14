@@ -10,6 +10,8 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { GatewayManager } from './discord/gatewayManager.js';
+import { createProxyBundle } from './discord/proxy.js';
+import { configStore } from './config/store.js';
 import { TelegramClientManager } from './telegram/clientManager.js';
 import { processTelegramMessage } from './telegram/messageProcessor.js';
 import type { TelegramRawMessage } from './telegram/types.js';
@@ -20,7 +22,7 @@ import { getStorageProvider, isHostedMode } from './storage/index.js';
 import { authMiddleware } from './auth/middleware.js';
 import { getGateway, setGateway } from './gateway/state.js';
 import { UserGatewayPool } from './gateway/userGatewayPool.js';
-import { buildContractUrl, detectEvmChainFromContent, extractEvmChainFromGmgnLinks } from './utils/contract.js';
+import { buildContractUrl, detectEvmChainFromContent, extractEvmChainFromGmgnLinks, resolveEvmChainFromApi } from './utils/contract.js';
 import { processDiscordMessage } from './utils/messageProcessor.js';
 import type { MessageProcessorContext } from './utils/messageProcessor.js';
 import { sendPushover } from './utils/pushover.js';
@@ -74,6 +76,29 @@ function checkPushover(cfg: PushoverConfig, msg: FrontendMessage, evmChainHint: 
   }
 
   sendPushover(cfg, { title, message, url, urlTitle });
+}
+
+// When a message carries no chain hint, resolve the real chain for each EVM
+// address via external liquidity APIs and backfill it. Runs in the background
+// (never awaited on the message path) and broadcasts a chain_update once known.
+function backfillEvmChainsFromApi(
+  wsServer: WsServer,
+  userId: string,
+  addresses: string[],
+  evmChainHint: string | null,
+): void {
+  if (evmChainHint) return;
+  const storage = getStorageProvider();
+  for (const addr of addresses) {
+    if (!addr.startsWith('0x')) continue;
+    resolveEvmChainFromApi(addr)
+      .then(async (resolved) => {
+        if (!resolved) return;
+        const updated = await storage.updateEvmChain(userId, addr, resolved);
+        if (updated) wsServer.broadcastChainUpdate(addr, resolved, userId);
+      })
+      .catch((err) => console.error('[App] EVM chain backfill failed:', err.message));
+  }
 }
 
 function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: string): void {
@@ -158,6 +183,7 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
         }
         wsServer.broadcastContract(entry, userId);
       }
+      backfillEvmChainsFromApi(wsServer, userId, frontendMsg.contractAddresses, evmChainHint);
     }
 
     const gmgnChainUpdates = extractEvmChainFromGmgnLinks(rawMsg.content, rawMsg.embeds);
@@ -219,12 +245,14 @@ function wireGatewayEvents(gw: GatewayManager, wsServer: WsServer, userId: strin
     console.error('[App] Fatal gateway error:', err.message);
   });
 
-  gw.on('auth_failed', (failure: { tokenIndex: number; message: string; invalid: boolean }) => {
+  gw.on('auth_failed', (failure: { tokenIndex: number; message: string; invalid: boolean; blocked?: boolean }) => {
     const tokenNumber = failure.tokenIndex + 1;
-    const error = `Token #${tokenNumber}: ${failure.message}`;
-    console.error('[App] Discord token authentication failed:', error);
+    // A block is an IP/network problem, not a per-token issue, so skip the
+    // "Token #N:" prefix that would wrongly imply the token is at fault.
+    const error = failure.blocked ? failure.message : `Token #${tokenNumber}: ${failure.message}`;
+    console.error('[App] Discord gateway connection failed:', error);
     wsServer.broadcastRaw(
-      { type: 'gateway_auth_failed', error, tokenIndex: failure.tokenIndex, tokenInvalid: failure.invalid },
+      { type: 'gateway_auth_failed', error, tokenIndex: failure.tokenIndex, tokenInvalid: failure.invalid, tokenBlocked: failure.blocked ?? false },
       userId,
     );
   });
@@ -237,12 +265,15 @@ export function connectGateway(tokens: string[], wsServer: WsServer, userId: str
     });
   }
 
-  // Local mode: single global gateway
+  // Local mode: single global gateway. The Discord connection originates from
+  // the user's own machine/IP, so an optional proxy lets VPN-blocked users route
+  // gateway + REST traffic through a residential/HTTP proxy.
   const existing = getGateway();
   if (existing) {
     existing.disconnect();
   }
-  const gw = new GatewayManager(tokens);
+  const proxy = createProxyBundle(configStore.getConfig().discordProxyUrl);
+  const gw = new GatewayManager(tokens, proxy);
   setGateway(gw);
   wireGatewayEvents(gw, wsServer, userId);
   gw.connect();
@@ -326,6 +357,7 @@ function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userI
         }
         wsServer.broadcastContract(entry, userId);
       }
+      backfillEvmChainsFromApi(wsServer, userId, frontendMsg.contractAddresses, evmChainHint);
     }
 
     if (frontendMsg.matchedKeywords && frontendMsg.matchedKeywords.length > 0) {

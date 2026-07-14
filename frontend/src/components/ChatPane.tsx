@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
 import Message from './Message';
 import ChatInput from './ChatInput';
-import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown, PanelLeftOpen, Send, AtSign, GripVertical, Plus, Rows2, Columns2, ArrowLeft, ArrowRight, Lock, Unlock } from 'lucide-react';
+import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown, PanelLeftOpen, Send, AtSign, GripVertical, Plus, Rows2, Columns2, ArrowLeft, ArrowRight, Lock, Unlock, ExternalLink } from 'lucide-react';
 
 const MAX_PANES = 4;
 
@@ -34,11 +34,13 @@ interface ChatPaneProps {
   paneIndex: number;
   paneCount: number;
   editMode: boolean;
+  variant?: 'grid' | 'popout';
   onMoveLeft?: () => void;
   onMoveRight?: () => void;
 }
 
-export default function ChatPane({ roomId, paneIndex, paneCount, editMode, onMoveLeft, onMoveRight }: ChatPaneProps) {
+export default function ChatPane({ roomId, paneIndex, paneCount, editMode, variant = 'grid', onMoveLeft, onMoveRight }: ChatPaneProps) {
+  const isPopout = variant === 'popout';
   const rooms = useAppStore((s) => s.rooms);
   const messages = useAppStore((s) => s.messages);
   const config = useAppStore((s) => s.config);
@@ -69,6 +71,8 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, onMov
   const swapPanes = useAppStore((s) => s.swapPanes);
   const addPane = useAppStore((s) => s.addPane);
   const removePane = useAppStore((s) => s.removePane);
+  const popOutPane = useAppStore((s) => s.popOutPane);
+  const poppedOutRoomIds = useAppStore((s) => s.poppedOutRoomIds);
   const updateConfig = useAppStore((s) => s.updateConfig);
   const isGrid = useAppStore((s) => s.config?.splitLayout === 'grid');
   const setActivePane = useAppStore((s) => s.setActivePane);
@@ -480,6 +484,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, onMov
   const headerIconClass = isTgDMView ? 'text-[#2AABEE]' : 'text-discord-channel-icon';
 
   const canDrag = editMode && paneCount > 1 && !locked;
+  const canPopOut = variant === 'grid' && !!window.trenchcord?.openPopout && !poppedOutRoomIds.includes(roomId);
 
   const handleDrop = (e: React.DragEvent) => {
     if (!editMode || locked) return;
@@ -514,7 +519,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, onMov
       )}
       {/* Channel header */}
       <div className="h-12 px-2 sm:px-4 flex items-center shadow-[0_1px_0_rgba(0,0,0,0.2),0_1.5px_0_rgba(0,0,0,0.05),0_2px_0_rgba(0,0,0,0.05)] border-b border-discord-dark/60 shrink-0 bg-transparent z-10 gap-1">
-        {sidebarCollapsed && paneIndex === 0 && (
+        {!isPopout && sidebarCollapsed && paneIndex === 0 && (
           <button
             onClick={toggleSidebar}
             className="p-1.5 -ml-0.5 mr-0.5 rounded text-discord-channel-icon hover:text-discord-header-primary hover:bg-discord-hover transition-colors shrink-0"
@@ -644,6 +649,16 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, onMov
               </button>
             </Tip>
           )}
+          {canPopOut && (
+            <Tip label="Pop out to its own window">
+              <button
+                onClick={() => popOutPane(paneIndex)}
+                className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
+              >
+                <ExternalLink size={18} />
+              </button>
+            </Tip>
+          )}
           {editMode && onMoveLeft && (
             <Tip label="Move chat to left side">
               <button
@@ -674,15 +689,17 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, onMov
               </button>
             </Tip>
           )}
-          <Tip label={locked ? 'Unlock pane' : 'Lock pane (prevent changing room)'}>
-            <button
-              onClick={() => togglePaneLock(paneIndex)}
-              className={`p-1 transition-colors ${locked ? 'text-discord-blurple hover:text-discord-blurple-hover' : 'text-discord-channel-icon hover:text-discord-text'}`}
-            >
-              {locked ? <Lock size={18} /> : <Unlock size={18} />}
-            </button>
-          </Tip>
-          {paneCount < MAX_PANES && (
+          {!isPopout && (
+            <Tip label={locked ? 'Unlock pane' : 'Lock pane (prevent changing room)'}>
+              <button
+                onClick={() => togglePaneLock(paneIndex)}
+                className={`p-1 transition-colors ${locked ? 'text-discord-blurple hover:text-discord-blurple-hover' : 'text-discord-channel-icon hover:text-discord-text'}`}
+              >
+                {locked ? <Lock size={18} /> : <Unlock size={18} />}
+              </button>
+            </Tip>
+          )}
+          {!isPopout && paneCount < MAX_PANES && (
             <Tip label="Add chat pane">
               <button
                 onClick={() => addPane()}

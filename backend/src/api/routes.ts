@@ -702,8 +702,21 @@ export function createRouter(wsServer: WsServer): Router {
 
   router.put('/config', async (req, res) => {
     const userId = getUserId(req);
-    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl } = req.body;
+
+    // The Discord proxy only makes sense in local mode (the connection leaves the
+    // user's own machine). In hosted mode the server IP is fixed, and honouring a
+    // user-supplied proxy would be an SSRF vector — so reject it there.
+    if (discordProxyUrl !== undefined && isHostedMode()) {
+      return res.status(400).json({ error: 'Proxy configuration is only available in the desktop app.' });
+    }
+    const nextProxy = typeof discordProxyUrl === 'string' ? discordProxyUrl.trim() : '';
+    const proxyChanged =
+      discordProxyUrl !== undefined &&
+      nextProxy !== ((await storage.getConfig(userId)).discordProxyUrl ?? '');
+
     const config = await storage.updateConfig(userId, {
+      ...(discordProxyUrl !== undefined && { discordProxyUrl: nextProxy }),
       ...(globalHighlightedUsers !== undefined && { globalHighlightedUsers }),
       ...(contractDetection !== undefined && { contractDetection }),
       ...(guildColors !== undefined && { guildColors }),
@@ -740,7 +753,18 @@ export function createRouter(wsServer: WsServer): Router {
       ...(paneRoomIds !== undefined && { paneRoomIds }),
       ...(paneLocks !== undefined && { paneLocks }),
       ...(gridMirror !== undefined && { gridMirror }),
+      ...(seenAnnouncements !== undefined && { seenAnnouncements }),
     });
+
+    // Reconnect Discord so the new proxy takes effect immediately (local mode).
+    if (proxyChanged) {
+      const tokens = await storage.getTokens(userId);
+      if (tokens.length > 0) {
+        const { connectGateway } = await import('../index.js');
+        connectGateway(tokens, wsServer, userId);
+      }
+    }
+
     res.json(config);
   });
 
@@ -756,8 +780,10 @@ export function createRouter(wsServer: WsServer): Router {
     'telegramApiHash',
   ] as const;
 
-  // Machine-generated caches that are never part of a settings backup.
-  const NON_PORTABLE_CONFIG_KEYS = ['userNameCache'] as const;
+  // Machine-generated caches and machine-specific settings that are never part
+  // of a settings backup. The proxy URL can embed credentials and is tied to the
+  // local network, so it must never be exported or imported.
+  const NON_PORTABLE_CONFIG_KEYS = ['userNameCache', 'discordProxyUrl'] as const;
 
   router.get('/config/export', async (req, res) => {
     const userId = getUserId(req);

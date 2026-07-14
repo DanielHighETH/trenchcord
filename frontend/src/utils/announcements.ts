@@ -53,12 +53,26 @@ export async function fetchAnnouncements(): Promise<Announcement[]> {
   }
 }
 
-/** Active, non-expired, not-yet-seen announcements, newest first. */
-export function selectUnseen(announcements: Announcement[]): Announcement[] {
-  const seen = new Set(getSeenIds());
+/** Active, non-expired announcements, newest first (regardless of seen state). */
+function selectActive(announcements: Announcement[]): Announcement[] {
   const now = Date.now();
   return announcements
-    .filter((a) => a && typeof a.id === 'string' && !seen.has(a.id))
+    .filter((a) => a && typeof a.id === 'string')
     .filter((a) => !a.expiresAt || new Date(a.expiresAt).getTime() > now)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+/**
+ * Only ever surface the single newest active announcement. If it has already
+ * been seen/dismissed, show nothing — older announcements are never surfaced,
+ * even if the user never saw them.
+ */
+export function selectNewestUnseen(
+  announcements: Announcement[],
+  seen?: Set<string>,
+): Announcement | null {
+  const seenSet = seen ?? new Set(getSeenIds());
+  const newest = selectActive(announcements)[0];
+  if (!newest || seenSet.has(newest.id)) return null;
+  return newest;
 }

@@ -12,6 +12,7 @@ const EVM_CHAIN_LABELS: Record<string, string> = {
   linea: 'LINEA', mantle: 'MANTLE', scroll: 'SCROLL', zksync: 'ZKSYNC',
   sonic: 'SONIC', abstract: 'ABS', berachain: 'BERA',
   pulsechain: 'PLS', tron: 'TRON', hyperliquid: 'HL',
+  robinhood: 'HOOD',
 };
 
 function timeAgo(iso: string): string {

@@ -134,9 +134,11 @@ export interface AppConfig {
   paneRoomIds: string[];
   paneLocks: boolean[];
   gridMirror: boolean;
+  seenAnnouncements: string[];
   telegramApiId?: string;
   telegramApiHash?: string;
   telegramSessions?: string[];
+  discordProxyUrl?: string;
 }
 
 export interface AuthStatus {
@@ -306,5 +308,6 @@ export interface WsIncoming {
   error?: string;
   tokenIndex?: number;
   tokenInvalid?: boolean;
+  tokenBlocked?: boolean;
   roomIds?: string[];
 }

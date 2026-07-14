@@ -195,6 +195,7 @@ export const DEMO_CONFIG: AppConfig = {
   paneRoomIds: [],
   paneLocks: [],
   gridMirror: false,
+  seenAnnouncements: [],
   telegramColors: {},
 };
 

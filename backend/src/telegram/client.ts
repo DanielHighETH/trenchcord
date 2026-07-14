@@ -5,6 +5,7 @@ import { NewMessage } from 'teleproto/events/index.js';
 import { EditedMessage } from 'teleproto/events/EditedMessage.js';
 import { Api } from 'teleproto/tl/index.js';
 import type { TelegramChat, TelegramSender, TelegramRawMessage, TelegramMedia, TelegramButton } from './types.js';
+import { rewriteReferralLinks } from '../utils/contract.js';
 
 export class TelegramClientWrapper extends EventEmitter {
   private client: GramJSClient;
@@ -157,33 +158,63 @@ export class TelegramClientWrapper extends EventEmitter {
     };
   }
 
-  // Telegram carries in-text hyperlinks (e.g. "[dash]"/"[chart]") as message
-  // entities, not in the plain text. Convert text_url entities into markdown
-  // links so the frontend renders them as clickable links. Entity offsets are
-  // UTF-16 units, which matches JS string indexing.
+  // Build the message display text as markdown from the RAW text plus its
+  // formatting entities. Important: we must use message.rawText here, not
+  // message.text — teleproto derives message.text by re-serializing the raw
+  // text through the client parse mode, which injects markdown characters and
+  // shifts every position, so it no longer lines up with the entity offsets
+  // (which are relative to the raw text). Entity offsets are UTF-16 units,
+  // matching JS string indexing.
+  //
+  // We serialize bold/code/links ourselves so their offsets stay consistent.
+  // Links whose visible label is just numbers/symbols (stat-value noise) are
+  // dropped to plain text; everything else stays a clickable link.
   private applyLinkEntities(message: Api.Message): string {
-    const text = message.text ?? '';
+    const raw = message.rawText ?? '';
     const entities = message.entities;
-    if (!entities || entities.length === 0) return text;
+    if (!entities || entities.length === 0) return raw;
 
-    const links = entities
-      .filter((e): e is Api.MessageEntityTextUrl => e instanceof Api.MessageEntityTextUrl)
-      .map((e) => ({ offset: e.offset, length: e.length, url: e.url }))
-      .sort((a, b) => a.offset - b.offset);
-    if (links.length === 0) return text;
+    const isMeaningfulLabel = (s: string) => /[\p{L}\p{Extended_Pictographic}]/u.test(s);
+
+    // Markers to splice into the raw text. `rank` controls nesting so bold wraps
+    // links (e.g. "**[label](url)**"): lower rank is more outer.
+    type Marker = { pos: number; kind: 0 | 1; rank: number; str: string; offset: number; length: number };
+    const markers: Marker[] = [];
+    const add = (offset: number, length: number, rank: number, open: string, close: string) => {
+      markers.push({ pos: offset, kind: 1, rank, str: open, offset, length });
+      markers.push({ pos: offset + length, kind: 0, rank, str: close, offset, length });
+    };
+
+    for (const e of entities) {
+      if (e instanceof Api.MessageEntityBold) {
+        add(e.offset, e.length, 0, '**', '**');
+      } else if (e instanceof Api.MessageEntityCode) {
+        add(e.offset, e.length, 1, '`', '`');
+      } else if (e instanceof Api.MessageEntityPre) {
+        add(e.offset, e.length, 1, '```\n', '\n```');
+      } else if (e instanceof Api.MessageEntityTextUrl) {
+        const label = raw.substring(e.offset, e.offset + e.length);
+        if (!isMeaningfulLabel(label)) continue;
+        add(e.offset, e.length, 2, '[', `](${rewriteReferralLinks(e.url)})`);
+      }
+    }
+    if (markers.length === 0) return raw;
+
+    markers.sort((a, b) => {
+      if (a.pos !== b.pos) return a.pos - b.pos;
+      if (a.kind !== b.kind) return a.kind - b.kind; // closes before opens
+      if (a.kind === 1) return a.rank - b.rank || b.length - a.length; // opens: outer first
+      return b.rank - a.rank || b.offset - a.offset; // closes: inner first
+    });
 
     let result = '';
     let cursor = 0;
-    for (const link of links) {
-      if (link.offset < cursor) continue; // skip overlapping entities
-      result += text.substring(cursor, link.offset);
-      const rawLabel = text.substring(link.offset, link.offset + link.length);
-      // Strip brackets/newlines so we don't produce nested "[[...]]" markdown.
-      const label = rawLabel.replace(/[[\]\n]/g, '').trim() || 'link';
-      result += `[${label}](${link.url})`;
-      cursor = link.offset + link.length;
+    for (const m of markers) {
+      result += raw.substring(cursor, m.pos);
+      result += m.str;
+      cursor = m.pos;
     }
-    result += text.substring(cursor);
+    result += raw.substring(cursor);
     return result;
   }
 

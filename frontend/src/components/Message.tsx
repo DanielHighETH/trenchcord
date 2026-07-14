@@ -145,7 +145,10 @@ function handleContractClick(addr: string, action: ContractClickAction, linkTemp
     navigator.clipboard.writeText(addr);
   }
   if (action === 'open' || action === 'copy_open') {
-    window.open(buildContractUrl(addr, linkTemplates), '_blank');
+    // Resolve the chain at click time so a link corrected after the message
+    // was rendered (e.g. via a Rick follow-up) opens on the right chain.
+    const evmChain = useAppStore.getState().addressChains[addr.toLowerCase()];
+    window.open(buildContractUrl(addr, linkTemplates, evmChain), '_blank');
   }
 }
 
@@ -755,7 +758,9 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
     const hasContract = message.hasContractAddress && message.contractAddresses.length > 0;
     const openPlatform = () => {
       if (hasContract) {
-        const url = buildContractUrl(message.contractAddresses[0], templates);
+        const addr = message.contractAddresses[0];
+        const evmChain = useAppStore.getState().addressChains[addr.toLowerCase()];
+        const url = buildContractUrl(addr, templates, evmChain);
         window.open(url, '_blank', 'noopener,noreferrer');
       }
     };

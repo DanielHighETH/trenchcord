@@ -137,3 +137,9 @@ dist
 
 backend/data/config.json
 backend/data/contracts.json
+
+# Discord / tweet posting drafts (local only)
+posts/
+
+# Cursor AI files
+.cursor/

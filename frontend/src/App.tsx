@@ -73,8 +73,14 @@ export default function App() {
   const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
   const setGatewayAuthError = useAppStore((s) => s.setGatewayAuthError);
   const previewMode = useAppStore((s) => s.previewMode);
+  const dockPopout = useAppStore((s) => s.dockPopout);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [dataReady, setDataReady] = useState(false);
+
+  // Re-dock a chat when its popout window is closed (desktop only).
+  useEffect(() => {
+    return window.trenchcord?.onPopoutClosed((roomId) => dockPopout(roomId));
+  }, [dockPopout]);
 
   useEffect(() => {
     setTokenStateUserId(supabaseUserId);

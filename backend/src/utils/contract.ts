@@ -24,6 +24,11 @@ const CHAIN_TEXT_MAP: Record<string, string> = {
   sonic: 'sonic',
   pulsechain: 'pulsechain', pulse: 'pulsechain',
   tron: 'tron',
+  zksync: 'zksync',
+  abstract: 'abstract',
+  berachain: 'berachain', bera: 'berachain',
+  hyperliquid: 'hyperliquid', hyperevm: 'hyperliquid',
+  robinhood: 'robinhood', hood: 'robinhood',
 };
 
 export const EVM_CHAIN_LABELS: Record<string, string> = {
@@ -32,6 +37,7 @@ export const EVM_CHAIN_LABELS: Record<string, string> = {
   linea: 'LINEA', mantle: 'MANTLE', scroll: 'SCROLL', zksync: 'ZKSYNC',
   sonic: 'SONIC', abstract: 'ABS', berachain: 'BERA',
   pulsechain: 'PLS', tron: 'TRON', hyperliquid: 'HL',
+  robinhood: 'HOOD',
 };
 
 export interface ContractDetectionResult {
@@ -118,6 +124,14 @@ export function detectEvmChainFromContent(
     if (GMGN_EVM_CHAINS.has(slug)) return slug;
   }
 
+  // Rick-style bots label the chain on its own line, e.g. "🌐 Base @ Uniswap"
+  // or "🌐 Robinhood". Non-EVM chains (e.g. Solana) fall through to null.
+  const globeMatch = fullText.match(/\u{1F310}\s*(\w+)/u);
+  if (globeMatch) {
+    const key = globeMatch[1].toLowerCase();
+    if (CHAIN_TEXT_MAP[key]) return CHAIN_TEXT_MAP[key];
+  }
+
   const chainAtMatch = fullText.match(
     /\b(\w+)\s*@\s*(?:Uniswap|Pancake|Sushi|TraderJoe|Camelot|Raydium)/i,
   );
@@ -135,7 +149,139 @@ export function detectEvmChainFromContent(
   return null;
 }
 
+// EVM addresses are chain-agnostic: the same 0x string can be deployed on many
+// chains. When the message carries no chain hint, we resolve the "real" chain by
+// asking which chain the token actually has liquidity on (DexScreener, with a
+// GeckoTerminal fallback for chains DexScreener misses, e.g. newer L2s).
+
+// Maps external API chain ids to the internal slugs used across the app.
+const EXTERNAL_CHAIN_ALIASES: Record<string, string> = {
+  ethereum: 'eth', eth: 'eth',
+  base: 'base',
+  bsc: 'bsc',
+  arbitrum: 'arb', arb: 'arb', arbitrum_nova: 'arb',
+  blast: 'blast',
+  polygon: 'polygon', polygon_pos: 'polygon', matic: 'polygon',
+  avalanche: 'avax', avax: 'avax',
+  fantom: 'fantom', ftm: 'fantom',
+  linea: 'linea',
+  mantle: 'mantle',
+  scroll: 'scroll',
+  zksync: 'zksync',
+  sonic: 'sonic',
+  abstract: 'abstract',
+  berachain: 'berachain',
+  pulsechain: 'pulsechain',
+  tron: 'tron',
+  hyperliquid: 'hyperliquid', hyperevm: 'hyperliquid',
+  robinhood: 'robinhood',
+};
+
+function normalizeExternalChain(id: string): string {
+  const key = id.toLowerCase();
+  return EXTERNAL_CHAIN_ALIASES[key] ?? key;
+}
+
+const API_TIMEOUT_MS = 5000;
+// Positive results are cached indefinitely (a token's home chain is stable);
+// negative results expire so a token that later gains liquidity can re-resolve.
+const NEGATIVE_CACHE_TTL_MS = 10 * 60 * 1000;
+const chainResolveCache = new Map<string, { slug: string | null; expires: number }>();
+
+async function fetchDexScreenerChain(address: string): Promise<string | null> {
+  const res = await fetch(
+    `https://api.dexscreener.com/latest/dex/search?q=${address}`,
+    { signal: AbortSignal.timeout(API_TIMEOUT_MS) },
+  );
+  if (!res.ok) return null;
+  const data = (await res.json()) as {
+    pairs?: { chainId?: string; baseToken?: { address?: string }; liquidity?: { usd?: number } }[];
+  };
+  const lower = address.toLowerCase();
+  let best: { slug: string; liq: number } | null = null;
+  for (const p of data.pairs ?? []) {
+    if (!p.chainId || p.baseToken?.address?.toLowerCase() !== lower) continue;
+    const liq = p.liquidity?.usd ?? 0;
+    if (!best || liq > best.liq) best = { slug: normalizeExternalChain(p.chainId), liq };
+  }
+  return best?.slug ?? null;
+}
+
+async function fetchGeckoTerminalChain(address: string): Promise<string | null> {
+  const res = await fetch(
+    `https://api.geckoterminal.com/api/v2/search/pools?query=${address}`,
+    { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(API_TIMEOUT_MS) },
+  );
+  if (!res.ok) return null;
+  const data = (await res.json()) as {
+    data?: {
+      attributes?: { reserve_in_usd?: string };
+      relationships?: { base_token?: { data?: { id?: string } } };
+    }[];
+  };
+  const lower = address.toLowerCase();
+  let best: { slug: string; liq: number } | null = null;
+  for (const pool of data.data ?? []) {
+    // base_token id is `<network>_<address>`; the address (0x hex) has no
+    // underscore, so split on the last underscore to isolate the network.
+    const id = pool.relationships?.base_token?.data?.id ?? '';
+    const sep = id.lastIndexOf('_');
+    if (sep < 0) continue;
+    const network = id.slice(0, sep);
+    const tokenAddr = id.slice(sep + 1);
+    if (tokenAddr.toLowerCase() !== lower) continue;
+    const liq = parseFloat(pool.attributes?.reserve_in_usd ?? '0') || 0;
+    if (!best || liq > best.liq) best = { slug: normalizeExternalChain(network), liq };
+  }
+  return best?.slug ?? null;
+}
+
+export async function resolveEvmChainFromApi(address: string): Promise<string | null> {
+  if (!address.startsWith('0x')) return null;
+
+  const cached = chainResolveCache.get(address);
+  if (cached && (cached.slug !== null || cached.expires > Date.now())) {
+    return cached.slug;
+  }
+
+  let slug: string | null = null;
+  try {
+    slug = await fetchDexScreenerChain(address);
+  } catch (err) {
+    console.error('[contract] DexScreener chain lookup failed:', (err as Error).message);
+  }
+  if (!slug) {
+    try {
+      slug = await fetchGeckoTerminalChain(address);
+    } catch (err) {
+      console.error('[contract] GeckoTerminal chain lookup failed:', (err as Error).message);
+    }
+  }
+
+  chainResolveCache.set(address, { slug, expires: Date.now() + NEGATIVE_CACHE_TTL_MS });
+  return slug;
+}
+
 const REFERRALS = { axiom: 'danielref', padre: 'daniel_dev', gmgn: 'danieldev', bloom: 'daniel' };
+
+// Rewrite gmgn/axiom referral codes in third-party links (e.g. Rick bot's
+// per-terminal buy links) so they carry our referral instead of the sender's.
+// Address and chain are preserved; only the referral portion is swapped.
+export function rewriteReferralLinks(url: string): string {
+  // gmgn.ai/{chain}/token/{ref}_{address}  (ref may be absent)
+  const gmgn = url.match(/^(https?:\/\/gmgn\.ai\/[^/]+\/token\/)([^?#]+)(.*)$/i);
+  if (gmgn) {
+    const rest = gmgn[2];
+    const address = rest.includes('_') ? rest.slice(rest.indexOf('_') + 1) : rest;
+    return `${gmgn[1]}${REFERRALS.gmgn}_${address}${gmgn[3]}`;
+  }
+  // axiom.trade/t/{address}/@{ref}
+  const axiom = url.match(/^(https?:\/\/axiom\.trade\/t\/[^/]+\/@)[^/?#]+(.*)$/i);
+  if (axiom) {
+    return `${axiom[1]}${REFERRALS.axiom}${axiom[2]}`;
+  }
+  return url;
+}
 
 function getPresetTemplate(platform: string, chain: 'sol' | 'evm', evmChain?: string): string {
   const evmSlug = evmChain || 'base';

@@ -11,7 +11,26 @@ const MAX_MESSAGES_PER_ROOM = 1000;
 const MAX_ALERTS = 50;
 const MAX_CONTRACTS = 2000;
 const MAX_PANES = 4;
+
+function deriveAddressChains(contracts: ContractEntry[]): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const c of contracts) {
+    if (c.chain === 'evm' && c.evmChain) map[c.address.toLowerCase()] = c.evmChain;
+  }
+  return map;
+}
 const PANE_STORAGE_KEY = 'trenchcord.paneRoomIds';
+
+// A popout window shares the main window's origin (and therefore its
+// localStorage). It must never write the shared layout keys or persist layout
+// to the backend, or it would clobber the main window's saved split layout.
+export const IS_POPOUT = (() => {
+  try {
+    return new URLSearchParams(window.location.search).get('popout') === '1';
+  } catch {
+    return false;
+  }
+})();
 
 function loadPaneRoomIds(): string[] {
   try {
@@ -24,6 +43,7 @@ function loadPaneRoomIds(): string[] {
 }
 
 function savePaneRoomIds(ids: string[]): void {
+  if (IS_POPOUT) return;
   try { localStorage.setItem(PANE_STORAGE_KEY, JSON.stringify(ids)); } catch {}
 }
 
@@ -70,6 +90,7 @@ interface AppState {
   activeRoomId: string | null;
   paneRoomIds: string[];
   paneLocks: boolean[];
+  poppedOutRoomIds: string[];
   activePaneIndex: number;
   unreadCounts: Record<string, number>;
   layoutEditMode: boolean;
@@ -88,15 +109,20 @@ interface AppState {
   connected: boolean;
   focusFilter: { guildId: string | null; channelId: string; guildName: string | null; channelName: string } | null;
   contracts: ContractEntry[];
+  // Maps a lowercased contract address to its resolved EVM chain slug, so a
+  // message's trade link can be corrected once the chain is known (e.g. from a
+  // Rick follow-up or the API backfill), even if the address was posted bare.
+  addressChains: Record<string, string>;
   maskedTokens: MaskedToken[];
   sidebarCollapsed: boolean;
   telegramChats: TelegramChatInfo[];
   gatewayAuthError: string | null;
+  gatewayBlocked: boolean;
   previewMode: boolean;
 
   setPreviewMode: (value: boolean) => void;
   importSettings: (raw: unknown) => Promise<{ success: boolean; error?: string }>;
-  setGatewayAuthError: (error: string | null) => void;
+  setGatewayAuthError: (error: string | null, blocked?: boolean) => void;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   setConnected: (connected: boolean) => void;
@@ -108,6 +134,8 @@ interface AppState {
   togglePaneLock: (index: number) => void;
   addPane: () => void;
   removePane: (index: number) => void;
+  popOutPane: (index: number) => void;
+  dockPopout: (roomId: string) => void;
   swapPanes: (a: number, b: number) => void;
   toggleLayoutEditMode: () => void;
   setGridMirror: (value: boolean) => void;
@@ -142,7 +170,7 @@ interface AppState {
   createRoom: (name: string, channels: Room['channels'], highlightedUsers: string[], color?: string | null, filteredUsers?: string[], filterEnabled?: boolean) => Promise<Room>;
   updateRoom: (id: string, data: Partial<Omit<Room, 'id'>>) => Promise<void>;
   deleteRoom: (id: string) => Promise<void>;
-  updateConfig: (data: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'telegramColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout'>>) => Promise<void>;
+  updateConfig: (data: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'telegramColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout' | 'seenAnnouncements' | 'discordProxyUrl'>>) => Promise<void>;
   sendMessage: (channelId: string, content: string, files?: File[], source?: 'discord' | 'telegram') => Promise<{ success: boolean; error?: string }>;
   hideUser: (guildId: string | null, channelId: string, userId: string, displayName: string) => Promise<void>;
   unhideUser: (guildId: string | null, channelId: string, userId: string) => Promise<void>;
@@ -167,6 +195,7 @@ export const useAppStore = create<AppState>((set, get) => {
   activeRoomId: loadPaneRoomIds()[0] ?? null,
   paneRoomIds: loadPaneRoomIds(),
   paneLocks: [],
+  poppedOutRoomIds: [],
   activePaneIndex: 0,
   unreadCounts: {},
   layoutEditMode: loadLayoutEditMode(),
@@ -185,10 +214,12 @@ export const useAppStore = create<AppState>((set, get) => {
   connected: false,
   focusFilter: null,
   contracts: [],
+  addressChains: {},
   maskedTokens: [],
   sidebarCollapsed: false,
   telegramChats: [],
   gatewayAuthError: null,
+  gatewayBlocked: false,
   previewMode: false,
 
   setPreviewMode: (value) => set({ previewMode: value }),
@@ -259,7 +290,7 @@ export const useAppStore = create<AppState>((set, get) => {
     }
   },
 
-  setGatewayAuthError: (error) => set({ gatewayAuthError: error }),
+  setGatewayAuthError: (error, blocked) => set({ gatewayAuthError: error, gatewayBlocked: error ? (blocked ?? false) : false }),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   setConnected: (connected) => set({ connected }),
@@ -436,6 +467,46 @@ export const useAppStore = create<AppState>((set, get) => {
     get().persistLayout();
   },
 
+  // Detach a pane into a native popout window. The chat leaves the grid (which
+  // may drop to zero panes -> "No room selected" empty state) and is tracked in
+  // poppedOutRoomIds so it re-docks when the popout closes. Kept ephemeral: the
+  // removal is not persisted, so the saved layout stays intact across restarts.
+  popOutPane: (index) => {
+    const state = get();
+    if (index < 0 || index >= state.paneRoomIds.length) return;
+    const roomId = state.paneRoomIds[index];
+    const room = state.rooms.find((r) => r.id === roomId);
+    const title = room?.name ?? (roomId === 'mentions' ? 'Mentions' : 'Trenchcord');
+    // Hand the popout the messages already loaded here so it shows history
+    // immediately (covers rooms, DMs, and mentions, which /history can't).
+    const seed = state.messages[roomId] ?? [];
+    window.trenchcord?.openPopout(roomId, title, seed);
+    set((s) => {
+      const panes = s.paneRoomIds.filter((_, i) => i !== index);
+      const locks = s.paneLocks.filter((_, i) => i !== index);
+      const activePaneIndex = Math.max(0, Math.min(s.activePaneIndex, panes.length - 1));
+      const poppedOutRoomIds = s.poppedOutRoomIds.includes(roomId)
+        ? s.poppedOutRoomIds
+        : [...s.poppedOutRoomIds, roomId];
+      return { paneRoomIds: panes, paneLocks: locks, activeRoomId: panes[0] ?? null, activePaneIndex, poppedOutRoomIds };
+    });
+  },
+
+  // Re-dock a chat when its popout window closes.
+  dockPopout: (roomId) => {
+    set((s) => {
+      if (!s.poppedOutRoomIds.includes(roomId)) return s;
+      const poppedOutRoomIds = s.poppedOutRoomIds.filter((id) => id !== roomId);
+      if (s.paneRoomIds.includes(roomId) || s.paneRoomIds.length >= MAX_PANES) {
+        return { poppedOutRoomIds };
+      }
+      const panes = [...s.paneRoomIds, roomId];
+      const locks = [...s.paneLocks];
+      while (locks.length < panes.length) locks.push(false);
+      return { paneRoomIds: panes, paneLocks: locks, activeRoomId: panes[0] ?? null, poppedOutRoomIds };
+    });
+  },
+
   swapPanes: (a, b) => {
     set((state) => {
       if (a === b || a < 0 || b < 0 || a >= state.paneRoomIds.length || b >= state.paneRoomIds.length) return state;
@@ -489,7 +560,7 @@ export const useAppStore = create<AppState>((set, get) => {
   // Persist the current split layout (panes + mirror) to the backend config so
   // it survives restarts even when localStorage is unavailable (desktop app).
   persistLayout: () => {
-    if (demo) return;
+    if (demo || IS_POPOUT) return;
     const { paneRoomIds, paneLocks, gridMirror } = get();
     apiFetch(`${API_BASE}/config`, {
       method: 'PUT',
@@ -628,15 +699,23 @@ export const useAppStore = create<AppState>((set, get) => {
     set((state) => {
       const updated = [entry, ...state.contracts];
       if (updated.length > MAX_CONTRACTS) updated.length = MAX_CONTRACTS;
+      if (entry.chain === 'evm' && entry.evmChain) {
+        const key = entry.address.toLowerCase();
+        if (state.addressChains[key] !== entry.evmChain) {
+          return { contracts: updated, addressChains: { ...state.addressChains, [key]: entry.evmChain } };
+        }
+      }
       return { contracts: updated };
     });
   },
 
   updateContractChain: (address, evmChain) => {
+    const key = address.toLowerCase();
     set((state) => ({
       contracts: state.contracts.map((c) =>
-        c.address === address && c.chain === 'evm' ? { ...c, evmChain } : c,
+        c.address.toLowerCase() === key && c.chain === 'evm' ? { ...c, evmChain } : c,
       ),
+      addressChains: { ...state.addressChains, [key]: evmChain },
     }));
   },
 
@@ -758,7 +837,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const res = await apiFetch(`${API_BASE}/contracts`);
       if (!res.ok) return;
       const contracts: ContractEntry[] = await res.json();
-      set({ contracts });
+      set({ contracts, addressChains: deriveAddressChains(contracts) });
     } catch (err) {
       console.error('[Store] Failed to fetch contracts:', err);
     }

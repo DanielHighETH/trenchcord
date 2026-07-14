@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { DiscordGateway } from './gateway.js';
 import type { GatewayAuthFailure } from './gateway.js';
+import type { ProxyBundle } from './proxy.js';
 import type { GuildInfo, DMChannel, DiscordMessage, DiscordUser } from './types.js';
 
 const DEDUP_WINDOW_MS = 10_000;
@@ -15,13 +16,13 @@ export class GatewayManager extends EventEmitter {
   private readyResolve: (() => void) | null = null;
   private readyPromise: Promise<void>;
 
-  constructor(tokens: string[]) {
+  constructor(tokens: string[], proxy: ProxyBundle | null = null) {
     super();
     this.readyPromise = new Promise<void>((resolve) => {
       this.readyResolve = resolve;
     });
     tokens.forEach((token, index) => {
-      const gw = new DiscordGateway(token, index);
+      const gw = new DiscordGateway(token, index, proxy);
       this.gateways.push(gw);
       this.wireEvents(gw);
     });

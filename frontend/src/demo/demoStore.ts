@@ -76,7 +76,12 @@ export function createDemoOverrides(set: SetFn, get: GetFn) {
     fetchContracts: () => {
       const state = get();
       if ((state.contracts as ContractEntry[]).length === 0) {
-        set({ contracts: clone(DEMO_CONTRACTS) });
+        const contracts = clone(DEMO_CONTRACTS) as ContractEntry[];
+        const addressChains: Record<string, string> = {};
+        for (const c of contracts) {
+          if (c.chain === 'evm' && c.evmChain) addressChains[c.address.toLowerCase()] = c.evmChain;
+        }
+        set({ contracts, addressChains });
       }
     },
 

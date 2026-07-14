@@ -124,6 +124,9 @@ export default function GlobalSettings() {
   const [showNewToken, setShowNewToken] = useState(false);
   const [tokenError, setTokenError] = useState('');
   const [addingToken, setAddingToken] = useState(false);
+  const [proxyUrl, setProxyUrl] = useState('');
+  const [proxySaving, setProxySaving] = useState(false);
+  const [proxySaved, setProxySaved] = useState(false);
   const [showTelegramSetup, setShowTelegramSetup] = useState(false);
 
   useEffect(() => {
@@ -182,6 +185,7 @@ export default function GlobalSettings() {
       setRoleColors(config.roleColors ?? true);
       setMobileZoomScale(config.mobileZoomScale ?? 1);
       setSplitLayout(config.splitLayout === 'grid' ? 'grid' : 'row');
+      setProxyUrl(config.discordProxyUrl ?? '');
     }
   }, [config]);
 
@@ -598,6 +602,47 @@ export default function GlobalSettings() {
                     <p className="text-xs text-discord-red mt-1.5">{tokenError}</p>
                   )}
                 </div>
+
+                {/* Connection / Proxy (desktop only) */}
+                {!isHostedMode && (
+                  <div className="mt-8 pt-6 border-t border-discord-divider">
+                    <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Connection</h3>
+                    <p className="text-xs sm:text-sm text-discord-text-muted mb-3 sm:mb-4">
+                      If Discord won't load on a VPN, route the connection through an HTTP/HTTPS proxy.
+                      Leave blank to connect directly. SOCKS proxies are not supported.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={proxyUrl}
+                        onChange={(e) => { setProxyUrl(e.target.value); setProxySaved(false); }}
+                        placeholder="http://user:pass@host:port"
+                        className="flex-1 bg-discord-sidebar border-none rounded px-2 sm:px-3 py-2 text-xs sm:text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple font-mono"
+                        disabled={proxySaving}
+                        spellCheck={false}
+                        autoComplete="off"
+                      />
+                      <button
+                        onClick={async () => {
+                          setProxySaving(true);
+                          setProxySaved(false);
+                          await updateConfig({ discordProxyUrl: proxyUrl.trim() });
+                          setProxySaving(false);
+                          setProxySaved(true);
+                        }}
+                        disabled={proxySaving || proxyUrl.trim() === (config?.discordProxyUrl ?? '')}
+                        className="px-3 py-2 bg-discord-blurple hover:bg-discord-blurple-hover disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm text-white transition-colors whitespace-nowrap"
+                      >
+                        {proxySaving ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                    {proxySaved && (
+                      <p className="text-xs text-discord-green mt-1.5">
+                        Saved. Reconnecting Discord{proxyUrl.trim() ? ' through the proxy' : ' directly'}…
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Telegram Section */}
                 <div className="mt-8 pt-6 border-t border-discord-divider">
@@ -2492,9 +2537,14 @@ export default function GlobalSettings() {
         <div className={`border-t px-3 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-3 shrink-0 transition-colors ${
           hasUnsavedChanges ? 'border-discord-yellow/30 bg-discord-yellow/5' : 'border-discord-divider bg-discord-dark'
         }`}>
-          <span className={`text-[11px] sm:text-sm transition-opacity ${hasUnsavedChanges ? 'opacity-100 text-discord-yellow' : 'opacity-0'}`}>
-            Unsaved changes
-          </span>
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <span className="text-[11px] text-discord-text-muted select-text whitespace-nowrap">
+              Trenchcord v{__APP_VERSION__}
+            </span>
+            <span className={`text-[11px] sm:text-sm transition-opacity ${hasUnsavedChanges ? 'opacity-100 text-discord-yellow' : 'opacity-0'}`}>
+              Unsaved changes
+            </span>
+          </div>
           <div className="flex items-center gap-2 sm:gap-3">
             {hasUnsavedChanges && (
               <button
