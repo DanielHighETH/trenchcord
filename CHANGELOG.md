@@ -10,6 +10,7 @@ All notable changes to Trenchcord are documented here.
 - **Proxy support** — if Discord won't load behind a VPN, route the gateway and history connection through an HTTP/HTTPS proxy under Settings > General > Connection. Leave it blank to connect directly (desktop app)
 
 ### Fixed
+- **Desktop app launches again** — the 1.1.0 desktop build could crash on startup and show a blank/black window; it now opens correctly. Update to 1.1.1 if you were affected (desktop app)
 - **Connection blocks no longer look like a bad token** — a VPN or datacenter IP block (Discord/Cloudflare rejecting the connection) now shows a distinct `Connection blocked` banner instead of falsely flagging your token as invalid
 - **Richer Telegram text** — bold, code blocks, and inline links now render correctly; a formatting-offset bug that could mangle or misplace styled text is fixed, and noise-only links (bare numbers) are dropped to plain text
 - **Announcements stay dismissed** — dismissed in-app announcements now persist across restarts instead of reappearing every launch (desktop app)
