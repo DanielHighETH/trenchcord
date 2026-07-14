@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Apple, Check, Copy, Terminal, ShieldCheck } from 'lucide-react';
 import { AnimatedSection } from './AnimatedSection';
 
-const MAC_DOWNLOAD = 'https://github.com/DanielHighETH/trenchcord/releases/latest/download/Trenchcord-mac.dmg';
-const WIN_DOWNLOAD = 'https://github.com/DanielHighETH/trenchcord/releases/latest/download/Trenchcord-Setup.exe';
+const MAC_DOWNLOAD = 'https://github.com/DanielHighETH/trenchcord/releases/download/v1.0.0/Trenchcord-1.0.0-arm64.dmg';
+const WIN_DOWNLOAD = 'https://github.com/DanielHighETH/trenchcord/releases/download/v1.0.0/Trenchcord-Setup-1.0.0.exe';
 const RELEASES = 'https://github.com/DanielHighETH/trenchcord/releases/latest';
 
 const XATTR_CMD = 'xattr -cr /Applications/Trenchcord.app';

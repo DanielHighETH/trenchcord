@@ -19,26 +19,31 @@ export function Navbar() {
     const handleScroll = () => {
       setScrolled(window.scrollY > 20);
 
-      const sections = navLinks.filter((l) => !l.external).map((l) => l.href.slice(1));
+      const els = navLinks
+        .filter((l) => !l.external)
+        .map((l) => document.getElementById(l.href.slice(1)))
+        .filter((el): el is HTMLElement => el !== null);
 
       const nearBottom =
         window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 300;
-      if (nearBottom) {
-        setActiveSection(sections[sections.length - 1]);
+      if (nearBottom && els.length) {
+        const last = els.reduce((a, b) => (a.offsetTop > b.offsetTop ? a : b));
+        setActiveSection(last.id);
         return;
       }
 
-      for (let i = sections.length - 1; i >= 0; i--) {
-        const el = document.getElementById(sections[i]);
-        if (el) {
-          const rect = el.getBoundingClientRect();
-          if (rect.top <= 120) {
-            setActiveSection(sections[i]);
-            return;
-          }
+      // Active = the section whose top most recently crossed the 120px line,
+      // independent of nav-link ordering vs. DOM ordering.
+      let current = '';
+      let currentTop = -Infinity;
+      for (const el of els) {
+        const top = el.getBoundingClientRect().top;
+        if (top <= 120 && top > currentTop) {
+          currentTop = top;
+          current = el.id;
         }
       }
-      setActiveSection('');
+      setActiveSection(current);
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
