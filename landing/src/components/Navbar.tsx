@@ -7,7 +7,7 @@ const navLinks: { label: string; href: string; external?: boolean }[] = [
   { label: 'Security', href: '#security' },
   { label: 'Setup', href: '#setup' },
   { label: 'Changelog', href: '#changelog' },
-  { label: 'Launch App', href: 'https://app.trenchcord.app', external: true },
+  { label: 'Download', href: '#download' },
 ];
 
 export function Navbar() {

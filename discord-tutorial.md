@@ -11,7 +11,7 @@ Two messages, each under Discord's 2000-char limit. Copy each block (inside the 
 
 **Trenchcord** is a Discord frontend supercharged for trenching — aggregate channels from multiple servers (and Telegram), highlight users, auto-detect Solana + EVM contracts, and one-click trade on Axiom / GMGN / Bloom / Padre from one dashboard.
 
-> Don't want to self-host? Just use **<https://app.trenchcord.app>** — sign up, paste your token, done. The rest of this guide is for running it locally.
+> Don't want to self-host? Just download the desktop app for **macOS** or **Windows** → <https://github.com/DanielHighETH/trenchcord/releases/latest> — install, paste your token, done. The rest of this guide is for running it from source.
 
 ## 0. Requirements
 
@@ -112,7 +112,7 @@ For hot-reload dev mode: `npm run dev`
 ## Links
 
 - Site → <https://trenchcord.app>
-- App → <https://app.trenchcord.app>
+- Download → <https://github.com/DanielHighETH/trenchcord/releases/latest>
 - Demo → <https://demo.trenchcord.app>
 - GitHub → <https://github.com/DanielHighETH/trenchcord>
 - X → <https://x.com/trenchcordapp>

@@ -37,6 +37,9 @@ publish:
   releaseType: release
 
 win:
+  # Stable filename so the landing page can link to
+  # /releases/latest/download/Trenchcord-Setup.exe across every release.
+  artifactName: Trenchcord-Setup.${ext}
   target:
     - nsis
 
@@ -47,9 +50,16 @@ nsis:
 
 mac:
   category: public.app-category.finance
+  # Universal build so one download runs on both Intel and Apple Silicon, and a
+  # stable filename for /releases/latest/download/Trenchcord-mac.dmg.
+  artifactName: Trenchcord-mac.${ext}
   target:
-    - dmg
-    - zip
+    - target: dmg
+      arch:
+        - universal
+    - target: zip
+      arch:
+        - universal
 
 # The app is unsigned, so ship first-launch (xattr) instructions inside the DMG
 # next to the app + Applications shortcut.

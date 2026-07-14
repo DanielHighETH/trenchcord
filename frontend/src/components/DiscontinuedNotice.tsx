@@ -19,7 +19,7 @@ export default function DiscontinuedNotice() {
 
         <p className="text-discord-text-muted text-sm sm:text-base leading-relaxed mb-8">
           The hosted web version of Trenchcord is no longer maintained. Trenchcord now
-          runs as a free desktop app for Windows and macOS &mdash; it's faster, more
+          runs as a desktop app for Windows and macOS &mdash; it's faster, more
           reliable, and keeps your token and data entirely on your own machine.
         </p>
 

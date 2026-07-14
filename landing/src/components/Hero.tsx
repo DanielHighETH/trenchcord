@@ -63,7 +63,7 @@ export function Hero() {
           <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
               <Globe size={12} />
-              Use Online or Self-Host
+              Desktop App · macOS &amp; Windows
             </span>
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/20 text-amber-400 text-xs font-semibold">
               <ShieldCheck size={12} />
@@ -78,27 +78,26 @@ export function Hero() {
 
         <AnimatedSection delay={0.3}>
           <p className="mt-4 text-sm text-dc-text-faint max-w-xl mx-auto">
-            Use the hosted app at{' '}
-            <a href="https://app.trenchcord.app" target="_blank" rel="noopener noreferrer" className="text-dc-blurple hover:underline">
-              app.trenchcord.app
-            </a>{' '}
-            — no setup required — or self-host it on your own machine.
+            Download the desktop app for macOS or Windows — or self-host it on your own machine.
             Aggregate channels, track key users, auto-detect contracts,
             and trade in one click — all from a single dashboard.
+            Your token and data never leave your device.
           </p>
         </AnimatedSection>
 
         <AnimatedSection delay={0.4}>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <a
-              href="https://app.trenchcord.app"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="#download"
+              onClick={(e) => {
+                e.preventDefault();
+                document.querySelector('#download')?.scrollIntoView({ behavior: 'smooth' });
+              }}
               className="inline-flex items-center gap-2 px-6 py-2.5 rounded bg-dc-blurple text-white font-medium text-sm hover:bg-dc-blurple-hover transition-colors"
             >
-              Launch App
+              Download
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="mt-px">
-                <path d="M8 3L13 8L8 13M13 8H3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M8 3v8M8 11 4.5 7.5M8 11l3.5-3.5M3 13h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </a>
             <a

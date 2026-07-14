@@ -11,7 +11,7 @@ Three messages, each under Discord's 2000-char limit. Copy each block (inside th
 
 **Trenchcord** is a Discord frontend supercharged for trenching — aggregate channels from multiple servers (and Telegram), highlight users, auto-detect Solana + EVM contracts, and one-click trade on Axiom / GMGN / Bloom / Padre from one dashboard.
 
-Use it hosted at **<https://app.trenchcord.app>** or self-host it (no database, tokens never leave your PC).
+Download the desktop app for **macOS** or **Windows** → **<https://github.com/DanielHighETH/trenchcord/releases/latest>** or self-host it (no database, tokens never leave your PC).
 
 ## Aggregation & Monitoring
 
@@ -102,7 +102,7 @@ Not sure if it's for you? **You can try the full app live in your browser — no
 Play around with rooms, highlighting, contract detection, focus mode and everything else — all with mock data so nothing touches your real account.
 
 When you're ready for the real thing:
-- **Hosted app** (zero setup) → <https://app.trenchcord.app>
+- **Desktop app** (macOS & Windows) → <https://github.com/DanielHighETH/trenchcord/releases/latest>
 - **Self-host / source code** → <https://github.com/DanielHighETH/trenchcord>
 - **Setup guide** → <https://trenchcord.app/#setup>
 - **Updates / X** → <https://x.com/trenchcordapp>

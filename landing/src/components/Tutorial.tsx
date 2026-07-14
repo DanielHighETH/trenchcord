@@ -48,6 +48,27 @@ function RequirementsContent() {
 function InstallationContent() {
   return (
     <div className="space-y-5">
+      <div className="flex items-start gap-3 rounded-lg border border-dc-blurple/30 bg-dc-blurple/5 p-4">
+        <Download size={18} className="text-dc-blurple shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-semibold text-dc-blurple">Just want to use Trenchcord?</p>
+          <p className="text-xs text-dc-text-muted mt-1">
+            Grab the{' '}
+            <a
+              href="#download"
+              onClick={(e) => {
+                e.preventDefault();
+                document.querySelector('#download')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="text-dc-blurple hover:underline"
+            >
+              desktop app for macOS or Windows
+            </a>{' '}
+            — no Node, no terminal. The steps below are only for self-hosting from source.
+          </p>
+        </div>
+      </div>
+
       <p className="text-dc-text-muted text-sm">Get the source code and install dependencies:</p>
 
       <div className="space-y-4">

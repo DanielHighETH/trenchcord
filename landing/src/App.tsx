@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
+import { Download } from './components/Download';
 import { Features } from './components/Features';
 import { Security } from './components/Security';
 import { OpenSource } from './components/OpenSource';
@@ -24,6 +25,7 @@ export default function App() {
     <div className="min-h-screen bg-dc-main text-dc-text">
       <Navbar />
       <Hero />
+      <Download />
       <Features />
       <Security />
       <div className="mx-auto max-w-5xl px-6"><hr className="border-dc-divider" /></div>

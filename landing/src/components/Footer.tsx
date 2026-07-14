@@ -1,4 +1,4 @@
-import { Github, ExternalLink } from 'lucide-react';
+import { Github, Download } from 'lucide-react';
 
 export function Footer() {
   return (
@@ -15,13 +15,11 @@ export function Footer() {
         </p>
         <div className="flex items-center gap-3">
           <a
-            href="https://app.trenchcord.app"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="#download"
             className="text-dc-text-muted hover:text-dc-text transition-colors flex items-center gap-1.5 text-xs"
           >
-            <ExternalLink size={14} />
-            Launch App
+            <Download size={14} />
+            Download
           </a>
           <a
             href="https://x.com/trenchcordapp"
