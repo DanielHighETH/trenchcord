@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { useAppStore } from '../stores/appStore';
+import { popoutSeedStorageKey, useAppStore } from '../stores/appStore';
 import type { FrontendMessage } from '../types';
 import ChatPane from './ChatPane';
 
@@ -12,9 +12,33 @@ function getPopoutRoomId(): string {
   }
 }
 
-// Renders a single chat in its own (Electron) window. Its own renderer means an
-// independent store + WebSocket, so it stays live on its own. The room switcher
-// drives the shown chat via the store's single pane.
+function getPopoutTitle(): string {
+  try {
+    return new URLSearchParams(window.location.search).get('title') ?? '';
+  } catch {
+    return '';
+  }
+}
+
+async function loadPopoutSeed(roomId: string): Promise<FrontendMessage[] | null> {
+  const fromBridge = (await window.trenchcord?.getPopoutSeed(roomId)) as FrontendMessage[] | null | undefined;
+  if (Array.isArray(fromBridge) && fromBridge.length > 0) return fromBridge;
+
+  try {
+    const key = popoutSeedStorageKey(roomId);
+    const raw = sessionStorage.getItem(key);
+    sessionStorage.removeItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as FrontendMessage[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Renders a single chat in its own window (Electron or browser popout). Its own
+// renderer means an independent store + WebSocket, so it stays live on its own.
+// The room switcher drives the shown chat via the store's single pane.
 export default function PopoutView() {
   useWebSocket();
 
@@ -27,6 +51,11 @@ export default function PopoutView() {
   const paneRoomIds = useAppStore((s) => s.paneRoomIds);
 
   const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const title = getPopoutTitle();
+    if (title) document.title = title;
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,8 +72,8 @@ export default function PopoutView() {
     // Seed the store with the messages the main window already had loaded, so
     // history shows instantly (rooms, DMs, and mentions alike).
     (async () => {
-      const seed = (await window.trenchcord?.getPopoutSeed(roomIdParam)) as FrontendMessage[] | null | undefined;
-      if (cancelled || !Array.isArray(seed) || seed.length === 0) return;
+      const seed = await loadPopoutSeed(roomIdParam);
+      if (cancelled || !seed || seed.length === 0) return;
       useAppStore.setState((s) => {
         const existing = s.messages[roomIdParam] ?? [];
         const existingIds = new Set(existing.map((m) => m.id));

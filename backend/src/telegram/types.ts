@@ -5,6 +5,7 @@ export interface TelegramChat {
   photo?: string | null;
   username?: string | null;
   inviteLink?: string | null;
+  isBot?: boolean;
 }
 
 export interface TelegramSender {

@@ -1,6 +1,16 @@
 {
   "announcements": [
     {
+      "id": "release-1.2.0",
+      "title": "Trenchcord 1.2.0 is out",
+      "body": "Pop-out chat windows now work in the browser, and Telegram bot DMs can finally be added to rooms. Update from the desktop app or grab the latest build.",
+      "level": "info",
+      "ctaLabel": "See what's new",
+      "ctaUrl": "https://trenchcord.app/#changelog",
+      "createdAt": "2026-07-25T00:00:00Z",
+      "expiresAt": null
+    },
+    {
       "id": "release-1.1.1",
       "title": "Trenchcord 1.1.1 is out",
       "body": "Pop-out chat windows, automatic EVM chain detection, and proxy support for VPN users — plus fixes. Update from the desktop app or grab the latest build.",

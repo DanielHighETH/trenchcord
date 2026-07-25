@@ -9,6 +9,15 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2026-07-25',
+    added: [
+      '**Browser pop-out windows** — pop out a room, DM, or Mentions into its own browser window from the self-hosted web UI, not just the desktop app. Closing the window re-docks the chat into your layout',
+    ],
+    fixed: [
+      '**Telegram bot chats in rooms** — DMs with Telegram bots now show up in the room channel picker (with a `BOT` badge), so you can add alert bots and other bot chats alongside groups and channels',
+    ],
+  },
+  {
     date: '2026-07-14',
     added: [
       '**Pop-out chat windows** — detach any room, DM, or your Mentions feed into its own native window that keeps streaming live, so you can watch a caller channel on a second monitor while you trade. Click the pop-out icon in a chat header; the chat re-docks automatically when you close the window (desktop app)',

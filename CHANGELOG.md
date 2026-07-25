@@ -2,6 +2,14 @@
 
 All notable changes to Trenchcord are documented here.
 
+## 2026-07-25
+
+### Added
+- **Browser pop-out windows** — pop out a room, DM, or Mentions into its own browser window from the self-hosted web UI, not just the desktop app. Closing the window re-docks the chat into your layout
+
+### Fixed
+- **Telegram bot chats in rooms** — DMs with Telegram bots now show up in the room channel picker (with a `BOT` badge), so you can add alert bots and other bot chats alongside groups and channels
+
 ## 2026-07-14
 
 ### Added

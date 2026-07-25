@@ -477,7 +477,7 @@ export class TelegramClientWrapper extends EventEmitter {
         let chat: TelegramChat | null = null;
 
         if (entity instanceof Api.User) {
-          if (entity.bot || entity.self) continue;
+          if (entity.self) continue;
           chat = {
             id: entity.id.toString(),
             title: entity.firstName
@@ -485,6 +485,7 @@ export class TelegramClientWrapper extends EventEmitter {
               : entity.username ?? 'User',
             type: 'user',
             username: entity.username ?? null,
+            isBot: entity.bot ?? false,
           };
         } else if (entity instanceof Api.Chat) {
           chat = {

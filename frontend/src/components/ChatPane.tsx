@@ -484,7 +484,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const headerIconClass = isTgDMView ? 'text-[#2AABEE]' : 'text-discord-channel-icon';
 
   const canDrag = editMode && paneCount > 1 && !locked;
-  const canPopOut = variant === 'grid' && !!window.trenchcord?.openPopout && !poppedOutRoomIds.includes(roomId);
+  const canPopOut = variant === 'grid' && !poppedOutRoomIds.includes(roomId);
 
   const handleDrop = (e: React.DragEvent) => {
     if (!editMode || locked) return;

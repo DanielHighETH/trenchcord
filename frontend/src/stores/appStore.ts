@@ -32,6 +32,60 @@ export const IS_POPOUT = (() => {
   }
 })();
 
+export function popoutSeedStorageKey(roomId: string): string {
+  return `trenchcord.popoutSeed.${roomId}`;
+}
+
+// Browser (non-Electron) popouts: track Window handles so we can focus an
+// existing one and re-dock when the user closes it.
+const webPopoutWindows = new Map<string, Window>();
+const webPopoutPolls = new Map<string, number>();
+
+function openBrowserPopout(
+  roomId: string,
+  title: string,
+  seed: FrontendMessage[],
+  onClose: () => void,
+): boolean {
+  const existing = webPopoutWindows.get(roomId);
+  if (existing && !existing.closed) {
+    existing.focus();
+    return true;
+  }
+
+  try {
+    sessionStorage.setItem(popoutSeedStorageKey(roomId), JSON.stringify(seed));
+  } catch {
+    /* ignore quota / private mode */
+  }
+
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.searchParams.set('popout', '1');
+  url.searchParams.set('roomId', roomId);
+  if (title) url.searchParams.set('title', title);
+
+  const win = window.open(
+    url.toString(),
+    `trenchcord-popout-${roomId}`,
+    'popup=yes,width=520,height=720',
+  );
+  if (!win) return false;
+
+  webPopoutWindows.set(roomId, win);
+  const prev = webPopoutPolls.get(roomId);
+  if (prev != null) window.clearInterval(prev);
+  const pollId = window.setInterval(() => {
+    if (!win.closed) return;
+    window.clearInterval(pollId);
+    webPopoutPolls.delete(roomId);
+    webPopoutWindows.delete(roomId);
+    onClose();
+  }, 500);
+  webPopoutPolls.set(roomId, pollId);
+  return true;
+}
+
 function loadPaneRoomIds(): string[] {
   try {
     const raw = localStorage.getItem(PANE_STORAGE_KEY);
@@ -467,10 +521,11 @@ export const useAppStore = create<AppState>((set, get) => {
     get().persistLayout();
   },
 
-  // Detach a pane into a native popout window. The chat leaves the grid (which
-  // may drop to zero panes -> "No room selected" empty state) and is tracked in
-  // poppedOutRoomIds so it re-docks when the popout closes. Kept ephemeral: the
-  // removal is not persisted, so the saved layout stays intact across restarts.
+  // Detach a pane into a popout window (Electron IPC, or browser window.open).
+  // The chat leaves the grid (which may drop to zero panes -> "No room selected"
+  // empty state) and is tracked in poppedOutRoomIds so it re-docks when the
+  // popout closes. Kept ephemeral: the removal is not persisted, so the saved
+  // layout stays intact across restarts.
   popOutPane: (index) => {
     const state = get();
     if (index < 0 || index >= state.paneRoomIds.length) return;
@@ -480,7 +535,14 @@ export const useAppStore = create<AppState>((set, get) => {
     // Hand the popout the messages already loaded here so it shows history
     // immediately (covers rooms, DMs, and mentions, which /history can't).
     const seed = state.messages[roomId] ?? [];
-    window.trenchcord?.openPopout(roomId, title, seed);
+
+    if (window.trenchcord?.openPopout) {
+      window.trenchcord.openPopout(roomId, title, seed);
+    } else if (!openBrowserPopout(roomId, title, seed, () => get().dockPopout(roomId))) {
+      // Popup blocked — leave the pane in the grid.
+      return;
+    }
+
     set((s) => {
       const panes = s.paneRoomIds.filter((_, i) => i !== index);
       const locks = s.paneLocks.filter((_, i) => i !== index);

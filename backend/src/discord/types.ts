@@ -235,6 +235,7 @@ export interface TelegramChatInfo {
   title: string;
   type: 'user' | 'group' | 'supergroup' | 'channel';
   photo?: string | null;
+  isBot?: boolean;
 }
 
 export interface GuildInfo {

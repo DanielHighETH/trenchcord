@@ -641,7 +641,15 @@ export default function RoomConfig() {
                       <div className="space-y-0.5">
                         {filteredTelegramChats.map((chat) => {
                           const selected = isChannelSelected(chat.id);
-                          const typeLabel = chat.type === 'channel' ? 'CH' : chat.type === 'supergroup' ? 'SG' : chat.type === 'group' ? 'GP' : '';
+                          const typeLabel = chat.isBot
+                            ? 'BOT'
+                            : chat.type === 'channel'
+                              ? 'CH'
+                              : chat.type === 'supergroup'
+                                ? 'SG'
+                                : chat.type === 'group'
+                                  ? 'GP'
+                                  : '';
                           return (
                             <button
                               key={chat.id}
