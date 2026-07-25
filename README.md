@@ -1,5 +1,10 @@
 # Trenchcord
 
+[![Total Downloads](https://img.shields.io/github/downloads/DanielHighETH/trenchcord/total?label=downloads&color=success)](https://github.com/DanielHighETH/trenchcord/releases)
+[![Latest Release](https://img.shields.io/github/v/release/DanielHighETH/trenchcord?label=latest)](https://github.com/DanielHighETH/trenchcord/releases/latest)
+[![License](https://img.shields.io/github/license/DanielHighETH/trenchcord)](LICENSE)
+[![Discord](https://img.shields.io/badge/discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/cDhrRVZ9xg)
+
 **Your Discord, Supercharged for Trenching**
 
 Aggregate channels, track key users, auto-detect contracts, and trade in one click — all from a single dashboard. Trenchcord is a custom Discord frontend that combines multiple guild channels and DMs into custom "rooms" with user highlighting, keyword alerts, contract address detection, and optional chat capabilities.
