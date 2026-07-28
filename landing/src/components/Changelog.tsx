@@ -9,6 +9,20 @@ interface ChangelogEntry {
 
 const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2026-07-28',
+    added: [
+      '**One-click Solana trading via Slotshark** — buy a token the moment it\'s called, without leaving Trenchcord. When a message contains a Solana contract, a row of buy buttons appears under it with your own SOL amounts (up to five, fully editable). Add your Slotshark API token and wallets under Settings > Trading, where you can also set slippage, tip, priority fee, anti-MEV, and pick the US or EU server. A message with several contracts gets one clearly-labelled row per token, so you always know what you\'re buying. Buys fire on a single click by default; turn on double-click protection if you\'d rather confirm first. Your API token stays on your machine, is never shown again after saving, and is never included in a settings export (desktop app)',
+      '**Multi-wallet buys** — tick as many of your Slotshark wallets as you want and a single click fires on all of them. Pick what an amount means under Settings > Trading: **that much per wallet** (clicking 5 SOL with 3 wallets buys 5 SOL on each, spending 15) or **split across wallets** (clicking 5 SOL spends 5 SOL total, about 1.667 from each). The settings panel shows the real total before you save, the buy row shows which mode is live, and each button\'s tooltip states what the click costs. If one wallet fails, the others still go through and you\'re told which one missed',
+      '**Open the chart when you buy** — turn on Settings > Trading > Open Chart on Buy and clicking a buy button also opens that token on Axiom, Padre, Bloom, GMGN, or any site you paste in, so you land on the chart to manage the position instead of pasting the address by hand. It follows your Contracts platform setting by default, opens instantly without waiting for the buy to confirm, and won\'t spam tabs when you scale into the same token',
+      '**Cleaner buy rows** — the contract address on the buy row can be turned off under Settings > Trading > Button Appearance, leaving just the amounts, since the address is already in the message above. Messages carrying several contracts always keep it, so you can still tell which row spends on which token',
+    ],
+    fixed: [
+      '**Telegram stays connected** — Telegram could silently drop (after a network blip, laptop sleep, or an idle connection being cut) and never come back, so messages just stopped arriving until you restarted or reloaded Trenchcord. The connection is now health-checked continuously and rebuilt automatically, and the Telegram indicator in the sidebar reflects the real state instead of showing connected',
+      '**Trenchcord is no longer reachable from your network** — the self-hosted/desktop backend used to listen on every network interface and accept browser requests from any origin, while its settings export returns your Discord tokens and Telegram sessions in plaintext. On shared or public Wi-Fi, anyone on that network could read them straight off the port, and any website you had open could do the same through localhost. It now listens on this machine only, restricts browser origins, and validates the Host header — including on the live message WebSocket — to block DNS-rebinding',
+      '**The local API now requires a token** — every request to the self-hosted API and the live message socket must carry a token that only this machine\'s Trenchcord page is given, so nothing else running on your computer can read your messages or spend from your trading wallet either. It\'s handled for you: opening Trenchcord normally signs you in. To use it from another device on a network you trust, set `TRENCHCORD_HOST=0.0.0.0` and open the URL the server prints at startup on that device — one visit and it stays signed in. Add `TRENCHCORD_ALLOWED_HOSTS` if you browse to it by name rather than by IP',
+    ],
+  },
+  {
     date: '2026-07-25',
     added: [
       '**Browser pop-out windows** — pop out a room, DM, or Mentions into its own browser window from the self-hosted web UI, not just the desktop app. Closing the window re-docks the chat into your layout',

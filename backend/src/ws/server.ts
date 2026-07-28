@@ -3,6 +3,8 @@ import type { Server } from 'http';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { FrontendMessage } from '../discord/types.js';
 import { isHostedMode } from '../storage/index.js';
+import { isAllowedHost, isAllowedOrigin } from '../security/localAccess.js';
+import { isAuthorizedLocalRequest } from '../security/localAuth.js';
 
 let _verifier: SupabaseClient | null = null;
 
@@ -27,7 +29,26 @@ export class WsServer {
   private onUserDisconnect?: (userId: string) => void;
 
   constructor(server: Server) {
-    this.wss = new WebSocketServer({ server, path: '/ws' });
+    this.wss = new WebSocketServer({
+      server,
+      path: '/ws',
+      // CORS does not apply to WebSockets, so a malicious page can open one to
+      // localhost regardless of the HTTP origin rules. In local mode the socket
+      // streams every monitored message, so the handshake is checked here
+      // instead. Hosted mode sits behind a proxy and authenticates per client.
+      verifyClient: isHostedMode()
+        ? undefined
+        : ({ origin, req }, done) => {
+            const ok =
+              isAllowedOrigin(origin || undefined) &&
+              isAllowedHost(req.headers.host) &&
+              isAuthorizedLocalRequest(req);
+            if (!ok) {
+              console.warn(`[WS] Rejected handshake (origin: ${origin ?? 'none'}, host: ${req.headers.host ?? 'none'})`);
+            }
+            done(ok);
+          },
+    });
 
     this.wss.on('connection', (ws) => {
       console.log('[WS] Client connected');

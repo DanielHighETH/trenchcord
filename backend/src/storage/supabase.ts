@@ -58,6 +58,26 @@ const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   gridMirror: false,
   seenAnnouncements: [],
   telegramColors: {},
+  trading: {
+    enabled: false,
+    region: 'us',
+    wallets: [],
+    activeWalletIds: [],
+    walletAmountMode: 'per_wallet',
+    presetAmounts: [0.5, 1, 3, 5, 10],
+    slippage: 20,
+    tip: null,
+    priorityFee: null,
+    antimev: true,
+    requireDoubleClick: false,
+    buttonSize: 'md',
+    buttonBgColor: '#383a40',
+    buttonTextColor: '#dbdee1',
+    showContractPill: true,
+    openSiteOnBuy: false,
+    buySitePlatform: 'default',
+    buySiteUrl: '',
+  },
 };
 
 function createServiceClient(): SupabaseClient {
@@ -145,7 +165,19 @@ export class SupabaseStorageProvider implements StorageProvider {
     delete settings.telegramApiId;
     delete settings.telegramApiHash;
     delete settings.telegramSessions;
+    // Trading is disabled in hosted mode, so a token should never be here --
+    // scrub defensively in case one predates that guard.
+    delete settings.slotsharkApiToken;
     const merged = { ...DEFAULT_SETTINGS, ...settings };
+    // Shallow spread: a stored `trading` object would otherwise win wholesale
+    // and leave newly-added sub-keys undefined.
+    merged.trading = { ...DEFAULT_SETTINGS.trading, ...(settings.trading ?? {}) };
+    // Pre-multi-wallet configs carry a single `activeWalletId`; keep that choice.
+    if (!Array.isArray(merged.trading.activeWalletIds)) {
+      const legacy = (merged.trading as any).activeWalletId;
+      merged.trading.activeWalletIds = typeof legacy === 'string' && legacy ? [legacy] : [];
+    }
+    delete (merged.trading as any).activeWalletId;
 
     const tokens = await this.getTokens(userId);
     const rooms = await this.getRooms(userId);
@@ -195,6 +227,9 @@ export class SupabaseStorageProvider implements StorageProvider {
     delete newSettings.telegramApiId;
     delete newSettings.telegramApiHash;
     delete newSettings.telegramSessions;
+    // A spend-capable trading token must never sit in plaintext JSONB. Hosted
+    // mode has no trading UI, so this is purely belt-and-braces.
+    delete newSettings.slotsharkApiToken;
 
     const result = await this.supabase
       .from('user_configs')

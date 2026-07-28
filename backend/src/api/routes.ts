@@ -1,5 +1,7 @@
 import { Router, static as expressStatic } from 'express';
+import rateLimit from 'express-rate-limit';
 import multer from 'multer';
+import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, unlinkSync } from 'fs';
 import { join, dirname, extname } from 'path';
 import { fileURLToPath } from 'url';
@@ -9,7 +11,9 @@ import type { GatewayManager } from '../discord/gatewayManager.js';
 import type { WsServer } from '../ws/server.js';
 import { processDiscordMessage } from '../utils/messageProcessor.js';
 import { processTelegramMessage } from '../telegram/messageProcessor.js';
-import type { FrontendMessage, SoundType, ChannelRef } from '../discord/types.js';
+import type { FrontendMessage, SoundType, ChannelRef, TradingConfig, TradingWallet } from '../discord/types.js';
+import { slotsharkBuy, extractSignature, type SlotsharkResult } from '../utils/slotshark.js';
+import { maskToken } from '../auth/encryption.js';
 import { TelegramClient } from 'teleproto';
 import { StringSession } from 'teleproto/sessions/index.js';
 import type { TelegramClientManager } from '../telegram/clientManager.js';
@@ -22,6 +26,184 @@ function safeError(err: any, fallback: string): string {
   if (!isHostedMode()) return err?.message ?? fallback;
   console.error(`[API] ${fallback}:`, err?.message ?? err);
   return fallback;
+}
+
+// --- Trading (Slotshark) ---
+
+// Base58, 32-44 chars. Deliberately NOT the >=40 heuristic from
+// utils/contract.ts -- that exists to suppress false positives in chat prose,
+// and is too strict for an address the user is deliberately acting on.
+const SOL_ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+// Backstop only; the real guard is that the amount must match a configured
+// preset, which the UI is the only thing able to produce.
+const MAX_SOL_PER_TRADE = 100;
+// Tip and priority fee are per-transaction amounts in SOL; anything approaching
+// 1 SOL is a typo, not an intent.
+const MAX_FEE_SOL = 1;
+// Floor for a single wallet's share when splitting. Exists so a big wallet
+// count can't turn a buy into dust orders that Slotshark rejects one by one.
+const MIN_SOL_PER_BUY = 0.0001;
+const LAMPORTS_PER_SOL = 1_000_000_000;
+
+/**
+ * Divide `totalSol` into `parts` amounts that sum back to exactly `totalSol`.
+ * Done in integer lamports: splitting 5 SOL three ways in floating point gives
+ * 1.6666666666666667 each, which sums to more than was clicked. The odd
+ * lamports land on the first wallets rather than being dropped.
+ */
+export function splitLamports(totalSol: number, parts: number): number[] {
+  const total = Math.round(totalSol * LAMPORTS_PER_SOL);
+  const base = Math.floor(total / parts);
+  const remainder = total - base * parts;
+  return Array.from(
+    { length: parts },
+    (_, i) => (base + (i < remainder ? 1 : 0)) / LAMPORTS_PER_SOL,
+  );
+}
+
+/** Human-readable reason for a failed Slotshark call. */
+function buyErrorMessage(result: Extract<SlotsharkResult, { ok: false }>): string {
+  switch (result.kind) {
+    case 'timeout':
+      // Deliberately not phrased as a failure: with retries:true the swap can
+      // still land after we give up, and "failed" invites a re-click that
+      // double-buys.
+      return "Slotshark didn't respond in time — the buy may still have landed. Check your dashboard before retrying.";
+    case 'network':
+      return 'Could not reach Slotshark.';
+    case 'auth':
+      return 'Slotshark rejected your API token.';
+    case 'rate_limit':
+      return 'Slotshark rate limit hit.';
+    case 'upstream':
+      return 'Slotshark is unavailable right now.';
+    default:
+      return result.message || 'Slotshark rejected the buy.';
+  }
+}
+
+const TRADE_BUTTON_SIZES: readonly string[] = ['sm', 'md', 'lg'];
+const BUY_SITE_PLATFORMS: readonly string[] = ['default', 'axiom', 'padre', 'bloom', 'gmgn', 'custom'];
+// #rgb / #rrggbb / #rrggbbaa -- the shapes ColorPickerWithAlpha produces. These
+// land in a style attribute, so anything else is rejected rather than coerced.
+const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+
+function sanitizeColor(value: unknown, fallback: string): string {
+  return typeof value === 'string' && HEX_COLOR_RE.test(value.trim()) ? value.trim() : fallback;
+}
+
+/**
+ * The buy-site template is handed straight to window.open, so only http(s) and
+ * the tg: / Telegram bot links the presets already use are accepted -- never a
+ * javascript: or data: URL. Blank clears it (falls back to the default site).
+ */
+function sanitizeBuySiteUrl(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback;
+  const trimmed = value.trim().slice(0, 500);
+  if (!trimmed) return '';
+  return /^(https?:\/\/|tg:\/\/)/i.test(trimmed) ? trimmed : fallback;
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+/** null (auto) unless the value is a usable SOL fee amount. */
+function sanitizeFee(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0 || n > MAX_FEE_SOL) return null;
+  return n;
+}
+
+/**
+ * Normalise a client-supplied trading config. Everything here is user-owned
+ * preference rather than a security boundary -- but the buy route reads these
+ * values back as trusted input, so they are bounded on the way in too.
+ */
+function sanitizeTradingConfig(incoming: any, existing: TradingConfig): TradingConfig {
+  if (!incoming || typeof incoming !== 'object') return existing;
+
+  const wallets: TradingWallet[] = Array.isArray(incoming.wallets)
+    ? incoming.wallets
+        .filter((w: any) => w && typeof w.address === 'string' && SOL_ADDRESS_RE.test(w.address.trim()))
+        .slice(0, 20)
+        .map((w: any) => ({
+          id: typeof w.id === 'string' && w.id ? w.id : randomUUID(),
+          label: typeof w.label === 'string' ? w.label.trim().slice(0, 40) : '',
+          // Case-sensitive: trim only, never lowercase.
+          address: w.address.trim(),
+        }))
+    : existing.wallets;
+
+  // Filtered against the wallet list in the same payload, so removing a wallet
+  // can never leave a buy pointing at an id that no longer exists. An empty
+  // result is kept as-is: switching every wallet off is a deliberate state.
+  const legacyActiveId = incoming.activeWalletId;
+  const activeWalletIds: string[] = Array.isArray(incoming.activeWalletIds)
+    ? [...new Set(
+        incoming.activeWalletIds.filter(
+          (id: any) => typeof id === 'string' && wallets.some((w) => w.id === id),
+        ),
+      )] as string[]
+    // A pre-multi-wallet payload (an older settings backup) names one wallet in
+    // `activeWalletId`. Honour it, so restoring a backup doesn't come back with
+    // every wallet switched off.
+    : typeof legacyActiveId === 'string' && wallets.some((w) => w.id === legacyActiveId)
+      ? [legacyActiveId]
+      : (existing.activeWalletIds ?? []).filter((id) => wallets.some((w) => w.id === id));
+
+  const presetAmounts = Array.isArray(incoming.presetAmounts)
+    ? incoming.presetAmounts
+        .map((a: any) => Number(a))
+        .filter((a: number) => Number.isFinite(a) && a > 0 && a <= MAX_SOL_PER_TRADE)
+        .slice(0, 5)
+    : existing.presetAmounts;
+
+  return {
+    enabled: typeof incoming.enabled === 'boolean' ? incoming.enabled : existing.enabled,
+    region: incoming.region === 'eu' ? 'eu' : 'us',
+    wallets,
+    activeWalletIds,
+    walletAmountMode: incoming.walletAmountMode === 'split' ? 'split' : 'per_wallet',
+    presetAmounts,
+    slippage: Math.round(clampNumber(incoming.slippage, 1, 10000, existing.slippage)),
+    tip: sanitizeFee(incoming.tip),
+    priorityFee: sanitizeFee(incoming.priorityFee),
+    antimev: typeof incoming.antimev === 'boolean' ? incoming.antimev : existing.antimev,
+    requireDoubleClick:
+      typeof incoming.requireDoubleClick === 'boolean'
+        ? incoming.requireDoubleClick
+        : existing.requireDoubleClick,
+    buttonSize: TRADE_BUTTON_SIZES.includes(incoming.buttonSize)
+      ? incoming.buttonSize
+      : existing.buttonSize,
+    buttonBgColor: sanitizeColor(incoming.buttonBgColor, existing.buttonBgColor),
+    buttonTextColor: sanitizeColor(incoming.buttonTextColor, existing.buttonTextColor),
+    showContractPill:
+      typeof incoming.showContractPill === 'boolean' ? incoming.showContractPill : existing.showContractPill,
+    openSiteOnBuy:
+      typeof incoming.openSiteOnBuy === 'boolean' ? incoming.openSiteOnBuy : existing.openSiteOnBuy,
+    buySitePlatform: BUY_SITE_PLATFORMS.includes(incoming.buySitePlatform)
+      ? incoming.buySitePlatform
+      : existing.buySitePlatform,
+    buySiteUrl: sanitizeBuySiteUrl(incoming.buySiteUrl, existing.buySiteUrl),
+  };
+}
+
+// Exact-duplicate suppression. Not redundant with the frontend's in-flight
+// guard: the split-grid layout can render one message in two panes at once, and
+// the same CA can appear across rooms, so two live button rows is a real state.
+const buyInFlight = new Set<string>();
+const buyCooldown = new Map<string, number>();
+const BUY_COOLDOWN_MS = 1500;
+
+function sweepBuyCooldown(now: number): void {
+  for (const [key, expires] of buyCooldown) {
+    if (expires <= now) buyCooldown.delete(key);
+  }
 }
 
 const soundFileFilter = (_req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
@@ -696,13 +878,13 @@ export function createRouter(wsServer: WsServer): Router {
   router.get('/config', async (req, res) => {
     const userId = getUserId(req);
     const fullConfig = await storage.getConfig(userId);
-    const { discordTokens, telegramSessions, ...safeConfig } = fullConfig;
+    const { discordTokens, telegramSessions, slotsharkApiToken, ...safeConfig } = fullConfig;
     res.json(safeConfig);
   });
 
   router.put('/config', async (req, res) => {
     const userId = getUserId(req);
-    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl, trading } = req.body;
 
     // The Discord proxy only makes sense in local mode (the connection leaves the
     // user's own machine). In hosted mode the server IP is fixed, and honouring a
@@ -710,10 +892,10 @@ export function createRouter(wsServer: WsServer): Router {
     if (discordProxyUrl !== undefined && isHostedMode()) {
       return res.status(400).json({ error: 'Proxy configuration is only available in the desktop app.' });
     }
+    const existingConfig = await storage.getConfig(userId);
     const nextProxy = typeof discordProxyUrl === 'string' ? discordProxyUrl.trim() : '';
     const proxyChanged =
-      discordProxyUrl !== undefined &&
-      nextProxy !== ((await storage.getConfig(userId)).discordProxyUrl ?? '');
+      discordProxyUrl !== undefined && nextProxy !== (existingConfig.discordProxyUrl ?? '');
 
     const config = await storage.updateConfig(userId, {
       ...(discordProxyUrl !== undefined && { discordProxyUrl: nextProxy }),
@@ -754,6 +936,10 @@ export function createRouter(wsServer: WsServer): Router {
       ...(paneLocks !== undefined && { paneLocks }),
       ...(gridMirror !== undefined && { gridMirror }),
       ...(seenAnnouncements !== undefined && { seenAnnouncements }),
+      // The API token is NOT part of this object -- it lives at the top level
+      // and is written only via POST /trading/token, so a Save here can never
+      // blank it out.
+      ...(trading !== undefined && { trading: sanitizeTradingConfig(trading, existingConfig.trading) }),
     });
 
     // Reconnect Discord so the new proxy takes effect immediately (local mode).
@@ -785,6 +971,12 @@ export function createRouter(wsServer: WsServer): Router {
   // local network, so it must never be exported or imported.
   const NON_PORTABLE_CONFIG_KEYS = ['userNameCache', 'discordProxyUrl'] as const;
 
+  // Never part of a backup in either mode. Unlike Discord/Telegram credentials
+  // — which are deliberately included locally so a restore re-establishes
+  // access — this one can spend money, and is re-issued from the Slotshark
+  // dashboard in seconds.
+  const SECRET_CONFIG_KEYS = ['slotsharkApiToken'] as const;
+
   router.get('/config/export', async (req, res) => {
     const userId = getUserId(req);
     try {
@@ -792,8 +984,8 @@ export function createRouter(wsServer: WsServer): Router {
       const rooms = await storage.getRooms(userId);
 
       const stripKeys: string[] = isHostedMode()
-        ? [...CREDENTIAL_CONFIG_KEYS, ...NON_PORTABLE_CONFIG_KEYS]
-        : [...NON_PORTABLE_CONFIG_KEYS];
+        ? [...CREDENTIAL_CONFIG_KEYS, ...NON_PORTABLE_CONFIG_KEYS, ...SECRET_CONFIG_KEYS]
+        : [...NON_PORTABLE_CONFIG_KEYS, ...SECRET_CONFIG_KEYS];
 
       const exportConfig: Record<string, any> = {};
       for (const [key, value] of Object.entries(fullConfig)) {
@@ -829,7 +1021,7 @@ export function createRouter(wsServer: WsServer): Router {
     try {
       // Credentials are applied separately (and only in local mode); everything
       // else goes through the generic config merge.
-      const blockedKeys: string[] = [...CREDENTIAL_CONFIG_KEYS, ...NON_PORTABLE_CONFIG_KEYS, 'rooms'];
+      const blockedKeys: string[] = [...CREDENTIAL_CONFIG_KEYS, ...NON_PORTABLE_CONFIG_KEYS, ...SECRET_CONFIG_KEYS, 'rooms'];
       const sanitized: Record<string, any> = {};
       for (const [key, value] of Object.entries(importedConfig)) {
         if (blockedKeys.includes(key)) continue;
@@ -842,6 +1034,22 @@ export function createRouter(wsServer: WsServer): Router {
           ...sanitized.pushover,
           appToken: existing?.appToken ?? '',
           userKey: existing?.userKey ?? '',
+        };
+      }
+
+      // The API token is never in a backup, so an imported file would arm
+      // one-click spending against whatever token is already configured. Force
+      // it off and make the user turn it back on deliberately.
+      //
+      // Sanitised on the way in as well, because a backup from before
+      // multi-wallet carries `activeWalletId` and no `activeWalletIds`, and
+      // writing that shape through would leave the buy route reading a wallet
+      // list that isn't there.
+      if (sanitized.trading) {
+        const existingTrading = (await storage.getConfig(userId)).trading;
+        sanitized.trading = {
+          ...sanitizeTradingConfig(sanitized.trading, existingTrading),
+          enabled: false,
         };
       }
 
@@ -1105,6 +1313,194 @@ export function createRouter(wsServer: WsServer): Router {
     const deleted = await storage.deleteContract(userId, req.params.messageId, req.params.address);
     if (!deleted) return res.status(404).json({ error: 'Contract not found' });
     res.json({ success: true });
+  });
+
+  // --- Trading (Slotshark) ---
+
+  // Trading is desktop-only. The hosted web app is discontinued, hosted config
+  // lands in a plaintext JSONB column (no encrypted table exists for this
+  // token), and one shared server IP fanning buys for many users is an abuse
+  // magnet. Same reasoning as the discordProxyUrl rejection above.
+  function rejectIfHosted(res: any): boolean {
+    if (!isHostedMode()) return false;
+    res.status(403).json({ error: 'Trading is only available in the desktop app.', code: 'hosted' });
+    return true;
+  }
+
+  router.get('/trading/status', async (req, res) => {
+    if (rejectIfHosted(res)) return;
+    const config = await storage.getConfig(getUserId(req));
+    const token = config.slotsharkApiToken ?? '';
+    res.json({
+      configured: token.length > 0,
+      masked: token ? maskToken(token) : null,
+      walletCount: config.trading?.wallets.length ?? 0,
+    });
+  });
+
+  router.post('/trading/token', async (req, res) => {
+    if (rejectIfHosted(res)) return;
+    const { token } = req.body;
+    if (!token || typeof token !== 'string' || token.trim().length === 0) {
+      return res.status(400).json({ error: 'A valid Slotshark API token is required.' });
+    }
+    try {
+      await storage.updateConfig(getUserId(req), { slotsharkApiToken: token.trim() });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: safeError(err, 'Failed to save API token') });
+    }
+  });
+
+  router.delete('/trading/token', async (req, res) => {
+    if (rejectIfHosted(res)) return;
+    try {
+      await storage.updateConfig(getUserId(req), { slotsharkApiToken: '' });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: safeError(err, 'Failed to remove API token') });
+    }
+  });
+
+  // express-rate-limit is otherwise only mounted in hosted mode (index.ts), so
+  // this is attached per-route to cover the local desktop app too.
+  const buyLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many buy requests — slow down.', code: 'rate_limit' },
+  });
+
+  router.post('/trading/buy', buyLimiter, async (req, res) => {
+    if (rejectIfHosted(res)) return;
+
+    const userId = getUserId(req);
+    const config = await storage.getConfig(userId);
+    const trading = config.trading;
+
+    if (!trading?.enabled) {
+      return res.status(403).json({ error: 'Trading is disabled in settings.', code: 'disabled' });
+    }
+    const apiToken = config.slotsharkApiToken ?? '';
+    if (!apiToken) {
+      return res.status(400).json({ error: 'Add your Slotshark API token in Settings → Trading.', code: 'no_token' });
+    }
+
+    const { mint, solAmount } = req.body ?? {};
+
+    if (typeof mint !== 'string' || !SOL_ADDRESS_RE.test(mint.trim())) {
+      const isEvm = typeof mint === 'string' && mint.trim().startsWith('0x');
+      return res.status(400).json({
+        error: isEvm ? 'Only Solana tokens can be bought.' : 'Invalid token address.',
+        code: 'invalid',
+      });
+    }
+    // Case-sensitive downstream — trim only.
+    const cleanMint = mint.trim();
+
+    const amount = Number(solAmount);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_SOL_PER_TRADE) {
+      return res.status(400).json({ error: 'Invalid buy amount.', code: 'invalid' });
+    }
+    // The real guard: only an amount the user configured can be spent, so a
+    // tampered request cannot pick its own size.
+    if (!trading.presetAmounts.some((p) => Math.abs(p - amount) < 1e-9)) {
+      return res.status(400).json({ error: 'Amount is not one of your configured buy amounts.', code: 'invalid' });
+    }
+
+    // The wallet set comes from stored config, never from the request: the
+    // client picks what to buy, the user's settings decide what it spends from.
+    const wallets = (trading.activeWalletIds ?? [])
+      .map((id) => trading.wallets.find((w) => w.id === id))
+      .filter((w): w is TradingWallet => !!w);
+
+    if (wallets.length === 0) {
+      return res.status(400).json({
+        error: trading.wallets.length > 0
+          ? 'No wallets are enabled for buys. Enable one in Settings → Trading.'
+          : 'No trading wallet configured. Add one in Settings → Trading.',
+        code: 'no_wallet',
+      });
+    }
+
+    // per_wallet spends `amount` from each wallet; split divides it between
+    // them. Splitting is done in lamports so the parts always add back up to
+    // exactly what was clicked -- dividing floats would drift over/under.
+    const perWallet = trading.walletAmountMode === 'split'
+      ? splitLamports(amount, wallets.length)
+      : wallets.map(() => amount);
+
+    if (perWallet.some((a) => a < MIN_SOL_PER_BUY)) {
+      return res.status(400).json({
+        error: `Splitting ${amount} SOL across ${wallets.length} wallets leaves less than ${MIN_SOL_PER_BUY} SOL each. Use a bigger amount or fewer wallets.`,
+        code: 'invalid',
+      });
+    }
+
+    const now = Date.now();
+    sweepBuyCooldown(now);
+
+    // Dedupe per wallet, so a wallet already mid-buy for this token is skipped
+    // while the rest still go through.
+    const planned = wallets
+      .map((wallet, i) => ({
+        wallet,
+        solAmount: perWallet[i],
+        dedupeKey: `${userId}:${wallet.address}:${cleanMint}:${perWallet[i]}`,
+      }))
+      .filter(({ dedupeKey }) => !buyInFlight.has(dedupeKey) && (buyCooldown.get(dedupeKey) ?? 0) <= now);
+
+    if (planned.length === 0) {
+      return res.status(429).json({ error: 'Duplicate buy ignored.', code: 'duplicate' });
+    }
+    for (const p of planned) buyInFlight.add(p.dedupeKey);
+
+    // In parallel: these are independent orders and a caller is racing everyone
+    // else in the channel, so they must not queue behind each other.
+    const results = await Promise.all(planned.map(async ({ wallet, solAmount: walletAmount, dedupeKey }) => {
+      const base = { walletId: wallet.id, label: wallet.label, solAmount: walletAmount };
+      try {
+        const result = await slotsharkBuy(trading.region, apiToken, {
+          mint: cleanMint,
+          solAmount: walletAmount,
+          wallet: wallet.address,
+          slippage: trading.slippage,
+          tip: trading.tip,
+          priorityFee: trading.priorityFee,
+          antimev: trading.antimev,
+        });
+
+        if (result.ok) {
+          return { ...base, ok: true as const, signature: extractSignature(result.data) };
+        }
+        return { ...base, ok: false as const, code: result.kind, error: buyErrorMessage(result) };
+      } catch (err: any) {
+        return { ...base, ok: false as const, code: 'upstream', error: safeError(err, 'Failed to submit buy') };
+      } finally {
+        buyInFlight.delete(dedupeKey);
+        buyCooldown.set(dedupeKey, Date.now() + BUY_COOLDOWN_MS);
+      }
+    }));
+
+    const succeeded = results.filter((r) => r.ok);
+    const failures = results.filter((r): r is Extract<typeof r, { ok: false }> => !r.ok);
+    const spent = succeeded.reduce((sum, r) => sum + r.solAmount, 0);
+    const payload = {
+      success: succeeded.length > 0,
+      mode: trading.walletAmountMode,
+      walletCount: results.length,
+      succeeded: succeeded.length,
+      failed: results.length - succeeded.length,
+      spent: Number(spent.toFixed(9)),
+      results,
+      // Single-wallet callers get the old shape too, so nothing that reads
+      // `error` on a failure has to special-case one wallet.
+      ...(succeeded.length === 0 ? { error: failures[0]?.error ?? 'Buy failed.', code: failures[0]?.code } : {}),
+    };
+    // All failed reads as an upstream failure; a partial fill is a 200 the
+    // client explains, because some SOL really was spent.
+    return res.status(succeeded.length > 0 ? 200 : 502).json(payload);
   });
 
   return router;

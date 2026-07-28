@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Room, FrontendMessage, Alert, AppConfig, GuildInfo, DMChannel, ContractEntry, FrontendReaction, ReactionUser, AuthStatus, MaskedToken, TelegramChatInfo } from '../types';
+import type { Room, FrontendMessage, Alert, AppConfig, GuildInfo, DMChannel, ContractEntry, FrontendReaction, ReactionUser, AuthStatus, MaskedToken, TelegramChatInfo, TradingStatus } from '../types';
 import { isDemoMode, createDemoOverrides } from '../demo/demoStore';
 import { isHostedMode, getAccessToken } from '../lib/supabase';
 import { markTokenEverConfigured } from '../utils/tokenState';
@@ -11,6 +11,40 @@ const MAX_MESSAGES_PER_ROOM = 1000;
 const MAX_ALERTS = 50;
 const MAX_CONTRACTS = 2000;
 const MAX_PANES = 4;
+const MAX_TOASTS = 4;
+
+/**
+ * A general-purpose transient message. Distinct from `Alert`, which is
+ * WebSocket-driven and carries a whole FrontendMessage.
+ */
+export interface Toast {
+  id: string;
+  kind: 'success' | 'error';
+  title: string;
+  detail?: string;
+}
+
+/** Per-wallet outcome of one buy click. */
+export interface BuyWalletResult {
+  walletId: string;
+  label: string;
+  solAmount: number;
+  ok: boolean;
+  signature?: string;
+  error?: string;
+  code?: string;
+}
+
+export interface BuyOutcome {
+  success: boolean;
+  error?: string;
+  walletCount?: number;
+  succeeded?: number;
+  failed?: number;
+  /** SOL actually spent across the wallets that succeeded. */
+  spent?: number;
+  results?: BuyWalletResult[];
+}
 
 function deriveAddressChains(contracts: ContractEntry[]): Record<string, string> {
   const map: Record<string, string> = {};
@@ -134,7 +168,9 @@ async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
       headers.set('Authorization', `Bearer ${token}`);
     }
   }
-  return fetch(input, { ...init, headers });
+  // Local mode authenticates with an HttpOnly cookie, which a cross-origin
+  // fetch (VITE_API_URL pointing elsewhere) would otherwise drop.
+  return fetch(input, { ...init, headers, credentials: 'include' });
 }
 
 interface AppState {
@@ -173,6 +209,15 @@ interface AppState {
   gatewayAuthError: string | null;
   gatewayBlocked: boolean;
   previewMode: boolean;
+  toasts: Toast[];
+  tradingStatus: TradingStatus | null;
+
+  pushToast: (toast: Omit<Toast, 'id'>) => void;
+  dismissToast: (id: string) => void;
+  fetchTradingStatus: () => Promise<void>;
+  saveSlotsharkToken: (token: string) => Promise<{ success: boolean; error?: string }>;
+  removeSlotsharkToken: () => Promise<{ success: boolean; error?: string }>;
+  slotsharkBuy: (mint: string, solAmount: number) => Promise<BuyOutcome>;
 
   setPreviewMode: (value: boolean) => void;
   importSettings: (raw: unknown) => Promise<{ success: boolean; error?: string }>;
@@ -224,7 +269,7 @@ interface AppState {
   createRoom: (name: string, channels: Room['channels'], highlightedUsers: string[], color?: string | null, filteredUsers?: string[], filterEnabled?: boolean) => Promise<Room>;
   updateRoom: (id: string, data: Partial<Omit<Room, 'id'>>) => Promise<void>;
   deleteRoom: (id: string) => Promise<void>;
-  updateConfig: (data: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'telegramColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout' | 'seenAnnouncements' | 'discordProxyUrl'>>) => Promise<void>;
+  updateConfig: (data: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'telegramColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout' | 'seenAnnouncements' | 'discordProxyUrl' | 'trading'>>) => Promise<void>;
   sendMessage: (channelId: string, content: string, files?: File[], source?: 'discord' | 'telegram') => Promise<{ success: boolean; error?: string }>;
   hideUser: (guildId: string | null, channelId: string, userId: string, displayName: string) => Promise<void>;
   unhideUser: (guildId: string | null, channelId: string, userId: string) => Promise<void>;
@@ -275,8 +320,85 @@ export const useAppStore = create<AppState>((set, get) => {
   gatewayAuthError: null,
   gatewayBlocked: false,
   previewMode: false,
+  toasts: [],
+  tradingStatus: null,
 
   setPreviewMode: (value) => set({ previewMode: value }),
+
+  pushToast: (toast) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    set((state) => ({ toasts: [...state.toasts, { ...toast, id }].slice(-MAX_TOASTS) }));
+  },
+
+  dismissToast: (id) => {
+    set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
+  },
+
+  fetchTradingStatus: async () => {
+    if (demo) return;
+    try {
+      const res = await apiFetch(`${API_BASE}/trading/status`);
+      // 403 in hosted mode — leave status null so the UI stays hidden.
+      if (!res.ok) return;
+      set({ tradingStatus: await res.json() });
+    } catch {}
+  },
+
+  saveSlotsharkToken: async (token: string) => {
+    if (demo) return { success: false, error: 'Trading is not available in the demo.' };
+    try {
+      const res = await apiFetch(`${API_BASE}/trading/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error };
+      await get().fetchTradingStatus();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  removeSlotsharkToken: async () => {
+    if (demo) return { success: false, error: 'Trading is not available in the demo.' };
+    try {
+      const res = await apiFetch(`${API_BASE}/trading/token`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error };
+      await get().fetchTradingStatus();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  slotsharkBuy: async (mint, solAmount) => {
+    if (demo) return { success: false, error: 'Trading is not available in the demo.' };
+    try {
+      // Which wallets to spend from is decided server-side from saved settings,
+      // so a buy can only ever touch wallets the user enabled.
+      const res = await apiFetch(`${API_BASE}/trading/buy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mint, solAmount }),
+      });
+      const data = await res.json();
+      if (!res.ok && !data.results) return { success: false, error: data.error ?? 'Buy failed.' };
+      return {
+        success: !!data.success,
+        error: data.error,
+        walletCount: data.walletCount,
+        succeeded: data.succeeded,
+        failed: data.failed,
+        spent: data.spent,
+        results: data.results,
+      };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
 
   importSettings: async (raw) => {
     try {

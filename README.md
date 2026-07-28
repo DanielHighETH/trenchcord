@@ -18,7 +18,8 @@ Aggregate channels, track key users, auto-detect contracts, and trade in one cli
 - **Custom Rooms** — Aggregate channels from multiple servers into unified rooms
 - **User Highlighting** — Track key users across all channels with visual alerts
 - **Contract Detection** — Auto-detect Solana and EVM contract addresses in messages
-- **One-Click Trading** — Click contracts to open Axiom, GMGN, Bloom, Padre and more
+- **One-Click Buys** — Buy a Solana token straight from the message that called it, via Slotshark
+- **Trade Links** — Click contracts to open Axiom, GMGN, Bloom, Padre and more
 - **Push Notifications** — Pushover alerts when highlighted users post contracts
 - **Focus Mode** — Filter messages to a specific channel within a room
 - **Real-time Streaming** — Live message updates via Discord Gateway
@@ -129,6 +130,15 @@ npm start
 
 This builds the frontend and backend, then starts the server. Open http://localhost:3001 in your browser.
 
+Trenchcord listens on `127.0.0.1` only, and the API requires a token that is issued to the page as a cookie when
+you open it from this machine. That matters because a settings export includes your Discord tokens and Telegram
+sessions — on public or shared Wi-Fi, an open port would hand them to everyone on the network. You don't have to
+do anything for this: opening http://localhost:3001 (or the desktop app) just works.
+
+To use Trenchcord from another device on a network you trust, set `TRENCHCORD_HOST=0.0.0.0`. On startup the server
+prints a URL containing the token — open that once on the other device and it stays signed in. Add
+`TRENCHCORD_ALLOWED_HOSTS=my-host.local` if you browse to it by name instead of by IP. See `backend/.env.example`.
+
 ### Development
 
 Run everything with hot-reload:
@@ -198,6 +208,51 @@ Trenchcord automatically detects Solana and EVM contract addresses in messages:
 - Click a contract to copy and/or open it in your configured trading platform (configurable in Settings > Contracts)
 - **Contracts Dashboard** — Click "Contracts" in the sidebar to see a live feed of all detected contracts, searchable and filterable by chain
 - **Auto-Open** — Enable "Auto-Open Highlighted Contracts" in Settings > Contracts to automatically open a new tab when a highlighted user posts a contract
+
+### Trading (Solana only)
+
+Buy a token from the message that called it, without leaving Trenchcord. When a message contains a Solana
+contract, a row of buy buttons appears under it — click an amount and the swap fires.
+
+Trenchcord does not hold funds or run trading infrastructure. Buys are routed to
+**[Slotshark](https://slotshark.xyz/?ref=1q79wsl2)**, a third-party Solana trading bot with a public REST API,
+which charges 0.5% per trade. **Solana only for now** — EVM contracts don't get buy buttons. Trading is
+desktop/self-hosted only; it is disabled in the hosted web app.
+
+**Setup** (Settings > Trading):
+
+1. Register at [slotshark.xyz](https://slotshark.xyz/?ref=1q79wsl2) with Telegram and open the dashboard
+2. Create or import a wallet under **Wallet Management**, and fund it
+3. Open **Developer API** > **Reveal Token**, and paste the token into Settings > Trading
+4. Add that wallet's public key under Wallets, set your buy amounts, and enable trading
+
+**What you can configure:**
+
+- **Amounts** — up to five buy buttons, in SOL
+- **Wallets** — add as many Slotshark wallets as you like and tick the ones buys should fire from. Untick a
+  wallet to leave it out without deleting it; with none ticked, the buy buttons don't render at all
+- **Multi-wallet mode** — with two or more wallets ticked, choose what a clicked amount means:
+  - **That much per wallet** — 5 SOL across 3 wallets buys 5 SOL on each, spending 15 SOL
+  - **Split across wallets** — 5 SOL across 3 wallets spends 5 SOL total, ~1.667 SOL each
+
+  The settings panel spells out the total for your own amounts before you save, the buy row shows which mode is
+  live, and each button's tooltip states what the click will actually cost. Splits are calculated in lamports,
+  so the parts always add back up to exactly the amount you clicked
+- **Execution** — slippage, tip, priority fee, anti-MEV, and the US or EU server
+- **Misclick protection** — require a double click before a buy fires (off by default)
+- **Open Chart on Buy** — also open the token on Axiom, Padre, Bloom, GMGN, or any URL template you paste, the
+  moment you click. It follows your Settings > Contracts platform by default
+- **Button appearance** — size, colors, and whether the contract address shows on the buy row
+
+**Safety notes:**
+
+- Buy buttons execute **real swaps with real SOL. There is no undo.**
+- Your API token and wallet addresses are stored locally in `data/config.json` and are sent only to Slotshark —
+  never to Trenchcord. The token is masked after saving and is excluded from settings exports
+- A message with several contracts gets one labelled row per token, so you can tell which row spends on which
+- Buys are rate-limited (30/min) and identical repeat buys are suppressed briefly, to blunt double-click damage
+- With several wallets, each one's buy is submitted independently — if one fails you're told which, and the
+  others still go through
 
 ### User Highlighting
 
@@ -285,7 +340,8 @@ Trenchcord takes token security seriously:
 
 - **Everything Stays Local** — The desktop app and self-hosted setups have no database. Your tokens and configuration live in a local file on your machine (`config.json`) — nothing ever leaves your PC.
 - **AES-256-GCM Encryption** — For multi-user/hosted deployments (Supabase), every Discord token is encrypted at rest using AES-256-GCM before being stored. Tokens are never stored, logged, or transmitted in plain text. [View the encryption source code](https://github.com/DanielHighETH/trenchcord/blob/main/backend/src/auth/encryption.ts).
-- **Server Hardening** — Helmet security headers, API rate limiting, strict CORS policies, and JWT-authenticated WebSockets protect every request.
+- **Server Hardening** — Helmet security headers, API rate limiting, strict CORS policies, and JWT-authenticated WebSockets protect every request. Self-hosted installs listen on `127.0.0.1` only and require a local session token on both the API and the WebSocket, so nothing else on your network — or on your machine — can reach them.
+- **Trading Credentials** — Your Slotshark API token is stored locally, masked once saved, never shown again, and excluded from settings exports. It is sent only to Slotshark, never to Trenchcord.
 - **Open Source & Auditable** — The entire codebase is open source. Don't just trust it — inspect every line yourself.
 
 ## Configuration
@@ -299,6 +355,8 @@ Trenchcord takes token security seriously:
 ## Disclaimer
 
 Trenchcord is an independent project and is not affiliated with Discord Inc. Using self-bots is against Discord's Terms of Service. This tool is for personal and educational use only. Use at your own risk.
+
+Trenchcord is also not affiliated with Slotshark. The trading features execute real, irreversible transactions with real funds through Slotshark's third-party API, and Trenchcord provides no guarantee that any trade will execute, land, or be profitable. Trade at your own risk.
 
 ## License
 

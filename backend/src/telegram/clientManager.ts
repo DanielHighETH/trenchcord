@@ -53,6 +53,15 @@ export class TelegramClientManager extends EventEmitter {
       this.emit('ready', user);
     });
 
+    // A client dropping out doesn't take the manager down - it reconnects on
+    // its own and re-emits 'ready'. These events exist so the UI can reflect
+    // the real state instead of showing a stale "connected".
+    client.on('disconnected', (reason: string) => {
+      if (!this.isConnected()) this.emit('disconnected', reason);
+    });
+
+    client.on('reconnected', () => this.emit('reconnected'));
+
     client.on('fatal', (err: Error) => this.emit('fatal', err));
   }
 

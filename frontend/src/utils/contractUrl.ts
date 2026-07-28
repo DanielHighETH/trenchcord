@@ -1,4 +1,4 @@
-import type { ContractLinkTemplates } from '../types';
+import type { ContractLinkTemplates, TradingConfig } from '../types';
 
 const REFERRALS = { axiom: 'danielref', padre: 'daniel_dev', gmgn: 'danieldev', bloom: 'daniel' };
 
@@ -46,6 +46,35 @@ function injectReferralIntoCustomTemplate(template: string): string {
     return template.replace('ref__ca_', `ref_${REFERRALS.bloom}_ca_`);
   }
   return template;
+}
+
+/**
+ * The site a buy opens for its token. Buys are SOL-only, so this always
+ * resolves through the SOL side of the link templates: 'default' reuses
+ * whatever the contract links are already set to, anything else overrides it
+ * just for buys. Returns null when the feature is off.
+ */
+export function buildBuySiteUrl(
+  addr: string,
+  trading: TradingConfig | undefined,
+  linkTemplates: ContractLinkTemplates = DEFAULT_LINK_TEMPLATES,
+): string | null {
+  if (!trading?.openSiteOnBuy) return null;
+
+  const platform = trading.buySitePlatform ?? 'default';
+  if (platform === 'default') return buildContractUrl(addr, linkTemplates);
+
+  // A custom platform with a blank template would build a URL with no address
+  // in it, so fall back to the contract-link site instead.
+  if (platform === 'custom' && !trading.buySiteUrl.trim()) {
+    return buildContractUrl(addr, linkTemplates);
+  }
+
+  return buildContractUrl(addr, {
+    ...linkTemplates,
+    solPlatform: platform,
+    sol: trading.buySiteUrl.trim(),
+  });
 }
 
 export function buildContractUrl(

@@ -10,6 +10,7 @@ import ContractDashboard from './components/ContractDashboard';
 import GlobalSettings from './components/GlobalSettings';
 import RoomConfig from './components/RoomConfig';
 import AlertToast from './components/AlertToast';
+import TradeToast from './components/TradeToast';
 import GatewayAuthBanner from './components/GatewayAuthBanner';
 import TokenSetup from './components/TokenSetup';
 import OnboardingWizard, { isOnboardingComplete } from './components/OnboardingWizard';
@@ -69,6 +70,7 @@ export default function App() {
   const fetchHistory = useAppStore((s) => s.fetchHistory);
   const fetchConfig = useAppStore((s) => s.fetchConfig);
   const fetchDMChannels = useAppStore((s) => s.fetchDMChannels);
+  const fetchTradingStatus = useAppStore((s) => s.fetchTradingStatus);
   const activeView = useAppStore((s) => s.activeView);
   const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
   const setGatewayAuthError = useAppStore((s) => s.setGatewayAuthError);
@@ -122,8 +124,9 @@ export default function App() {
       Promise.all([fetchRooms(), fetchConfig()]).then(() => setDataReady(true));
       fetchDMChannels();
       fetchHistory();
+      fetchTradingStatus();
     }
-  }, [authStatus?.configured, previewMode, fetchRooms, fetchHistory, fetchConfig, fetchDMChannels]);
+  }, [authStatus?.configured, previewMode, fetchRooms, fetchHistory, fetchConfig, fetchDMChannels, fetchTradingStatus]);
 
   useEffect(() => {
     if (dataReady && !previewMode && rooms.length === 0 && !isOnboardingComplete(supabaseUserId)) {
@@ -184,6 +187,7 @@ export default function App() {
       {activeView === 'settings' ? <GlobalSettings /> : activeView === 'contracts' ? <ContractDashboard /> : activeView === 'profile' ? <ProfilePage /> : <ChatView />}
       <RoomConfig />
       <AlertToast />
+      <TradeToast />
       <GatewayAuthBanner />
     </div>
   );

@@ -137,6 +137,7 @@ dist
 
 backend/data/config.json
 backend/data/contracts.json
+backend/data/local-token
 
 # Discord / tweet posting drafts (local only)
 posts/

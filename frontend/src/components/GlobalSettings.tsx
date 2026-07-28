@@ -1,20 +1,21 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAppStore } from '../stores/appStore';
-import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, SplitLayout } from '../types';
+import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, SplitLayout, SlotsharkRegion, TradingWallet, TradeButtonSize, BuySitePlatform, WalletAmountMode } from '../types';
 import { PUSHOVER_SOUNDS } from '../types';
-import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, PanelLeftOpen, Send, Download, AlertTriangle, AtSign } from 'lucide-react';
+import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, PanelLeftOpen, Send, Download, AlertTriangle, AtSign, CandlestickChart, Check } from 'lucide-react';
 import { requestNotificationPermission } from '../utils/desktopNotification';
 import { previewSound, previewPreset, PRESET_SOUNDS } from '../utils/notificationSound';
-import ColorPickerWithAlpha from './ColorPickerWithAlpha';
+import ColorPickerWithAlpha, { colorWithExtraAlpha } from './ColorPickerWithAlpha';
 import TelegramSetup from './TelegramSetup';
 import { isHostedMode, getAccessToken } from '../lib/supabase';
 
-type Section = 'tokens' | 'general' | 'contracts' | 'sounds' | 'pushover' | 'keywords' | 'mentions' | 'users' | 'guilds' | 'help';
+type Section = 'tokens' | 'general' | 'contracts' | 'trading' | 'sounds' | 'pushover' | 'keywords' | 'mentions' | 'users' | 'guilds' | 'help';
 
 const SECTIONS: { id: Section; label: string; icon: typeof Key }[] = [
   { id: 'tokens', label: 'Tokens', icon: Key },
   { id: 'general', label: 'General', icon: Settings2 },
   { id: 'contracts', label: 'Contracts', icon: Zap },
+  { id: 'trading', label: 'Trading', icon: CandlestickChart },
   { id: 'sounds', label: 'Sounds & Notifications', icon: Volume2 },
   { id: 'pushover', label: 'Pushover', icon: Bell },
   { id: 'keywords', label: 'Keywords', icon: Tag },
@@ -23,6 +24,39 @@ const SECTIONS: { id: Section; label: string; icon: typeof Key }[] = [
   { id: 'guilds', label: 'Guilds', icon: Shield },
   { id: 'help', label: 'Help & Features', icon: HelpCircle },
 ];
+
+// Slotshark wallet pubkeys and token mints are base58, 32-44 chars.
+const SOL_ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const TRADING_PRESET_SLOTS = 5;
+const DEFAULT_TRADE_BG = '#383a40';
+const DEFAULT_TRADE_FG = '#dbdee1';
+// Mirrors SIZE_STYLES in TradeButtons.tsx so the settings preview matches what
+// actually renders under a message.
+const TRADE_PREVIEW_SIZES: Record<TradeButtonSize, { button: string; pill: string; unit: string }> = {
+  sm: { button: 'px-1.5 py-0.5 text-[10px]', pill: 'text-[10px] px-1', unit: 'text-[9px]' },
+  md: { button: 'px-2 py-0.5 text-[11px]', pill: 'text-[11px] px-1', unit: 'text-[10px]' },
+  lg: { button: 'px-3 py-1.5 text-sm', pill: 'text-xs px-1.5', unit: 'text-[11px]' },
+};
+
+/** Pad the stored amounts out to five editable slots. */
+function presetsToInputs(amounts: number[] | undefined): string[] {
+  const filled = (amounts ?? []).map((a) => String(a));
+  while (filled.length < TRADING_PRESET_SLOTS) filled.push('');
+  return filled.slice(0, TRADING_PRESET_SLOTS);
+}
+
+/** Trim float noise from a divided amount without padding whole numbers. */
+function roundSol(n: number): number {
+  return Math.round(n * 1e4) / 1e4;
+}
+
+/** Drop blanks and non-positive entries; the button row renders what's left. */
+function inputsToPresets(inputs: string[]): number[] {
+  return inputs
+    .map((v) => Number(v))
+    .filter((n) => Number.isFinite(n) && n > 0)
+    .slice(0, TRADING_PRESET_SLOTS);
+}
 
 export default function GlobalSettings() {
   const config = useAppStore((s) => s.config);
@@ -45,6 +79,10 @@ export default function GlobalSettings() {
   const authStatus = useAppStore((s) => s.authStatus);
   const telegramDisconnect = useAppStore((s) => s.telegramDisconnect);
   const fetchRooms = useAppStore((s) => s.fetchRooms);
+  const tradingStatus = useAppStore((s) => s.tradingStatus);
+  const fetchTradingStatus = useAppStore((s) => s.fetchTradingStatus);
+  const saveSlotsharkToken = useAppStore((s) => s.saveSlotsharkToken);
+  const removeSlotsharkToken = useAppStore((s) => s.removeSlotsharkToken);
 
   const userNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -129,12 +167,41 @@ export default function GlobalSettings() {
   const [proxySaved, setProxySaved] = useState(false);
   const [showTelegramSetup, setShowTelegramSetup] = useState(false);
 
+  // --- Trading (Slotshark) ---
+  const [tradingEnabled, setTradingEnabled] = useState(false);
+  const [tradingRegion, setTradingRegion] = useState<SlotsharkRegion>('us');
+  const [tradingWallets, setTradingWallets] = useState<TradingWallet[]>([]);
+  const [tradingActiveWalletIds, setTradingActiveWalletIds] = useState<string[]>([]);
+  const [tradingWalletAmountMode, setTradingWalletAmountMode] = useState<WalletAmountMode>('per_wallet');
+  // Held as strings so typing "0." doesn't fight the input; parsed on save.
+  const [tradingPresets, setTradingPresets] = useState<string[]>(['', '', '', '', '']);
+  const [tradingSlippage, setTradingSlippage] = useState(20);
+  const [tradingTip, setTradingTip] = useState<number | null>(null);
+  const [tradingPriorityFee, setTradingPriorityFee] = useState<number | null>(null);
+  const [tradingAntimev, setTradingAntimev] = useState(true);
+  const [tradingRequireDoubleClick, setTradingRequireDoubleClick] = useState(false);
+  const [tradingButtonSize, setTradingButtonSize] = useState<TradeButtonSize>('md');
+  const [tradingButtonBgColor, setTradingButtonBgColor] = useState(DEFAULT_TRADE_BG);
+  const [tradingButtonTextColor, setTradingButtonTextColor] = useState(DEFAULT_TRADE_FG);
+  const [tradingShowContractPill, setTradingShowContractPill] = useState(true);
+  const [tradingOpenSiteOnBuy, setTradingOpenSiteOnBuy] = useState(false);
+  const [tradingBuySitePlatform, setTradingBuySitePlatform] = useState<BuySitePlatform>('default');
+  const [tradingBuySiteUrl, setTradingBuySiteUrl] = useState('');
+  const [slotsharkTokenInput, setSlotsharkTokenInput] = useState('');
+  const [savingSlotsharkToken, setSavingSlotsharkToken] = useState(false);
+  const [slotsharkTokenError, setSlotsharkTokenError] = useState('');
+  const [slotsharkTokenSaved, setSlotsharkTokenSaved] = useState(false);
+  const [newWalletLabel, setNewWalletLabel] = useState('');
+  const [newWalletAddress, setNewWalletAddress] = useState('');
+  const [walletError, setWalletError] = useState('');
+
   useEffect(() => {
     fetchGuilds();
     fetchDMChannels();
     fetchConfig();
     fetchMaskedTokens();
-  }, [fetchGuilds, fetchDMChannels, fetchConfig, fetchMaskedTokens]);
+    fetchTradingStatus();
+  }, [fetchGuilds, fetchDMChannels, fetchConfig, fetchMaskedTokens, fetchTradingStatus]);
 
   useEffect(() => {
     if (config) {
@@ -186,6 +253,25 @@ export default function GlobalSettings() {
       setMobileZoomScale(config.mobileZoomScale ?? 1);
       setSplitLayout(config.splitLayout === 'grid' ? 'grid' : 'row');
       setProxyUrl(config.discordProxyUrl ?? '');
+      const t = config.trading;
+      setTradingEnabled(t?.enabled ?? false);
+      setTradingRegion(t?.region === 'eu' ? 'eu' : 'us');
+      setTradingWallets(t?.wallets ?? []);
+      setTradingActiveWalletIds(t?.activeWalletIds ?? []);
+      setTradingWalletAmountMode(t?.walletAmountMode ?? 'per_wallet');
+      setTradingPresets(presetsToInputs(t?.presetAmounts));
+      setTradingSlippage(t?.slippage ?? 20);
+      setTradingTip(t?.tip ?? null);
+      setTradingPriorityFee(t?.priorityFee ?? null);
+      setTradingAntimev(t?.antimev ?? true);
+      setTradingRequireDoubleClick(t?.requireDoubleClick ?? false);
+      setTradingButtonSize(t?.buttonSize ?? 'md');
+      setTradingButtonBgColor(t?.buttonBgColor ?? DEFAULT_TRADE_BG);
+      setTradingButtonTextColor(t?.buttonTextColor ?? DEFAULT_TRADE_FG);
+      setTradingShowContractPill(t?.showContractPill ?? true);
+      setTradingOpenSiteOnBuy(t?.openSiteOnBuy ?? false);
+      setTradingBuySitePlatform(t?.buySitePlatform ?? 'default');
+      setTradingBuySiteUrl(t?.buySiteUrl ?? '');
     }
   }, [config]);
 
@@ -244,12 +330,34 @@ export default function GlobalSettings() {
       compactModeAvatars !== (config.compactModeAvatars ?? true) ||
       roleColors !== (config.roleColors ?? true) ||
       mobileZoomScale !== (config.mobileZoomScale ?? 1) ||
-      splitLayout !== (config.splitLayout === 'grid' ? 'grid' : 'row')
+      splitLayout !== (config.splitLayout === 'grid' ? 'grid' : 'row') ||
+      tradingEnabled !== (config.trading?.enabled ?? false) ||
+      tradingRegion !== (config.trading?.region ?? 'us') ||
+      JSON.stringify(tradingWallets) !== JSON.stringify(config.trading?.wallets ?? []) ||
+      JSON.stringify(tradingActiveWalletIds) !== JSON.stringify(config.trading?.activeWalletIds ?? []) ||
+      tradingWalletAmountMode !== (config.trading?.walletAmountMode ?? 'per_wallet') ||
+      // Compare the parsed numbers, not the raw strings: "0.50" vs 0.5 would
+      // otherwise pin the save bar to "Unsaved changes" forever.
+      JSON.stringify(inputsToPresets(tradingPresets)) !== JSON.stringify(config.trading?.presetAmounts ?? []) ||
+      tradingSlippage !== (config.trading?.slippage ?? 20) ||
+      tradingTip !== (config.trading?.tip ?? null) ||
+      tradingPriorityFee !== (config.trading?.priorityFee ?? null) ||
+      tradingAntimev !== (config.trading?.antimev ?? true) ||
+      tradingRequireDoubleClick !== (config.trading?.requireDoubleClick ?? false) ||
+      tradingButtonSize !== (config.trading?.buttonSize ?? 'md') ||
+      tradingButtonBgColor !== (config.trading?.buttonBgColor ?? DEFAULT_TRADE_BG) ||
+      tradingButtonTextColor !== (config.trading?.buttonTextColor ?? DEFAULT_TRADE_FG) ||
+      tradingShowContractPill !== (config.trading?.showContractPill ?? true) ||
+      tradingOpenSiteOnBuy !== (config.trading?.openSiteOnBuy ?? false) ||
+      tradingBuySitePlatform !== (config.trading?.buySitePlatform ?? 'default') ||
+      tradingBuySiteUrl !== (config.trading?.buySiteUrl ?? '')
     );
   }, [config, globalUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, evmAddressColor, solAddressColor,
     openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters,
     solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts,
-    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout]);
+    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout,
+    tradingEnabled, tradingRegion, tradingWallets, tradingActiveWalletIds, tradingWalletAmountMode, tradingPresets, tradingSlippage, tradingTip, tradingPriorityFee, tradingAntimev, tradingRequireDoubleClick, tradingButtonSize, tradingButtonBgColor, tradingButtonTextColor,
+    tradingShowContractPill, tradingOpenSiteOnBuy, tradingBuySitePlatform, tradingBuySiteUrl]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -304,11 +412,39 @@ export default function GlobalSettings() {
         roleColors,
         mobileZoomScale,
         splitLayout,
+        trading: {
+          enabled: tradingEnabled,
+          region: tradingRegion,
+          wallets: tradingWallets,
+          activeWalletIds: tradingActiveWalletIds,
+          walletAmountMode: tradingWalletAmountMode,
+          presetAmounts: inputsToPresets(tradingPresets),
+          slippage: tradingSlippage,
+          tip: tradingTip,
+          priorityFee: tradingPriorityFee,
+          antimev: tradingAntimev,
+          requireDoubleClick: tradingRequireDoubleClick,
+          buttonSize: tradingButtonSize,
+          buttonBgColor: tradingButtonBgColor,
+          buttonTextColor: tradingButtonTextColor,
+          showContractPill: tradingShowContractPill,
+          openSiteOnBuy: tradingOpenSiteOnBuy,
+          buySitePlatform: tradingBuySitePlatform,
+          buySiteUrl: tradingBuySiteUrl.trim(),
+        },
       });
     } finally {
       setSaving(false);
     }
   };
+
+  // Only ticked wallets that still exist count, so a stale id from a removed
+  // wallet can't inflate the "N wallets" maths shown below.
+  const enabledWalletCount = tradingActiveWalletIds.filter((id) =>
+    tradingWallets.some((w) => w.id === id),
+  ).length;
+  // Grounds the multi-wallet explanation in a number the user actually set.
+  const exampleAmount = inputsToPresets(tradingPresets)[0] ?? 1;
 
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -326,7 +462,8 @@ export default function GlobalSettings() {
       const token = await getAccessToken();
       if (token) headers.set('Authorization', `Bearer ${token}`);
     }
-    return fetch(input, { ...init, headers });
+    // credentials: local mode's session cookie (see lib/localAuth).
+    return fetch(input, { ...init, headers, credentials: 'include' });
   };
 
   const handleExport = async () => {
@@ -1033,6 +1170,602 @@ export default function GlobalSettings() {
                   </div>
                 </div>
               </>
+            )}
+
+            {section === 'trading' && (
+              <div>
+                <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Trading</h3>
+                <p className="text-xs sm:text-sm text-discord-text-muted mb-4">
+                  Buy Solana tokens straight from a message, without leaving Trenchcord.
+                </p>
+
+                {isHostedMode ? (
+                  <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                    <p className="text-sm text-discord-text">
+                      Trading is only available in the desktop app, where your API token stays on your own machine.
+                    </p>
+                  </div>
+                ) : (
+                <div className="space-y-4">
+                  <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-2">
+                    <h4 className="text-xs sm:text-sm font-semibold text-white">About Slotshark</h4>
+                    <p className="text-sm text-discord-text leading-snug">
+                      Trenchcord routes buys through{' '}
+                      <a href="https://slotshark.xyz/?ref=1q79wsl2" target="_blank" rel="noopener noreferrer" className="text-discord-text-link hover:underline">Slotshark</a>
+                      , a Solana trading bot with a public REST API. It charges 0.5% on manual and API trades. Beyond
+                      the API it also runs Twitter, copytrade, deploy-sniper and Pump.fun claim tasks via Telegram or
+                      its browser extension.
+                    </p>
+                    <p className="text-sm text-discord-text leading-snug">
+                      Your API token and wallet addresses are stored locally and are sent only to Slotshark — never to
+                      Trenchcord.
+                    </p>
+                    <p className="text-xs text-discord-yellow leading-snug flex items-start gap-1.5">
+                      <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                      <span>Buy buttons execute real swaps with real SOL. There is no undo.</span>
+                    </p>
+                  </div>
+
+                  <details className="group bg-discord-sidebar rounded-lg">
+                    <summary className="flex items-center gap-2 px-3 sm:px-4 py-3 cursor-pointer select-none">
+                      <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                      <span className="text-sm font-semibold text-white">How to get a Slotshark API token</span>
+                    </summary>
+                    <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2">
+                      <div className="flex items-start gap-2.5">
+                        <span className="shrink-0 w-5 h-5 rounded-full bg-discord-blurple text-white text-xs font-bold flex items-center justify-center mt-0.5">1</span>
+                        <p className="text-sm text-discord-text">
+                          Go to{' '}
+                          <a href="https://slotshark.xyz/?ref=1q79wsl2" target="_blank" rel="noopener noreferrer" className="text-discord-text-link hover:underline">slotshark.xyz</a>
+                          , click <span className="font-semibold text-white">Open Dashboard</span> and register with Telegram.
+                        </p>
+                      </div>
+                      <div className="flex items-start gap-2.5">
+                        <span className="shrink-0 w-5 h-5 rounded-full bg-discord-blurple text-white text-xs font-bold flex items-center justify-center mt-0.5">2</span>
+                        <p className="text-sm text-discord-text">
+                          Create or import a wallet under{' '}
+                          <a href="https://slotshark.xyz/dashboard?tab=wallets" target="_blank" rel="noopener noreferrer" className="text-discord-text-link hover:underline">Wallet Management</a>
+                          , and fund it.
+                        </p>
+                      </div>
+                      <div className="flex items-start gap-2.5">
+                        <span className="shrink-0 w-5 h-5 rounded-full bg-discord-blurple text-white text-xs font-bold flex items-center justify-center mt-0.5">3</span>
+                        <p className="text-sm text-discord-text">
+                          Open <span className="font-semibold text-white">Developer API</span>, click{' '}
+                          <span className="font-semibold text-white">Reveal Token</span>, and paste it below.
+                        </p>
+                      </div>
+                      <div className="flex items-start gap-2.5">
+                        <span className="shrink-0 w-5 h-5 rounded-full bg-discord-blurple text-white text-xs font-bold flex items-center justify-center mt-0.5">4</span>
+                        <p className="text-sm text-discord-text">
+                          Copy that wallet's public key into <span className="font-semibold text-white">Wallets</span> below.
+                        </p>
+                      </div>
+                    </div>
+                  </details>
+
+                  <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                    <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Enable Trading</h4>
+                    <Toggle
+                      value={tradingEnabled}
+                      onChange={setTradingEnabled}
+                      label="Show buy buttons under messages containing a Solana contract"
+                    />
+                    {tradingEnabled && (!tradingStatus?.configured || tradingWallets.length === 0) && (
+                      <p className="text-xs text-discord-yellow mt-2 flex items-start gap-1.5">
+                        <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                        <span>
+                          Buttons stay hidden until you add
+                          {!tradingStatus?.configured ? ' an API token' : ''}
+                          {!tradingStatus?.configured && tradingWallets.length === 0 ? ' and' : ''}
+                          {tradingWallets.length === 0 ? ' a wallet' : ''}.
+                        </span>
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-3">
+                    <h4 className="text-xs sm:text-sm font-semibold text-white">API Token</h4>
+                    {tradingStatus?.configured && (
+                      <div className="flex items-center gap-2 px-3 py-2 bg-discord-dark rounded">
+                        <Key size={14} className="text-discord-text-muted shrink-0" />
+                        <span className="flex-1 min-w-0 text-xs font-mono tracking-wider text-discord-text truncate">
+                          {tradingStatus.masked}
+                        </span>
+                        <button
+                          onClick={async () => {
+                            await removeSlotsharkToken();
+                            setSlotsharkTokenSaved(false);
+                          }}
+                          className="text-discord-text-muted hover:text-discord-red transition-colors shrink-0"
+                          title="Remove API token"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="password"
+                        value={slotsharkTokenInput}
+                        onChange={(e) => { setSlotsharkTokenInput(e.target.value); setSlotsharkTokenError(''); setSlotsharkTokenSaved(false); }}
+                        placeholder={tradingStatus?.configured ? 'Replace token…' : 'Paste your Slotshark API token'}
+                        className="flex-1 bg-discord-dark text-discord-text text-sm px-3 py-2 rounded outline-none focus:ring-1 focus:ring-discord-blurple font-mono"
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
+                      />
+                      <button
+                        onClick={async () => {
+                          setSavingSlotsharkToken(true);
+                          setSlotsharkTokenError('');
+                          const res = await saveSlotsharkToken(slotsharkTokenInput.trim());
+                          setSavingSlotsharkToken(false);
+                          if (res.success) {
+                            setSlotsharkTokenInput('');
+                            setSlotsharkTokenSaved(true);
+                          } else {
+                            setSlotsharkTokenError(res.error ?? 'Failed to save token.');
+                          }
+                        }}
+                        disabled={!slotsharkTokenInput.trim() || savingSlotsharkToken}
+                        className="px-4 py-2 text-sm font-medium rounded bg-discord-blurple hover:bg-discord-blurple/80 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors shrink-0"
+                      >
+                        {savingSlotsharkToken ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                    {slotsharkTokenError && (
+                      <p className="text-xs text-discord-red flex items-center gap-1.5">
+                        <AlertTriangle size={12} /> {slotsharkTokenError}
+                      </p>
+                    )}
+                    {slotsharkTokenSaved && (
+                      <p className="text-xs text-discord-green flex items-center gap-1.5">
+                        <Check size={12} /> API token saved.
+                      </p>
+                    )}
+                    <p className="text-[11px] text-discord-text-muted">
+                      Saved separately from the rest of these settings, and never included in a settings export.
+                    </p>
+                  </div>
+
+                  <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                    <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Server Region</h4>
+                    <div className="flex gap-2">
+                      {([['us', 'US'], ['eu', 'EU']] as [SlotsharkRegion, string][]).map(([region, label]) => (
+                        <button
+                          key={region}
+                          onClick={() => setTradingRegion(region)}
+                          className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                            tradingRegion === region
+                              ? 'bg-discord-blurple text-white'
+                              : 'bg-discord-dark text-discord-text-muted hover:text-white'
+                          }`}
+                        >
+                          {label} · {region}.slotshark.xyz
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-discord-text-muted mt-2">
+                      Pick whichever is closer to you — it only affects latency.
+                    </p>
+                  </div>
+
+                  <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-3">
+                    <h4 className="text-xs sm:text-sm font-semibold text-white">Wallets</h4>
+                    {tradingWallets.length === 0 && (
+                      <p className="text-xs text-discord-text-muted">
+                        No wallets yet. Add the public key of a wallet you created in the Slotshark dashboard.
+                      </p>
+                    )}
+                    {tradingWallets.map((w) => {
+                      const enabled = tradingActiveWalletIds.includes(w.id);
+                      return (
+                      <div key={w.id} className="flex items-center gap-2 px-3 py-2 bg-discord-dark rounded">
+                        <button
+                          onClick={() => setTradingActiveWalletIds(
+                            enabled
+                              ? tradingActiveWalletIds.filter((id) => id !== w.id)
+                              : [...tradingActiveWalletIds, w.id],
+                          )}
+                          className={`w-4 h-4 rounded shrink-0 transition-colors flex items-center justify-center ${
+                            enabled
+                              ? 'bg-discord-blurple text-white'
+                              : 'bg-discord-input hover:bg-discord-text-muted/40'
+                          }`}
+                          title={enabled ? 'Enabled — buys fire from this wallet' : 'Disabled — click to buy from this wallet'}
+                        >
+                          {enabled && <Check size={11} strokeWidth={3} />}
+                        </button>
+                        <span className={`text-sm truncate max-w-[8rem] ${enabled ? 'text-white' : 'text-discord-text-muted'}`}>
+                          {w.label || 'Wallet'}
+                        </span>
+                        <span className="flex-1 min-w-0 font-mono text-xs text-discord-text-muted truncate" title={w.address}>
+                          {w.address.slice(0, 6)}…{w.address.slice(-4)}
+                        </span>
+                        <button
+                          onClick={() => {
+                            setTradingWallets(tradingWallets.filter((x) => x.id !== w.id));
+                            setTradingActiveWalletIds(tradingActiveWalletIds.filter((id) => id !== w.id));
+                          }}
+                          className="text-discord-text-muted hover:text-discord-red transition-colors shrink-0"
+                          title="Remove wallet"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                      );
+                    })}
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        value={newWalletLabel}
+                        onChange={(e) => setNewWalletLabel(e.target.value)}
+                        placeholder="Label (e.g. Main)"
+                        className="sm:w-32 bg-discord-dark text-discord-text text-sm px-3 py-2 rounded outline-none focus:ring-1 focus:ring-discord-blurple"
+                      />
+                      <input
+                        type="text"
+                        value={newWalletAddress}
+                        onChange={(e) => { setNewWalletAddress(e.target.value); setWalletError(''); }}
+                        placeholder="Wallet public key"
+                        className="flex-1 bg-discord-dark text-discord-text text-sm px-3 py-2 rounded outline-none focus:ring-1 focus:ring-discord-blurple font-mono"
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
+                      />
+                      <button
+                        onClick={() => {
+                          // Case-sensitive: trim only, never lowercase.
+                          const address = newWalletAddress.trim();
+                          if (!SOL_ADDRESS_RE.test(address)) {
+                            setWalletError('That does not look like a Solana wallet address.');
+                            return;
+                          }
+                          if (tradingWallets.some((w) => w.address === address)) {
+                            setWalletError('That wallet is already added.');
+                            return;
+                          }
+                          const wallet: TradingWallet = {
+                            id: crypto.randomUUID(),
+                            label: newWalletLabel.trim().slice(0, 40),
+                            address,
+                          };
+                          setTradingWallets([...tradingWallets, wallet]);
+                          // Your first wallet is enabled for you, so adding one
+                          // is all it takes to get buy buttons. Later ones stay
+                          // off until ticked: on "that much per wallet", quietly
+                          // enabling a second wallet would double what every
+                          // click spends, which is not ours to decide.
+                          if (enabledWalletCount === 0) {
+                            setTradingActiveWalletIds([wallet.id]);
+                          }
+                          setNewWalletLabel('');
+                          setNewWalletAddress('');
+                          setWalletError('');
+                        }}
+                        className="px-3 py-2 rounded bg-discord-blurple hover:bg-discord-blurple/80 text-white transition-colors shrink-0 flex items-center justify-center"
+                        title="Add wallet"
+                      >
+                        <Plus size={16} />
+                      </button>
+                    </div>
+                    {walletError && (
+                      <p className="text-xs text-discord-red flex items-center gap-1.5">
+                        <AlertTriangle size={12} /> {walletError}
+                      </p>
+                    )}
+                    <p className="text-[11px] text-discord-text-muted">
+                      Public keys only — Trenchcord never sees or stores a private key. Buys fire from every ticked
+                      wallet; untick one to leave it out. Your first wallet is ticked automatically — any you add
+                      after it start off, so adding a wallet never quietly increases what a click spends.
+                    </p>
+
+                    {tradingWallets.length > 0 && enabledWalletCount === 0 && (
+                      <p className="text-xs text-discord-yellow flex items-center gap-1.5">
+                        <AlertTriangle size={12} /> No wallets are ticked, so the buy buttons stay hidden.
+                      </p>
+                    )}
+
+                    {enabledWalletCount > 1 && (
+                      <div className="pt-1 space-y-2">
+                        <label className="text-[11px] text-discord-text-muted block">
+                          With {enabledWalletCount} wallets enabled, a buy amount means
+                        </label>
+                        <div className="flex flex-col sm:flex-row gap-1.5">
+                          {([
+                            ['per_wallet', 'That much per wallet'],
+                            ['split', 'Split across wallets'],
+                          ] as [WalletAmountMode, string][]).map(([val, label]) => (
+                            <button
+                              key={val}
+                              onClick={() => setTradingWalletAmountMode(val)}
+                              className={`flex-1 px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                                tradingWalletAmountMode === val
+                                  ? 'bg-discord-blurple text-white'
+                                  : 'bg-discord-dark text-discord-text-muted hover:text-white'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        <p className={`text-[11px] leading-snug ${
+                          tradingWalletAmountMode === 'per_wallet' ? 'text-discord-yellow' : 'text-discord-text-muted'
+                        }`}>
+                          {tradingWalletAmountMode === 'per_wallet' ? (
+                            <>
+                              Clicking <span className="font-semibold">{exampleAmount} SOL</span> buys {exampleAmount} SOL
+                              on each wallet — <span className="font-semibold">{roundSol(exampleAmount * enabledWalletCount)} SOL
+                              leaves your balances in total.</span>
+                            </>
+                          ) : (
+                            <>
+                              Clicking <span className="font-semibold">{exampleAmount} SOL</span> spends {exampleAmount} SOL
+                              in total — about {roundSol(exampleAmount / enabledWalletCount)} SOL from each wallet.
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                    <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Buy Amounts (SOL)</h4>
+                    <div className="grid grid-cols-5 gap-2">
+                      {tradingPresets.map((value, i) => (
+                        <input
+                          key={i}
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          inputMode="decimal"
+                          value={value}
+                          onChange={(e) => {
+                            const next = [...tradingPresets];
+                            next[i] = e.target.value;
+                            setTradingPresets(next);
+                          }}
+                          className="w-full bg-discord-dark text-discord-text text-sm px-2 py-2 rounded outline-none focus:ring-1 focus:ring-discord-blurple text-center"
+                        />
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-discord-text-muted mt-2">
+                      Up to five buttons. Leave a box blank or at 0 to hide that button.
+                    </p>
+                  </div>
+
+                  <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-4">
+                    <h4 className="text-xs sm:text-sm font-semibold text-white">Execution</h4>
+
+                    <div>
+                      <label className="text-[11px] text-discord-text-muted mb-1 block">Slippage</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          max="10000"
+                          step="1"
+                          inputMode="numeric"
+                          value={tradingSlippage}
+                          onChange={(e) => setTradingSlippage(Number(e.target.value))}
+                          className="w-28 bg-discord-dark text-discord-text text-sm px-3 py-2 rounded outline-none focus:ring-1 focus:ring-discord-blurple"
+                        />
+                        <span className="text-xs text-discord-text-muted">%</span>
+                      </div>
+                    </div>
+
+                    {([
+                      ['Tip', tradingTip, setTradingTip, 0.005] as const,
+                      ['Priority Fee', tradingPriorityFee, setTradingPriorityFee, 0.003] as const,
+                    ]).map(([label, value, setValue, fallback]) => (
+                      <div key={label}>
+                        <label className="text-[11px] text-discord-text-muted mb-1 block">{label}</label>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => setValue(null)}
+                              className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                                value === null ? 'bg-discord-blurple text-white' : 'bg-discord-dark text-discord-text-muted hover:text-white'
+                              }`}
+                            >
+                              Auto
+                            </button>
+                            <button
+                              onClick={() => setValue(value ?? fallback)}
+                              className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                                value !== null ? 'bg-discord-blurple text-white' : 'bg-discord-dark text-discord-text-muted hover:text-white'
+                              }`}
+                            >
+                              Custom
+                            </button>
+                          </div>
+                          {value !== null && (
+                            <>
+                              <input
+                                type="number"
+                                min="0"
+                                max="1"
+                                step="0.0001"
+                                inputMode="decimal"
+                                value={value}
+                                onChange={(e) => setValue(Number(e.target.value))}
+                                className="w-28 bg-discord-dark text-discord-text text-sm px-3 py-2 rounded outline-none focus:ring-1 focus:ring-discord-blurple"
+                              />
+                              <span className="text-xs text-discord-text-muted">SOL</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    <p className="text-[11px] text-discord-text-muted">
+                      On Auto, Slotshark picks these from recent blocks (tip = p75, priority fee = p99). The tip is only
+                      paid if the swap succeeds; the priority fee is paid whenever the transaction lands.
+                    </p>
+
+                    <Toggle
+                      value={tradingAntimev}
+                      onChange={setTradingAntimev}
+                      label="Anti-MEV protection"
+                    />
+                  </div>
+
+                  <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-4">
+                    <h4 className="text-xs sm:text-sm font-semibold text-white">Button Appearance</h4>
+
+                    <div>
+                      <label className="text-[11px] text-discord-text-muted mb-1 block">Size</label>
+                      <div className="flex gap-2">
+                        {([['sm', 'Small'], ['md', 'Medium'], ['lg', 'Large']] as [TradeButtonSize, string][]).map(([val, label]) => (
+                          <button
+                            key={val}
+                            onClick={() => setTradingButtonSize(val)}
+                            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                              tradingButtonSize === val
+                                ? 'bg-discord-blurple text-white'
+                                : 'bg-discord-dark text-discord-text-muted hover:text-white'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 bg-discord-dark rounded">
+                        <ColorPickerWithAlpha
+                          value={tradingButtonBgColor}
+                          onChange={(c) => setTradingButtonBgColor(c)}
+                          defaultColor={DEFAULT_TRADE_BG}
+                          showTextInput
+                        />
+                        <span className="text-xs sm:text-sm text-discord-text flex-1">Button background</span>
+                        {tradingButtonBgColor !== DEFAULT_TRADE_BG && (
+                          <button onClick={() => setTradingButtonBgColor(DEFAULT_TRADE_BG)} className="text-[11px] text-discord-text-muted hover:text-white shrink-0">Reset</button>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 bg-discord-dark rounded">
+                        <ColorPickerWithAlpha
+                          value={tradingButtonTextColor}
+                          onChange={(c) => setTradingButtonTextColor(c)}
+                          defaultColor={DEFAULT_TRADE_FG}
+                          showTextInput
+                        />
+                        <span className="text-xs sm:text-sm text-discord-text flex-1">Button text</span>
+                        {tradingButtonTextColor !== DEFAULT_TRADE_FG && (
+                          <button onClick={() => setTradingButtonTextColor(DEFAULT_TRADE_FG)} className="text-[11px] text-discord-text-muted hover:text-white shrink-0">Reset</button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-1">
+                      <Toggle
+                        value={tradingShowContractPill}
+                        onChange={setTradingShowContractPill}
+                        label="Show the contract address on the buy row"
+                      />
+                      <p className="text-[11px] text-discord-text-muted mt-2">
+                        Turn this off for just the buttons — the address is already in the message above. A message
+                        with several contracts always keeps it, since it's the only thing telling the rows apart.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] text-discord-text-muted mb-1 block">Preview</label>
+                      <div className="px-2 sm:px-3 py-2 bg-discord-dark rounded flex items-center gap-1.5 flex-wrap">
+                        {tradingShowContractPill && (
+                          <span
+                            className={`rounded font-mono shrink-0 ${TRADE_PREVIEW_SIZES[tradingButtonSize].pill}`}
+                            style={{ backgroundColor: colorWithExtraAlpha(solAddressColor, 0.125), color: solAddressColor }}
+                          >
+                            9xY2…k4Qp
+                          </span>
+                        )}
+                        {(inputsToPresets(tradingPresets).length > 0 ? inputsToPresets(tradingPresets) : [0.5, 1, 3, 5, 10]).map((amount, i) => (
+                          <span
+                            key={i}
+                            className={`select-none rounded font-semibold ${TRADE_PREVIEW_SIZES[tradingButtonSize].button}`}
+                            style={{ backgroundColor: tradingButtonBgColor, color: tradingButtonTextColor }}
+                          >
+                            {amount}
+                          </span>
+                        ))}
+                        <span className={`text-discord-text-muted shrink-0 ${TRADE_PREVIEW_SIZES[tradingButtonSize].unit}`}>SOL</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                    <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Open Chart on Buy</h4>
+                    <Toggle
+                      value={tradingOpenSiteOnBuy}
+                      onChange={setTradingOpenSiteOnBuy}
+                      label="Open the token on a trading site when a buy fires"
+                    />
+                    <p className="text-[11px] text-discord-text-muted mt-2">
+                      The site opens the moment you click, without waiting for the buy to confirm — so you land on the
+                      chart to manage the position (or retry by hand if the buy failed). Buying more of the same token
+                      within a few seconds won't open it again.
+                    </p>
+
+                    {tradingOpenSiteOnBuy && (
+                      <div className="mt-3 px-3 py-2.5 bg-discord-dark rounded">
+                        <label className="text-[11px] text-discord-text-muted mb-1.5 block">Site</label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(['default', 'axiom', 'padre', 'bloom', 'gmgn', 'custom'] as BuySitePlatform[]).map((p) => (
+                            <button
+                              key={p}
+                              onClick={() => setTradingBuySitePlatform(p)}
+                              className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                                tradingBuySitePlatform === p
+                                  ? 'bg-discord-blurple text-white'
+                                  : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'
+                              }`}
+                            >
+                              {p === 'default'
+                                ? 'Same as contract links'
+                                : p === 'axiom' ? 'Axiom' : p === 'padre' ? 'Padre' : p === 'bloom' ? 'Bloom' : p === 'gmgn' ? 'GMGN' : 'Custom'}
+                            </button>
+                          ))}
+                        </div>
+                        {tradingBuySitePlatform === 'custom' && (
+                          <input
+                            type="text"
+                            value={tradingBuySiteUrl}
+                            onChange={(e) => setTradingBuySiteUrl(e.target.value)}
+                            placeholder="https://example.com/token/{address}"
+                            className="w-full mt-2 bg-discord-sidebar border-none rounded px-2 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple font-mono"
+                          />
+                        )}
+                        <p className="text-[11px] text-discord-text-muted mt-2">
+                          {tradingBuySitePlatform === 'default'
+                            ? 'Follows the SOL platform from Settings → Contracts, so you only set it in one place.'
+                            : tradingBuySitePlatform === 'custom'
+                              ? 'Use {address} where the contract goes. Buys are Solana-only, so this is a SOL link.'
+                              : 'Only affects buys — clicking a contract address still uses your Contracts setting.'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                    <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Misclick Protection</h4>
+                    <Toggle
+                      value={tradingRequireDoubleClick}
+                      onChange={setTradingRequireDoubleClick}
+                      label="Require a double click to fire a buy"
+                    />
+                    <p className="text-[11px] text-discord-text-muted mt-2">
+                      Off by default: one click buys immediately. Turn this on and the first click arms the button —
+                      click again within a moment to confirm.
+                    </p>
+                  </div>
+                </div>
+                )}
+              </div>
             )}
 
             {section === 'sounds' && (

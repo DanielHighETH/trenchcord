@@ -4,6 +4,8 @@ import type { FrontendMessage, FrontendReaction, ContractLinkTemplates, Contract
 import { useAppStore } from '../stores/appStore';
 import ImageLightbox from './ImageLightbox';
 import UserContextMenu from './UserContextMenu';
+import TradeButtons from './TradeButtons';
+import { detectAddresses } from '../utils/addressDetect';
 import { buildContractUrl, DEFAULT_LINK_TEMPLATES } from '../utils/contractUrl';
 import { colorWithExtraAlpha } from './ColorPickerWithAlpha';
 
@@ -413,29 +415,6 @@ function splitByRegex(
     if (lastIndex < part.length) result.push(part.slice(lastIndex));
   }
   return result;
-}
-
-const EVM_ADDR_RE = /\b0x[a-fA-F0-9]{40}\b/g;
-const SOL_ADDR_RE = /(?<![1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{40,48}(?![1-9A-HJ-NP-Za-km-z])/g;
-
-function detectAddresses(text: string): string[] {
-  // Strip URLs so we don't detect addresses embedded in links
-  const stripped = text
-    .replace(/https?:\/\/[^\s<>)]+/g, ' ')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
-
-  const addrs: string[] = [];
-  const evm = stripped.match(EVM_ADDR_RE);
-  if (evm) addrs.push(...evm);
-  const sol = stripped.match(SOL_ADDR_RE);
-  if (sol) {
-    for (const m of sol) {
-      if (!addrs.includes(m) && /\d/.test(m) && /[a-z]/.test(m) && /[A-Z]/.test(m)) {
-        addrs.push(m);
-      }
-    }
-  }
-  return addrs;
 }
 
 function renderEmbedDescription(text: string, showFull: boolean = false): ReactNode {
@@ -1047,6 +1026,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
 
           <TelegramExtras message={message} />
           <ReactionPills message={message} />
+          <TradeButtons message={message} dense />
         </div>
 
         {lightboxSrc && (
@@ -1241,6 +1221,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
 
           <TelegramExtras message={message} />
           <ReactionPills message={message} />
+          <TradeButtons message={message} dense />
         </div>
 
         {lightboxSrc && (
@@ -1501,6 +1482,7 @@ function Message({ message, isCompact, messageDisplay = 'default', compactModeAv
 
         <TelegramExtras message={message} />
         <ReactionPills message={message} />
+        <TradeButtons message={message} />
       </div>
 
       {lightboxSrc && (

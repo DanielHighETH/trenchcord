@@ -69,6 +69,26 @@ const DEFAULT_CONFIG: AppConfig = {
   paneLocks: [],
   gridMirror: false,
   seenAnnouncements: [],
+  trading: {
+    enabled: false,
+    region: 'us',
+    wallets: [],
+    activeWalletIds: [],
+    walletAmountMode: 'per_wallet',
+    presetAmounts: [0.5, 1, 3, 5, 10],
+    slippage: 20,
+    tip: null,
+    priorityFee: null,
+    antimev: true,
+    requireDoubleClick: false,
+    buttonSize: 'md',
+    buttonBgColor: '#383a40',
+    buttonTextColor: '#dbdee1',
+    showContractPill: true,
+    openSiteOnBuy: false,
+    buySitePlatform: 'default',
+    buySiteUrl: '',
+  },
 };
 
 class ConfigStore {
@@ -96,6 +116,21 @@ class ConfigStore {
           for (const key of ['highlight', 'contractAlert', 'keywordAlert'] as const) {
             parsed.soundSettings[key] = { ...DEFAULT_SOUND_CONFIG, ...parsed.soundSettings[key] };
           }
+        }
+        // The spread above is shallow, so a stored `trading` object wins
+        // wholesale and would leave any newly-added sub-key undefined. Merge
+        // per-key so future releases inherit defaults on existing installs.
+        parsed.trading = { ...DEFAULT_CONFIG.trading, ...(parsed.trading ?? {}) };
+        if (!Array.isArray(parsed.trading.wallets)) parsed.trading.wallets = [];
+        // Pre-multi-wallet configs carry a single `activeWalletId`. Carry that
+        // choice over so an upgrade doesn't silently disable someone's wallet.
+        if (!Array.isArray(parsed.trading.activeWalletIds)) {
+          const legacy = (parsed.trading as any).activeWalletId;
+          parsed.trading.activeWalletIds = typeof legacy === 'string' && legacy ? [legacy] : [];
+        }
+        delete (parsed.trading as any).activeWalletId;
+        if (!Array.isArray(parsed.trading.presetAmounts)) {
+          parsed.trading.presetAmounts = [...DEFAULT_CONFIG.trading.presetAmounts];
         }
         return parsed;
       }
@@ -151,7 +186,7 @@ class ConfigStore {
     return this.config;
   }
 
-  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout' | 'paneRoomIds' | 'paneLocks' | 'gridMirror' | 'seenAnnouncements' | 'telegramApiId' | 'telegramApiHash' | 'telegramSessions' | 'discordProxyUrl'>>): AppConfig {
+  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout' | 'paneRoomIds' | 'paneLocks' | 'gridMirror' | 'seenAnnouncements' | 'telegramApiId' | 'telegramApiHash' | 'telegramSessions' | 'discordProxyUrl' | 'trading' | 'slotsharkApiToken'>>): AppConfig {
     Object.assign(this.config, partial);
     this.save();
     return this.config;

@@ -174,6 +174,10 @@ export function useWebSocket() {
             fetchTelegramChats();
             fetchHistory();
             checkAuth();
+          } else if (incoming.type === 'telegram_status') {
+            // Backend detected a dropped/restored Telegram connection - refresh
+            // the auth status so the sidebar indicator stops lying.
+            checkAuth();
           } else if (incoming.type === 'gateway_auth_failed') {
             setGatewayAuthError(
               incoming.error ?? 'Discord token authentication failed. Please check your token in settings.',

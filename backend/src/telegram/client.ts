@@ -7,6 +7,29 @@ import { Api } from 'teleproto/tl/index.js';
 import type { TelegramChat, TelegramSender, TelegramRawMessage, TelegramMedia, TelegramButton } from './types.js';
 import { rewriteReferralLinks } from '../utils/contract.js';
 
+// How often to verify the connection is actually alive. teleproto pings every
+// 9s on its own, but its recovery has terminal states (see reconnectLoop), so we
+// supervise it from the outside.
+const HEALTH_CHECK_INTERVAL_MS = 30_000;
+const HEALTH_PROBE_TIMEOUT_MS = 15_000;
+// How long teleproto gets to finish its own reconnect before we take over.
+const SENDER_RECONNECT_GRACE_MS = 90_000;
+const RECONNECT_BASE_DELAY_MS = 2_000;
+const RECONNECT_MAX_DELAY_MS = 60_000;
+const TEARDOWN_TIMEOUT_MS = 5_000;
+
+// Errors that mean the session itself is gone — reconnecting can never fix
+// these, the user has to log in again.
+const FATAL_AUTH_ERRORS = [
+  'AUTH_KEY_UNREGISTERED',
+  'AUTH_KEY_DUPLICATED',
+  'AUTH_KEY_INVALID',
+  'SESSION_REVOKED',
+  'SESSION_EXPIRED',
+  'USER_DEACTIVATED',
+  'USER_DEACTIVATED_BAN',
+];
+
 export class TelegramClientWrapper extends EventEmitter {
   private client: GramJSClient;
   private session: StringSession;
@@ -15,23 +38,52 @@ export class TelegramClientWrapper extends EventEmitter {
   private chatCache = new Map<string, TelegramChat>();
   private senderCache = new Map<string, TelegramSender>();
   private connected = false;
+  private destroyed = false;
+  private reconnecting = false;
+  private probing = false;
+  private reconnectAttempt = 0;
+  private senderReconnectingSince: number | null = null;
+  private healthTimer: ReturnType<typeof setInterval> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectWake: (() => void) | null = null;
 
   constructor(apiId: number, apiHash: string, sessionString: string) {
     super();
     this.apiId = apiId;
     this.apiHash = apiHash;
     this.session = new StringSession(sessionString);
-    this.client = new GramJSClient(this.session, this.apiId, this.apiHash, {
+    this.client = this.createClient();
+  }
+
+  private createClient(): GramJSClient {
+    return new GramJSClient(this.session, this.apiId, this.apiHash, {
       connectionRetries: 5,
+      retryDelay: 2_000,
+      autoReconnect: true,
     });
   }
 
   async connect(): Promise<void> {
+    this.destroyed = false;
+    const ok = await this.attemptConnect();
+    if (!ok && !this.destroyed) {
+      // Don't fail permanently on a cold start with no network — keep retrying
+      // in the background so the app heals itself once connectivity returns.
+      this.scheduleReconnect('initial connection failed');
+    }
+  }
+
+  private async attemptConnect(): Promise<boolean> {
     try {
-      await this.client.connect();
-      this.connected = true;
+      // connect() resolves false (rather than throwing) when it burns through
+      // all its connection retries.
+      const ok = await this.client.connect();
+      if (ok === false) throw new Error('all connection attempts failed');
 
       const me = await this.client.getMe() as Api.User;
+      this.connected = true;
+      this.reconnectAttempt = 0;
+      this.senderReconnectingSince = null;
       console.log(`[Telegram] Connected as ${me.firstName} (@${me.username ?? 'no-username'})`);
 
       this.emit('ready', {
@@ -41,14 +93,167 @@ export class TelegramClientWrapper extends EventEmitter {
       });
 
       this.setupEventHandlers();
+      this.startHealthCheck();
       // Prime the entity/chat cache once so resolveChat's getEntity can resolve
       // channels. teleproto's UpdateManager keeps the update stream live on its
       // own, so no recurring polling is needed.
       await this.client.getDialogs({ limit: 200 }).catch(() => {});
+      return true;
     } catch (err: any) {
-      console.error('[Telegram] Connection failed:', err.message);
-      this.emit('fatal', new Error(`Telegram connection failed: ${err.message}`));
+      this.connected = false;
+      const message = err?.message ?? String(err);
+      if (this.isFatalAuthError(err)) {
+        this.destroyed = true;
+        this.stopHealthCheck();
+        console.error('[Telegram] Session is no longer valid:', message);
+        this.emit('fatal', new Error(`Telegram session invalid: ${message}`));
+        return false;
+      }
+      console.error('[Telegram] Connection failed:', message);
+      return false;
     }
+  }
+
+  // --- Connection supervision ---
+  //
+  // teleproto reconnects on its own, but that recovery has dead ends: if the
+  // sender exhausts its retries mid-reconnect it stops for good with both of
+  // its loops exited, and the update loop breaks out and is never restarted.
+  // The client then looks alive to callers while no update ever arrives again,
+  // which is exactly the "Telegram silently stopped" symptom. So we poll the
+  // connection ourselves and rebuild the client from scratch when it dies.
+
+  private startHealthCheck(): void {
+    this.stopHealthCheck();
+    this.healthTimer = setInterval(() => void this.checkHealth(), HEALTH_CHECK_INTERVAL_MS);
+    this.healthTimer.unref?.();
+  }
+
+  private stopHealthCheck(): void {
+    if (this.healthTimer) {
+      clearInterval(this.healthTimer);
+      this.healthTimer = null;
+    }
+  }
+
+  private async checkHealth(): Promise<void> {
+    if (this.destroyed || this.reconnecting || this.probing || !this.connected) return;
+
+    // teleproto may be retrying on its own, which usually succeeds in a second
+    // or two - let it. But that state can also wedge permanently (a rejected
+    // internal _reconnect leaves isReconnecting stuck true and both sender
+    // loops dead), so the grace period is bounded.
+    if ((this.client as any)._sender?.isReconnecting === true) {
+      this.senderReconnectingSince ??= Date.now();
+      if (Date.now() - this.senderReconnectingSince < SENDER_RECONNECT_GRACE_MS) return;
+      this.scheduleReconnect('stuck reconnecting');
+      return;
+    }
+    this.senderReconnectingSince = null;
+
+    if (this.client.disconnected) {
+      this.scheduleReconnect('sender disconnected');
+      return;
+    }
+
+    this.probing = true;
+    try {
+      // A real round trip, so a socket that died without notice (laptop sleep,
+      // NAT/idle timeout, silently dropped connection) is caught. It doubles as
+      // the content-related request Telegram wants at least hourly to keep
+      // pushing updates.
+      await this.withTimeout(this.client.invoke(new Api.updates.GetState()), HEALTH_PROBE_TIMEOUT_MS);
+    } catch (err: any) {
+      const message = err?.message ?? String(err);
+      if (this.isFatalAuthError(err)) {
+        this.destroyed = true;
+        this.connected = false;
+        this.stopHealthCheck();
+        console.error('[Telegram] Session is no longer valid:', message);
+        this.emit('fatal', new Error(`Telegram session invalid: ${message}`));
+        return;
+      }
+      this.scheduleReconnect(`health check failed: ${message}`);
+    } finally {
+      this.probing = false;
+    }
+  }
+
+  private scheduleReconnect(reason: string): void {
+    if (this.destroyed || this.reconnecting) return;
+    this.reconnecting = true;
+    const wasConnected = this.connected;
+    this.connected = false;
+    this.stopHealthCheck();
+
+    console.warn(`[Telegram] Connection lost (${reason}) - reconnecting...`);
+    if (wasConnected) this.emit('disconnected', reason);
+
+    void this.reconnectLoop();
+  }
+
+  private async reconnectLoop(): Promise<void> {
+    try {
+      while (!this.destroyed) {
+        const delay = Math.min(
+          RECONNECT_BASE_DELAY_MS * 2 ** this.reconnectAttempt,
+          RECONNECT_MAX_DELAY_MS,
+        );
+        this.reconnectAttempt++;
+        await this.sleep(delay);
+        if (this.destroyed) break;
+
+        // Reusing the old client is not enough: its sender can be wedged with
+        // its send/receive loops gone, so build a fresh one. The StringSession
+        // is reused, so the auth key survives and no re-login is needed.
+        await this.teardownClient();
+        if (this.destroyed) break;
+        this.client = this.createClient();
+
+        if (await this.attemptConnect()) {
+          console.log('[Telegram] Reconnected');
+          this.emit('reconnected');
+          break;
+        }
+      }
+    } finally {
+      this.reconnecting = false;
+    }
+  }
+
+  private async teardownClient(): Promise<void> {
+    try {
+      await this.withTimeout(this.client.destroy(), TEARDOWN_TIMEOUT_MS);
+    } catch {
+      // Already dead or hung - we're discarding this client either way.
+    }
+  }
+
+  private isFatalAuthError(err: any): boolean {
+    const message = `${err?.errorMessage ?? ''} ${err?.message ?? ''}`.toUpperCase();
+    return FATAL_AUTH_ERRORS.some((code) => message.includes(code));
+  }
+
+  private withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+      timer.unref?.();
+      promise.then(
+        (value) => { clearTimeout(timer); resolve(value); },
+        (err) => { clearTimeout(timer); reject(err); },
+      );
+    });
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      this.reconnectWake = resolve;
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectWake = null;
+        resolve();
+      }, ms);
+      this.reconnectTimer.unref?.();
+    });
   }
 
   private setupEventHandlers(): void {
@@ -626,7 +831,18 @@ export class TelegramClientWrapper extends EventEmitter {
   }
 
   disconnect(): void {
+    // destroyed stops the health check and any in-flight reconnect loop from
+    // resurrecting a client the caller asked us to drop.
+    this.destroyed = true;
     this.connected = false;
+    this.stopHealthCheck();
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    // Wake a sleeping reconnect loop so it observes `destroyed` and stops.
+    this.reconnectWake?.();
+    this.reconnectWake = null;
     this.client.disconnect().catch(() => {});
   }
 }

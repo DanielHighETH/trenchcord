@@ -94,6 +94,61 @@ export interface SoundConfig {
 
 export type SoundSettings = Record<SoundType, SoundConfig>;
 
+export type SlotsharkRegion = 'us' | 'eu';
+
+export type TradeButtonSize = 'sm' | 'md' | 'lg';
+
+/** Which site a buy opens. 'default' follows the contract-link SOL platform. */
+export type BuySitePlatform = 'default' | SolPlatform;
+
+/**
+ * How a clicked amount maps onto several enabled wallets.
+ * - `per_wallet`: each wallet buys the full amount (5 SOL x 2 = 10 SOL spent)
+ * - `split`: the amount is divided between them (5 SOL / 2 = 2.5 SOL each)
+ */
+export type WalletAmountMode = 'per_wallet' | 'split';
+
+export interface TradingWallet {
+  id: string;
+  label: string;
+  /** Slotshark wallet pubkey. Case-sensitive -- trim only, never lowercase. */
+  address: string;
+}
+
+export interface TradingConfig {
+  enabled: boolean;
+  region: SlotsharkRegion;
+  wallets: TradingWallet[];
+  /** Wallets a buy fires from. Empty is legitimate: every wallet switched off. */
+  activeWalletIds: string[];
+  walletAmountMode: WalletAmountMode;
+  /** Up to 5 buy buttons, in SOL. */
+  presetAmounts: number[];
+  slippage: number;
+  /** null = auto (field omitted from the request; Slotshark picks p75/p99). */
+  tip: number | null;
+  priorityFee: number | null;
+  antimev: boolean;
+  requireDoubleClick: boolean;
+  buttonSize: TradeButtonSize;
+  buttonBgColor: string;
+  buttonTextColor: string;
+  /** Show the shortened contract pill at the start of the buy row. */
+  showContractPill: boolean;
+  /** Open the token on a chart/trading site when a buy fires (SOL only). */
+  openSiteOnBuy: boolean;
+  /** 'default' follows contractLinkTemplates.solPlatform; 'custom' uses buySiteUrl. */
+  buySitePlatform: BuySitePlatform;
+  /** Custom template, e.g. https://example.com/token/{address} */
+  buySiteUrl: string;
+}
+
+export interface TradingStatus {
+  configured: boolean;
+  masked: string | null;
+  walletCount: number;
+}
+
 export interface AppConfig {
   discordTokens: string[];
   rooms: Room[];
@@ -139,6 +194,10 @@ export interface AppConfig {
   telegramApiHash?: string;
   telegramSessions?: string[];
   discordProxyUrl?: string;
+  trading: TradingConfig;
+  // NOTE: slotsharkApiToken is deliberately absent. GET /api/config strips it,
+  // so the frontend never holds the token -- read its presence via
+  // GET /api/trading/status instead.
 }
 
 export interface AuthStatus {
@@ -304,7 +363,7 @@ export interface Alert {
 }
 
 export interface WsIncoming {
-  type: 'message' | 'message_update' | 'message_delete' | 'alert' | 'reaction_update' | 'contract' | 'chain_update' | 'gateway_ready' | 'telegram_ready' | 'gateway_auth_failed';
+  type: 'message' | 'message_update' | 'message_delete' | 'alert' | 'reaction_update' | 'contract' | 'chain_update' | 'gateway_ready' | 'telegram_ready' | 'telegram_status' | 'gateway_auth_failed';
   data: any;
   error?: string;
   tokenIndex?: number;

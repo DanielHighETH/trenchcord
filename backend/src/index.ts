@@ -19,6 +19,14 @@ import type { TelegramMessageProcessorContext } from './telegram/messageProcesso
 import { WsServer } from './ws/server.js';
 import { createRouter } from './api/routes.js';
 import { getStorageProvider, isHostedMode } from './storage/index.js';
+import { getBindHost, isAllowedHost, isAllowedOrigin, warnIfExposed } from './security/localAccess.js';
+import {
+  getLocalToken,
+  isAuthorizedLocalRequest,
+  isLoopbackRequest,
+  isValidToken,
+  sessionCookie,
+} from './security/localAuth.js';
 import { authMiddleware } from './auth/middleware.js';
 import { getGateway, setGateway } from './gateway/state.js';
 import { UserGatewayPool } from './gateway/userGatewayPool.js';
@@ -387,8 +395,19 @@ function wireTelegramEvents(tg: TelegramClientManager, wsServer: WsServer, userI
     }, roomIds, userId);
   });
 
+  tg.on('disconnected', (reason: string) => {
+    console.warn(`[App] Telegram disconnected: ${reason}`);
+    wsServer.broadcastRaw({ type: 'telegram_status', data: { connected: false, reason } }, userId);
+  });
+
+  tg.on('reconnected', () => {
+    console.log('[App] Telegram reconnected');
+    wsServer.broadcastRaw({ type: 'telegram_status', data: { connected: true } }, userId);
+  });
+
   tg.on('fatal', (err: Error) => {
     console.error('[App] Fatal Telegram error:', err.message);
+    wsServer.broadcastRaw({ type: 'telegram_status', data: { connected: false, reason: err.message, fatal: true } }, userId);
   });
 }
 
@@ -439,7 +458,7 @@ export function getUserTelegram(userId: string): TelegramClientManager | null {
 
 const app = express();
 
-// CORS: restrict origins in hosted mode, allow all in local mode
+// CORS: restrict origins in hosted mode, restrict to this machine in local mode
 if (isHostedMode()) {
   const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
@@ -457,7 +476,30 @@ if (isHostedMode()) {
     credentials: true,
   }));
 } else {
-  app.use(cors());
+  // Local mode has no authentication and its settings export contains Discord
+  // tokens and Telegram sessions in plaintext, so a wildcard here would let any
+  // page you happen to have open read them out of localhost.
+  app.use(cors({
+    origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
+    credentials: true,
+  }));
+
+  // Rejects requests whose Host header isn't this machine, which is what a DNS
+  // rebinding attack looks like once the attacker's domain resolves to
+  // 127.0.0.1 and the origin check no longer applies. The Origin check is
+  // enforced here rather than left to the cors() middleware above, because that
+  // one only withholds the response header - the request still runs.
+  app.use((req, res, next) => {
+    if (!isAllowedHost(req.headers.host)) {
+      console.warn(`[App] Blocked request with unexpected Host header: ${req.headers.host}`);
+      return res.status(403).json({ error: 'Forbidden: unexpected Host header.' });
+    }
+    if (!isAllowedOrigin(req.headers.origin)) {
+      console.warn(`[App] Blocked request from unexpected origin: ${req.headers.origin}`);
+      return res.status(403).json({ error: 'Forbidden: unexpected origin.' });
+    }
+    next();
+  });
 }
 
 // Security headers in hosted mode
@@ -501,19 +543,58 @@ if (isHostedMode()) {
   );
 }
 
+if (!isHostedMode()) {
+  // Hands the page its token. A request already on this machine is trusted to
+  // ask for one (it is the app you just opened); anything else has to prove it
+  // already knows the token, which is how a phone on the LAN gets in after you
+  // open the tokenised URL printed at startup.
+  app.get('/api/local-session', (req, res) => {
+    if (!isLoopbackRequest(req) && !isAuthorizedLocalRequest(req)) {
+      return res.status(401).json({ error: 'A valid token is required from a remote device.' });
+    }
+    res.setHeader('Set-Cookie', sessionCookie());
+    res.status(204).end();
+  });
+
+  app.use('/api', (req, res, next) => {
+    if (isAuthorizedLocalRequest(req)) return next();
+    res.status(401).json({ error: 'Unauthorized: this Trenchcord API requires the local session token.' });
+  });
+}
+
 app.use('/api', authMiddleware, createRouter(wsServer));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 const frontendDist = process.env.TRENCHCORD_FRONTEND_DIST || path.resolve(__dirname, '../../frontend/dist');
+
+// Ahead of the static handler, which would otherwise answer "/" itself and skip
+// this. Opening the tokenised URL on another device exchanges the token for the
+// cookie once, then drops it from the address bar so it isn't left behind in
+// history or read off a shared screen.
+if (!isHostedMode()) {
+  app.get('*', (req, res, next) => {
+    if (typeof req.query.token !== 'string' || !isValidToken(req.query.token)) return next();
+    res.setHeader('Set-Cookie', sessionCookie());
+    res.redirect(req.path);
+  });
+}
+
 app.use(express.static(frontendDist));
 app.get('*', (_req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
-httpServer.listen(PORT, async () => {
+const BIND_HOST = getBindHost(isHostedMode());
+
+httpServer.listen(PORT, BIND_HOST, async () => {
   console.log(`[App] Server running on http://localhost:${PORT}`);
   console.log(`[App] Mode: ${isHostedMode() ? 'hosted' : 'local'}`);
+  if (!isHostedMode() && warnIfExposed(BIND_HOST)) {
+    console.warn(
+      `[App] To open Trenchcord from another device, use:  http://<this-machine>:${PORT}/?token=${getLocalToken()}`,
+    );
+  }
 
   if (!isHostedMode()) {
     const storage = getStorageProvider();

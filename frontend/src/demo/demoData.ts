@@ -197,6 +197,27 @@ export const DEMO_CONFIG: AppConfig = {
   gridMirror: false,
   seenAnnouncements: [],
   telegramColors: {},
+  // Trading is inert in the demo -- the store rejects buys before any request.
+  trading: {
+    enabled: false,
+    region: 'us',
+    wallets: [],
+    activeWalletIds: [],
+    walletAmountMode: 'per_wallet',
+    presetAmounts: [0.5, 1, 3, 5, 10],
+    slippage: 20,
+    tip: null,
+    priorityFee: null,
+    antimev: true,
+    requireDoubleClick: false,
+    buttonSize: 'md',
+    buttonBgColor: '#383a40',
+    buttonTextColor: '#dbdee1',
+    showContractPill: true,
+    openSiteOnBuy: false,
+    buySitePlatform: 'default',
+    buySiteUrl: '',
+  },
 };
 
 // ---------------------------------------------------------------------------

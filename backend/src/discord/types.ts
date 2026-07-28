@@ -181,6 +181,56 @@ export interface SoundConfig {
 
 export type SoundSettings = Record<SoundType, SoundConfig>;
 
+export type SlotsharkRegion = 'us' | 'eu';
+
+export type TradeButtonSize = 'sm' | 'md' | 'lg';
+
+export type BuySitePlatform = 'default' | SolPlatform;
+
+// How a clicked amount maps onto several enabled wallets.
+//   per_wallet: each wallet buys the full amount (5 SOL x 2 = 10 SOL spent)
+//   split:      the amount is divided between them (5 SOL / 2 = 2.5 SOL each)
+export type WalletAmountMode = 'per_wallet' | 'split';
+
+export interface TradingWallet {
+  id: string;
+  label: string;
+  // Slotshark wallet pubkey. CASE SENSITIVE -- trim only, never lowercase.
+  address: string;
+}
+
+export interface TradingConfig {
+  enabled: boolean;
+  region: SlotsharkRegion;
+  wallets: TradingWallet[];
+  // Wallets a buy fires from. Empty means no buy can be placed at all, which is
+  // a legitimate state (every wallet switched off) rather than a broken one.
+  activeWalletIds: string[];
+  walletAmountMode: WalletAmountMode;
+  // Up to 5 buy buttons, in SOL. Entries <= 0 render no button.
+  presetAmounts: number[];
+  slippage: number;
+  // null = auto: the field is omitted from the request and Slotshark picks
+  // (tip = p75, priorityFee = p99 of recent blocks).
+  tip: number | null;
+  priorityFee: number | null;
+  antimev: boolean;
+  requireDoubleClick: boolean;
+  buttonSize: TradeButtonSize;
+  buttonBgColor: string;
+  buttonTextColor: string;
+  // Show the shortened contract pill at the start of the buy row. Off leaves
+  // just the amounts, since the address is already in the message above.
+  showContractPill: boolean;
+  // Open a chart/trading site for the token when a buy fires, so you land on
+  // the chart without pasting the address. SOL only -- buys are SOL-only.
+  openSiteOnBuy: boolean;
+  // 'default' follows contractLinkTemplates.solPlatform; 'custom' uses buySiteUrl.
+  buySitePlatform: BuySitePlatform;
+  // Custom template, e.g. https://example.com/token/{address}
+  buySiteUrl: string;
+}
+
 export interface AppConfig {
   discordTokens: string[];
   rooms: Room[];
@@ -228,6 +278,12 @@ export interface AppConfig {
   // Optional HTTP/HTTPS proxy for the Discord gateway + REST connection. Local
   // mode only — lets VPN-blocked users route Discord traffic through a proxy.
   discordProxyUrl?: string;
+  trading: TradingConfig;
+  // Slotshark REST token. Deliberately a top-level sibling rather than a field
+  // on `trading`: it is stripped from GET /config, so if it lived inside the
+  // object the settings form would hydrate from the blank and the next Save
+  // would silently wipe it. Written only via POST/DELETE /api/trading/token.
+  slotsharkApiToken?: string;
 }
 
 export interface TelegramChatInfo {
