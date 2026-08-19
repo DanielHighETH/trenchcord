@@ -1,6 +1,16 @@
 {
   "announcements": [
     {
+      "id": "testimonials-2026-08",
+      "title": "A favour before 2.0",
+      "body": "Trenchcord 2.0 is nearly here, and with it a subscription. New people still have to decide whether to trust a crypto app with their Discord token \u2014 and your word does that far better than mine. Post a testimonial on Discord before August 24 for the OG role, plus a discount when subscriptions launch.",
+      "level": "info",
+      "ctaLabel": "Post a testimonial",
+      "ctaUrl": "https://discord.gg/cDhrRVZ9xg",
+      "createdAt": "2026-08-19T00:00:00Z",
+      "expiresAt": "2026-08-24T00:00:00Z"
+    },
+    {
       "id": "ios-poll-2026-08",
       "title": "Trenchcord on iPhone?",
       "body": "We're voting on Discord: would you use Trenchcord on your iPhone? Everything would run locally on your phone, just like the desktop app. Cast your vote and help decide what gets built next.",
