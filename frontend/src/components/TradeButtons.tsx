@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { colorWithExtraAlpha } from './ColorPickerWithAlpha';
-import { collectSolAddresses } from '../utils/addressDetect';
+import { collectTradeTargets } from '../utils/addressDetect';
+import { useLikelyMints } from '../utils/mintCheck';
 import { buildBuySiteUrl } from '../utils/contractUrl';
 import { isHostedMode } from '../lib/supabase';
+import { isDemoMode } from '../demo/demoStore';
 import type { FrontendMessage, TradeButtonSize } from '../types';
 
 interface TradeButtonsProps {
@@ -13,8 +15,12 @@ interface TradeButtonsProps {
 }
 
 // A spam message can list a dozen addresses; a wall of spend buttons under it
-// is worse than useless.
-const MAX_TRADE_ROWS = 3;
+// is worse than useless, so the row starts at the first few and says how many
+// it is holding back.
+const COLLAPSED_TRADE_ROWS = 3;
+// Ceiling once expanded: past this the message is a token dump, not a call, and
+// every extra row is another way to misclick a real buy.
+const MAX_TRADE_ROWS = 12;
 // How long a button stays armed waiting for the second click. Generous enough
 // to cover a slow system double-click setting: the armed state is invisible, so
 // a window that expires early just looks like the click did nothing.
@@ -47,37 +53,53 @@ export default function TradeButtons({ message, dense = false }: TradeButtonsPro
 
   const [pending, setPending] = useState<string | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => {
     if (armTimer.current) clearTimeout(armTimer.current);
   }, []);
 
-  // Includes addresses that only appear in an embed -- caller bots like Rick put
-  // the contract there and leave the message body free of it, so the backend
-  // detector (content-only) never sees it.
-  const solAddresses = collectSolAddresses(message);
   const amounts = (trading?.presetAmounts ?? []).filter((a) => a > 0).slice(0, 5);
   const activeWallets = (trading?.activeWalletIds ?? []).filter((id) =>
     trading?.wallets.some((w) => w.id === id),
   );
 
-  if (
-    isHostedMode ||
-    !trading?.enabled ||
-    !tradingStatus?.configured ||
-    activeWallets.length === 0 ||
-    solAddresses.length === 0 ||
-    amounts.length === 0
-  ) {
-    return null;
-  }
+  // Everything except the addresses themselves. Checked before scanning because
+  // this component renders under every message in the feed, and with trading
+  // switched off none of that text is worth reading.
+  const canTrade =
+    !isHostedMode &&
+    !!trading?.enabled &&
+    !!tradingStatus?.configured &&
+    activeWallets.length > 0 &&
+    amounts.length > 0;
+
+  // Includes tokens that only appear in an embed -- caller bots like Rick put
+  // the contract there and leave the message body free of it, so the backend
+  // detector (content-only) never sees it -- and tokens named only by a link,
+  // which is how command bots list several at once.
+  const targets = canTrade ? collectTradeTargets(message) : [];
+
+  // Regex detection can't tell a wallet from a mint, so wallet-tracker posts
+  // grow buy buttons under the tracked wallet. The RPC check drops addresses
+  // the chain says aren't mints, and never runs in demo mode (fake mints, and
+  // tours should stay offline).
+  const solAddresses = useLikelyMints(
+    targets.map((t) => t.address),
+    canTrade && !isDemoMode,
+  );
+
+  if (!canTrade || solAddresses.length === 0) return null;
 
   const size = SIZE_STYLES[trading.buttonSize] ?? SIZE_STYLES.md;
   const bg = trading.buttonBgColor || '#383a40';
   const fg = trading.buttonTextColor || '#dbdee1';
-  const rows = solAddresses.slice(0, MAX_TRADE_ROWS);
+  const rows = solAddresses.slice(0, expanded ? MAX_TRADE_ROWS : COLLAPSED_TRADE_ROWS);
   const hidden = solAddresses.length - rows.length;
+  // The name each token was linked under, when the message gave one: three
+  // shortened addresses in a column say nothing about which coin is which.
+  const labels = new Map(targets.filter((t) => t.label).map((t) => [t.address, t.label!]));
   const showPill = trading.showContractPill !== false;
   const walletCount = activeWallets.length;
   const splitMode = trading.walletAmountMode === 'split';
@@ -181,6 +203,17 @@ export default function TradeButtons({ message, dense = false }: TradeButtonsPro
     <div className={`w-full basis-full flex flex-col gap-1 ${dense ? 'mt-1' : 'mt-1.5'}`}>
       {rows.map((addr) => (
         <div key={addr} className="w-full flex items-center gap-1.5 flex-wrap">
+          {/* The token's name when the message linked it under one -- on a
+              multi-token list it is the only thing telling the rows apart at a
+              glance. */}
+          {labels.get(addr) && (
+            <span
+              className={`font-semibold text-discord-text-normal truncate max-w-[8rem] shrink-0 ${size.pill}`}
+              title={labels.get(addr)}
+            >
+              {labels.get(addr)}
+            </span>
+          )}
           {/* Same pill styling as the inline CA so the row is unambiguously
               tied to one token, which matters most in the grouped layout
               where the message has no header at all. It can be turned off to
@@ -236,10 +269,34 @@ export default function TradeButtons({ message, dense = false }: TradeButtonsPro
           )}
         </div>
       ))}
-      {hidden > 0 && (
-        <span className="text-[10px] text-discord-text-muted">
-          +{hidden} more contract{hidden > 1 ? 's' : ''} in this message
-        </span>
+      {/* Collapsed by default, but reachable: a callout list can hold every
+          token worth buying in the message, and the row is useless if the one
+          you want is the fourth. */}
+      {(hidden > 0 || expanded) && (
+        <div className="flex items-center gap-2 text-[10px] text-discord-text-muted">
+          {expanded ? (
+            <>
+              <button
+                onClick={() => setExpanded(false)}
+                className="hover:text-discord-text-normal hover:underline underline-offset-2"
+              >
+                Show fewer
+              </button>
+              {hidden > 0 && (
+                <span title={`Only the first ${MAX_TRADE_ROWS} contracts get a buy row`}>
+                  +{hidden} not shown
+                </span>
+              )}
+            </>
+          ) : (
+            <button
+              onClick={() => setExpanded(true)}
+              className="hover:text-discord-text-normal hover:underline underline-offset-2"
+            >
+              +{hidden} more contract{hidden > 1 ? 's' : ''} in this message
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

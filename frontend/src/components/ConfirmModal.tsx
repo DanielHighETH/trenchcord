@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle } from 'lucide-react';
 
 interface ConfirmModalProps {
@@ -39,10 +40,14 @@ export default function ConfirmModal({
 
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" onClick={onCancel}>
+  // Portaled to <body>: callers render this from inside containers that carry a
+  // transform (the sidebar drawer keeps `md:translate-x-0`), and a transformed
+  // ancestor becomes the containing block for `fixed` — the backdrop would cover
+  // only that container instead of the whole app.
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 pt-[var(--safe-top)] pb-[var(--safe-bottom)] animate-fade-in" onClick={onCancel}>
       <div
-        className="bg-discord-sidebar rounded-lg shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="bg-discord-sidebar rounded-lg shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-pop-in"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 pt-6 pb-4 flex flex-col items-center text-center gap-3">
@@ -73,6 +78,7 @@ export default function ConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

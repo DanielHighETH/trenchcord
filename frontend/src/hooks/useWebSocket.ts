@@ -2,11 +2,12 @@ import { useEffect, useRef } from 'react';
 import { useAppStore, IS_POPOUT } from '../stores/appStore';
 import { playHighlightSound, playContractAlertSound, playKeywordAlertSound, playSound } from '../utils/notificationSound';
 import { buildContractUrl } from '../utils/contractUrl';
-import { showDesktopNotification } from '../utils/desktopNotification';
-import { isDemoMode } from '../demo/demoStore';
+import { showDesktopNotification, showGenericNotification } from '../utils/desktopNotification';
+import { isDemoMode, isTourMode, isSceneMode } from '../demo/demoStore';
+import { isIOSApp } from '../utils/platform';
 import { isHostedMode, getSupabase } from '../lib/supabase';
 import { buildStreamMessage, STREAM_POOL } from '../demo/demoData';
-import type { WsIncoming, Alert, FrontendMessage, ContractEntry } from '../types';
+import type { WsIncoming, Alert, MessageAlert, FrontendMessage, ContractEntry, PremiumEvent } from '../types';
 
 let idCounter = 0;
 
@@ -18,6 +19,9 @@ function useDemoStream() {
   useEffect(() => {
     if (!isDemoMode) return;
     setConnected(true);
+    // The promo tour and promo scenes script their own message streams —
+    // random arrivals would fight the scene timing.
+    if (isTourMode || isSceneMode) return;
 
     const interval = setInterval(() => {
       const { message, roomIds } = buildStreamMessage(poolIndex.current);
@@ -40,9 +44,11 @@ export function useWebSocket() {
   const addContract = useAppStore((s) => s.addContract);
   const updateContractChain = useAppStore((s) => s.updateContractChain);
   const fetchGuilds = useAppStore((s) => s.fetchGuilds);
+  const fetchRooms = useAppStore((s) => s.fetchRooms);
   const fetchDMChannels = useAppStore((s) => s.fetchDMChannels);
   const fetchHistory = useAppStore((s) => s.fetchHistory);
   const fetchTelegramChats = useAppStore((s) => s.fetchTelegramChats);
+  const fetchTelegramAccounts = useAppStore((s) => s.fetchTelegramAccounts);
   const checkAuth = useAppStore((s) => s.checkAuth);
   const setGatewayAuthError = useAppStore((s) => s.setGatewayAuthError);
   const fetchMaskedTokens = useAppStore((s) => s.fetchMaskedTokens);
@@ -75,6 +81,12 @@ export function useWebSocket() {
         if (disposed) { ws.close(); return; }
         console.log('[WS] Connected');
         setConnected(true);
+
+        // A gateway_ready broadcast while this socket was down is gone for
+        // good, and with it the guild refetch it would have triggered — so
+        // badges showed acronyms instead of server icons until a settings
+        // modal happened to refetch. Resync on every (re)connect.
+        fetchGuilds();
 
         if (isHostedMode) {
           try {
@@ -147,7 +159,7 @@ export function useWebSocket() {
             const alertData = incoming.data as { type: string; message: FrontendMessage; reason: string };
             const alert: Alert = {
               id: `alert-${++idCounter}`,
-              type: alertData.type as Alert['type'],
+              type: alertData.type as MessageAlert['type'],
               message: alertData.message,
               reason: alertData.reason,
               timestamp: Date.now(),
@@ -157,9 +169,14 @@ export function useWebSocket() {
             updateMessage(incoming.data);
           } else if (incoming.type === 'message_delete') {
             markMessageDeleted(incoming.data);
+          } else if (incoming.type === 'message_ack') {
+            useAppStore.getState().markRoomsRead(incoming.roomIds ?? []);
           } else if (incoming.type === 'reaction_update') {
             const { channelId, messageId, emoji, delta } = incoming.data;
             updateReaction(channelId, messageId, emoji, delta);
+          } else if (incoming.type === 'poll_vote_update') {
+            const { channelId, messageId, answerId, delta } = incoming.data;
+            useAppStore.getState().updatePollVote(channelId, messageId, answerId, delta);
           } else if (incoming.type === 'contract') {
             const entry = incoming.data as ContractEntry;
             addContract(entry);
@@ -170,20 +187,92 @@ export function useWebSocket() {
             fetchGuilds();
             fetchDMChannels();
             fetchHistory();
+            // Rooms carry the channels of the categories they watch, which
+            // only resolve once a gateway is up.
+            fetchRooms();
+          } else if (incoming.type === 'guild_channels_updated') {
+            // A channel was added, removed or moved in a server: pull the new
+            // channel list and the rooms whose categories now resolve to it.
+            fetchGuilds();
+            fetchRooms();
           } else if (incoming.type === 'telegram_ready') {
             fetchTelegramChats();
             fetchHistory();
             checkAuth();
+            // Identity for a newly connected account is only known once it is
+            // logged in, so pull the list again to fill in its @username.
+            fetchTelegramAccounts();
           } else if (incoming.type === 'telegram_status') {
             // Backend detected a dropped/restored Telegram connection - refresh
             // the auth status so the sidebar indicator stops lying.
             checkAuth();
+            fetchTelegramAccounts();
+          } else if (incoming.type === 'snipe_result') {
+            const d = incoming.data as {
+              status: 'bought' | 'failed' | 'skipped';
+              mint: string;
+              configName: string;
+              solAmount: number;
+              wallets: { label: string; ok: boolean; error?: string }[];
+              reason?: string;
+              messageId?: string;
+              channelId?: string;
+              timestamp?: string;
+            };
+            // Every window records the snipe into its "snipes" feed (popouts
+            // hold their own store copy), but only the main window toasts.
+            useAppStore.getState().addSnipeResult(d);
+            if (!IS_POPOUT) {
+              const shortMint = `${d.mint.slice(0, 4)}…${d.mint.slice(-4)}`;
+              const name = d.configName || 'Snipe';
+              if (d.status === 'bought') {
+                const ok = d.wallets.filter((w) => w.ok).length;
+                const partial = ok < d.wallets.length ? ` (${ok}/${d.wallets.length} wallets)` : '';
+                useAppStore.getState().pushToast({
+                  kind: 'success',
+                  title: `Sniped ${shortMint} — ${d.solAmount} SOL${partial}`,
+                  detail: name,
+                });
+              } else {
+                useAppStore.getState().pushToast({
+                  kind: 'error',
+                  title: d.status === 'skipped' ? `Snipe skipped ${shortMint}` : `Snipe failed ${shortMint}`,
+                  detail: d.reason ?? d.wallets.find((w) => w.error)?.error ?? name,
+                });
+              }
+            }
+          } else if (incoming.type === 'premium_alert') {
+            const event = incoming.data as PremiumEvent;
+            // Every window records the event into the "alerts" feed (popouts
+            // hold their own store copy), but only the main window notifies.
+            useAppStore.getState().addPremiumEvent(event);
+            if (!IS_POPOUT) {
+              addAlert({
+                id: `premium-${event.id}`,
+                type: 'premium',
+                event,
+                reason: event.title,
+                timestamp: Date.now(),
+              });
+              const config = useAppStore.getState().config;
+              if (config?.messageSounds) {
+                playSound('premiumAlert', config.soundSettings?.premiumAlert);
+              }
+              if (config?.desktopNotifications) {
+                showGenericNotification(event.title, event.body, event.url ?? undefined);
+              }
+            }
           } else if (incoming.type === 'gateway_auth_failed') {
             setGatewayAuthError(
               incoming.error ?? 'Discord token authentication failed. Please check your token in settings.',
               incoming.tokenBlocked,
             );
             fetchMaskedTokens();
+          } else if (incoming.type === 'subscription_status') {
+            // The backend noticed an entitlement change (e.g. this device was
+            // revoked on the dashboard) — flip the gate now instead of waiting
+            // for the next status poll.
+            useAppStore.setState({ subscriptionStatus: incoming.data });
           }
         } catch {
           // ignore malformed
@@ -204,10 +293,30 @@ export function useWebSocket() {
 
     connect();
 
+    // Coming back from the background (above all on iOS, where suspension
+    // kills TCP without delivering a close — the socket still claims OPEN),
+    // reconnect immediately instead of trusting a possibly-zombie socket or
+    // waiting out the retry timer.
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || disposed) return;
+      const ws = wsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN && !isIOSApp()) return;
+      clearTimeout(reconnectTimer);
+      if (ws) {
+        ws.onclose = null; // its close must not schedule a second reconnect
+        try { ws.close(); } catch { /* already dead */ }
+      }
+      connect();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('pageshow', onVisible);
+
     return () => {
       disposed = true;
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('pageshow', onVisible);
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, updateContractChain, fetchGuilds, fetchDMChannels, fetchHistory, fetchTelegramChats, checkAuth, setGatewayAuthError, fetchMaskedTokens]);
+  }, [addMessage, updateMessage, markMessageDeleted, addAlert, setConnected, updateReaction, addContract, updateContractChain, fetchGuilds, fetchRooms, fetchDMChannels, fetchHistory, fetchTelegramChats, fetchTelegramAccounts, checkAuth, setGatewayAuthError, fetchMaskedTokens]);
 }

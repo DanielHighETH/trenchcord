@@ -1,4 +1,4 @@
-import { Router, static as expressStatic } from 'express';
+import { Router, static as expressStatic, type Request, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import { randomUUID } from 'crypto';
@@ -9,9 +9,11 @@ import { createClient } from '@supabase/supabase-js';
 import { getStorageProvider, isHostedMode } from '../storage/index.js';
 import type { GatewayManager } from '../discord/gatewayManager.js';
 import type { WsServer } from '../ws/server.js';
-import { processDiscordMessage } from '../utils/messageProcessor.js';
+import { processDiscordMessage, formatCommandOptions } from '../utils/messageProcessor.js';
+import { classifyAddresses, MAX_MINT_BATCH } from '../utils/mintCheck.js';
 import { processTelegramMessage } from '../telegram/messageProcessor.js';
-import type { FrontendMessage, SoundType, ChannelRef, TradingConfig, TradingWallet } from '../discord/types.js';
+import type { FrontendMessage, SoundType, ChannelRef, CategoryRef, GuildInfo, TradingConfig, TradingWallet, SnipingConfig, SnipeConfig, LimitSell, ResnipeMode, SnipeKeywordMap, FeedHotkeys } from '../discord/types.js';
+import { expandRoomChannels, stripDerivedChannels } from '../discord/roomCategories.js';
 import { slotsharkBuy, extractSignature, type SlotsharkResult } from '../utils/slotshark.js';
 import { maskToken } from '../auth/encryption.js';
 import { TelegramClient } from 'teleproto';
@@ -19,8 +21,40 @@ import { StringSession } from 'teleproto/sessions/index.js';
 import type { TelegramClientManager } from '../telegram/clientManager.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SOUNDS_DIR = join(__dirname, '../../data/sounds');
+// Same TRENCHCORD_DATA_DIR convention as config/store.ts: on iOS the bundle
+// directory is read-only, so the env override is what makes this writable.
+const SOUNDS_DIR = join(process.env.TRENCHCORD_DATA_DIR || join(__dirname, '../../data'), 'sounds');
 if (!existsSync(SOUNDS_DIR)) mkdirSync(SOUNDS_DIR, { recursive: true });
+
+// Resolved "used /command" arguments by message id, so re-hovers and pop-out
+// windows don't repeat the Discord request. Insertion-ordered, oldest evicted.
+const interactionArgsCache = new Map<string, string>();
+const INTERACTION_ARGS_CACHE_MAX = 500;
+
+/**
+ * Keep only well-formed category subscriptions, with ids as strings: they come
+ * straight from a client body and are matched against gateway ids later.
+ */
+function sanitizeCategories(input: any): CategoryRef[] {
+  if (!Array.isArray(input)) return [];
+  const out: CategoryRef[] = [];
+  for (const raw of input) {
+    const guildId = typeof raw?.guildId === 'string' ? raw.guildId : '';
+    const categoryId = typeof raw?.categoryId === 'string' ? raw.categoryId : '';
+    if (!guildId || !categoryId) continue;
+    if (out.some((c) => c.categoryId === categoryId)) continue;
+    out.push({
+      guildId,
+      categoryId,
+      ...(typeof raw.guildName === 'string' && { guildName: raw.guildName }),
+      ...(typeof raw.categoryName === 'string' && { categoryName: raw.categoryName }),
+      excludedChannelIds: Array.isArray(raw.excludedChannelIds)
+        ? [...new Set(raw.excludedChannelIds.filter((id: any) => typeof id === 'string'))] as string[]
+        : [],
+    });
+  }
+  return out;
+}
 
 function safeError(err: any, fallback: string): string {
   if (!isHostedMode()) return err?.message ?? fallback;
@@ -62,7 +96,7 @@ export function splitLamports(totalSol: number, parts: number): number[] {
 }
 
 /** Human-readable reason for a failed Slotshark call. */
-function buyErrorMessage(result: Extract<SlotsharkResult, { ok: false }>): string {
+export function buyErrorMessage(result: Extract<SlotsharkResult, { ok: false }>): string {
   switch (result.kind) {
     case 'timeout':
       // Deliberately not phrased as a failure: with retries:true the swap can
@@ -83,7 +117,7 @@ function buyErrorMessage(result: Extract<SlotsharkResult, { ok: false }>): strin
 }
 
 const TRADE_BUTTON_SIZES: readonly string[] = ['sm', 'md', 'lg'];
-const BUY_SITE_PLATFORMS: readonly string[] = ['default', 'axiom', 'padre', 'bloom', 'gmgn', 'custom'];
+const BUY_SITE_PLATFORMS: readonly string[] = ['default', 'axiom', 'padre', 'bloom', 'gmgn', 'fomo', 'custom'];
 // #rgb / #rrggbb / #rrggbbaa -- the shapes ColorPickerWithAlpha produces. These
 // land in a style attribute, so anything else is rejected rather than coerced.
 const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
@@ -193,6 +227,184 @@ function sanitizeTradingConfig(incoming: any, existing: TradingConfig): TradingC
   };
 }
 
+const MAX_SNIPE_CONFIGS = 50;
+const MAX_SNIPE_USERS = 50;
+const MAX_LIMIT_SELLS = 10;
+
+/** Finite number >= min, or null (= no bound / inherit). */
+function sanitizeOptionalNumber(value: unknown, min: number): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= min ? n : null;
+}
+
+// Same base58 shape Slotshark accepts for mints. Entries that don't parse are
+// dropped rather than kept broken -- a malformed mint would 4xx every snipe.
+const SNIPE_MINT_RE = /^[1-9A-HJ-NP-Za-km-z]{32,48}$/;
+const MAX_SNIPE_KEYWORDS = 50;
+
+function sanitizeSnipeKeywordMap(incoming: unknown): SnipeKeywordMap[] {
+  if (!Array.isArray(incoming)) return [];
+  const out: SnipeKeywordMap[] = [];
+  for (const entry of incoming.slice(0, MAX_SNIPE_KEYWORDS)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const keyword = typeof (entry as any).keyword === 'string' ? (entry as any).keyword.trim().slice(0, 64) : '';
+    const mint = typeof (entry as any).mint === 'string' ? (entry as any).mint.trim() : '';
+    // Empty rows are kept as drafts (the UI adds blank rows); rows with a
+    // malformed non-empty mint are dropped. The engine only fires on rows
+    // where both fields are valid.
+    if (!keyword && !mint) continue;
+    if (mint && !SNIPE_MINT_RE.test(mint)) continue;
+    out.push({ keyword, mint });
+  }
+  return out;
+}
+
+function sanitizeLimitSells(incoming: unknown): LimitSell[] {
+  if (!Array.isArray(incoming)) return [];
+  const out: LimitSell[] = [];
+  for (const row of incoming.slice(0, MAX_LIMIT_SELLS)) {
+    if (!row || typeof row !== 'object') continue;
+    const type = row.type === 'pnl' ? 'pnl' : row.type === 'time' ? 'time' : null;
+    if (!type) continue;
+    const rawValue = Number(row.value);
+    if (!Number.isFinite(rawValue)) continue;
+    // time: 1s .. 24h after the buy. pnl: can't lose more than 100%; profit
+    // thresholds are uncapped.
+    const value =
+      type === 'time'
+        ? Math.round(clampNumber(rawValue, 1, 86_400, 0))
+        : Math.max(-100, rawValue);
+    if (type === 'time' && value <= 0) continue;
+    const sellPercent = Math.round(clampNumber(row.sellPercent, 1, 100, 0));
+    if (sellPercent <= 0) continue;
+    out.push({
+      type,
+      value,
+      sellPercent,
+      tip: sanitizeFee(row.tip),
+      priorityFee: sanitizeFee(row.priorityFee),
+    });
+  }
+  return out;
+}
+
+/**
+ * Normalise a client-supplied sniping config. Like sanitizeTradingConfig, the
+ * snipe engine reads these values back as trusted input on every auto-buy, so
+ * every spend-relevant number is bounded here.
+ */
+function sanitizeSnipingConfig(incoming: any, existing: SnipingConfig, trading: TradingConfig): SnipingConfig {
+  if (!incoming || typeof incoming !== 'object') return existing;
+
+  const configs: SnipeConfig[] = Array.isArray(incoming.configs)
+    ? incoming.configs
+        .slice(0, MAX_SNIPE_CONFIGS)
+        .map((c: any): SnipeConfig | null => {
+          if (!c || typeof c !== 'object' || typeof c.roomId !== 'string') return null;
+          // A zero amount is kept rather than dropped -- it's a half-filled
+          // draft the user is still editing. The engine refuses to fire any
+          // config below MIN_SOL_PER_BUY.
+          const solAmount = clampNumber(c.solAmount, 0, MAX_SOL_PER_TRADE, 0);
+          const minMarketCap = sanitizeOptionalNumber(c.minMarketCap, 0);
+          const maxMarketCap = sanitizeOptionalNumber(c.maxMarketCap, 0);
+          // Re-snipe: new configs carry mode + seconds/count; configs saved
+          // before the mode existed only have the legacy minutes cooldown,
+          // which migrates to cooldown mode here.
+          const legacyCooldownMin = sanitizeOptionalNumber(c.resnipeCooldownMin, 1);
+          const cooldownSec = sanitizeOptionalNumber(c.resnipeCooldownSec, 1)
+            ?? (legacyCooldownMin !== null ? legacyCooldownMin * 60 : null);
+          const maxCount = sanitizeOptionalNumber(c.resnipeMaxCount, 1);
+          const resnipeMode: ResnipeMode =
+            c.resnipeMode === 'cooldown' || c.resnipeMode === 'limit' || c.resnipeMode === 'never'
+              ? c.resnipeMode
+              : legacyCooldownMin !== null ? 'cooldown' : 'never';
+          return {
+            id: typeof c.id === 'string' && c.id ? c.id : randomUUID(),
+            name: typeof c.name === 'string' ? c.name.trim().slice(0, 40) : '',
+            enabled: c.enabled === true,
+            roomId: c.roomId,
+            mode: c.mode === 'users' ? 'users' : 'room',
+            users: Array.isArray(c.users)
+              ? c.users
+                  .filter((u: any) => typeof u === 'string' && u.trim())
+                  .map((u: string) => u.trim().slice(0, 64))
+                  .slice(0, MAX_SNIPE_USERS)
+              : [],
+            solAmount,
+            // Same rule as activeWalletIds: only ids that exist in the trading
+            // wallet list survive, so a deleted wallet can't be sniped from.
+            walletIds: Array.isArray(c.walletIds)
+              ? [...new Set(
+                  c.walletIds.filter(
+                    (id: any) => typeof id === 'string' && trading.wallets.some((w) => w.id === id),
+                  ),
+                )] as string[]
+              : [],
+            slippage:
+              sanitizeOptionalNumber(c.slippage, 1) !== null
+                ? Math.round(clampNumber(c.slippage, 1, 10000, trading.slippage))
+                : null,
+            tip: sanitizeFee(c.tip),
+            priorityFee: sanitizeFee(c.priorityFee),
+            // Drop an inverted band rather than silently swapping: the user
+            // typed it, the UI shows both fields, and a swap would buy tokens
+            // they explicitly bounded out.
+            minMarketCap,
+            maxMarketCap:
+              minMarketCap !== null && maxMarketCap !== null && maxMarketCap < minMarketCap
+                ? null
+                : maxMarketCap,
+            resnipeMode,
+            // Cooldown clamped to [1s, 7 days]; count to [1, 100] -- both are
+            // spend multipliers, so they stay bounded.
+            resnipeCooldownSec:
+              cooldownSec !== null ? Math.round(clampNumber(cooldownSec, 1, 604800, 60)) : null,
+            resnipeMaxCount:
+              maxCount !== null ? Math.round(clampNumber(maxCount, 1, 100, 1)) : null,
+            trigger: c.trigger === 'keyword' ? 'keyword' : 'contract',
+            keywordMap: sanitizeSnipeKeywordMap(c.keywordMap),
+            limitSells: sanitizeLimitSells(c.limitSells),
+            pushoverOnSnipe: c.pushoverOnSnipe === true,
+            skipIfBought: c.skipIfBought === true,
+          };
+        })
+        .filter((c: SnipeConfig | null): c is SnipeConfig => c !== null)
+    : existing.configs;
+
+  return {
+    enabled: typeof incoming.enabled === 'boolean' ? incoming.enabled : existing.enabled,
+    configs,
+  };
+}
+
+// Same single-key rule as room hotkeys; unknown keys are dropped.
+const FEED_HOTKEY_KEYS = ['contracts', 'mentions', 'keywords', 'snipes', 'alerts', 'dms'] as const;
+
+function sanitizeFeedHotkeys(incoming: any): FeedHotkeys {
+  const out: FeedHotkeys = {};
+  if (!incoming || typeof incoming !== 'object') return out;
+  for (const key of FEED_HOTKEY_KEYS) {
+    const v = incoming[key];
+    if (typeof v === 'string' && v.length === 1) out[key] = v.toLowerCase();
+    else out[key] = null;
+  }
+  return out;
+}
+
+// Custom display names are free text rendered in the UI; keep them short and
+// drop anything that isn't a plain non-empty string.
+function sanitizeCustomUserNames(incoming: any): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!incoming || typeof incoming !== 'object') return out;
+  for (const [id, name] of Object.entries(incoming)) {
+    if (typeof name !== 'string') continue;
+    const trimmed = name.trim().slice(0, 80);
+    if (trimmed) out[id] = trimmed;
+  }
+  return out;
+}
+
 // Exact-duplicate suppression. Not redundant with the frontend's in-flight
 // guard: the split-grid layout can render one message in two panes at once, and
 // the same CA can appear across rooms, so two live button rows is a real state.
@@ -242,6 +454,18 @@ function getUserId(req: any): string {
 export function createRouter(wsServer: WsServer): Router {
   const router = Router();
   const storage = getStorageProvider();
+
+  /**
+   * Guild list used to resolve the categories a room watches. Unlike
+   * requireGateway this never connects and never errors: with no gateway up a
+   * room simply comes back with its individually picked channels, and the
+   * client refetches once `gateway_ready` lands.
+   */
+  async function categoryGuilds(req: any): Promise<GuildInfo[]> {
+    const { getUserGateway } = await import('../index.js');
+    const gw = getUserGateway(getUserId(req));
+    return gw ? gw.getGuilds() : [];
+  }
 
   async function requireGateway(req: any, res: any): Promise<GatewayManager | null> {
     const { getUserGateway, connectGateway } = await import('../index.js');
@@ -304,6 +528,8 @@ export function createRouter(wsServer: WsServer): Router {
       connected: gw !== null,
       telegramConfigured: (config.telegramSessions?.length ?? 0) > 0,
       telegramConnected: tg !== null && tg.isConnected(),
+      telegramAccountCount: config.telegramSessions?.length ?? 0,
+      telegramHasApiCredentials: !!(config.telegramApiId && config.telegramApiHash),
     });
   });
 
@@ -434,12 +660,62 @@ export function createRouter(wsServer: WsServer): Router {
 
   // --- Telegram Auth ---
 
+  // Shared tail of the two login paths (code-only and 2FA). Persists the new
+  // session and attaches it to the running manager, refusing an account that is
+  // already connected so the user doesn't end up with duplicate logins.
+  async function finishTelegramLogin(
+    userId: string,
+    client: TelegramClient,
+    numericApiId: number,
+    apiHash: string,
+  ): Promise<{ status: number; body: any }> {
+    const { addTelegramSession, getUserTelegram } = await import('../index.js');
+
+    const me = await client.getMe() as { id: { toString(): string } };
+    const accountId = me.id.toString();
+    const alreadyConnected = getUserTelegram(userId)
+      ?.getAccounts()
+      .some((a) => a.accountId === accountId);
+
+    if (alreadyConnected) {
+      // Drop the login we just created so it doesn't linger in the user's
+      // Telegram device list as an orphan.
+      try {
+        await client.invoke(new (await import('teleproto/tl/index.js')).Api.auth.LogOut());
+      } catch {}
+      await client.disconnect().catch(() => {});
+      return { status: 409, body: { error: 'This Telegram account is already connected.' } };
+    }
+
+    const sessionString = client.session.save() as unknown as string;
+    // Drop the throwaway login client before the manager opens its own
+    // connection: two live connections on one auth key risk AUTH_KEY_DUPLICATED.
+    // disconnect() keeps the session valid, unlike logOut().
+    await client.disconnect().catch(() => {});
+
+    const config = await storage.getConfig(userId);
+    const updatedSessions = [...(config.telegramSessions ?? []), sessionString];
+    await storage.updateConfig(userId, { telegramSessions: updatedSessions });
+
+    await addTelegramSession(userId, sessionString, numericApiId, apiHash, updatedSessions, wsServer);
+    return { status: 200, body: { success: true, accountCount: updatedSessions.length } };
+  }
+
   router.post('/auth/telegram/start', async (req, res) => {
     const userId = getUserId(req);
-    const { apiId, apiHash, phoneNumber } = req.body;
+    const { phoneNumber } = req.body;
 
-    if (!apiId || !apiHash || !phoneNumber) {
-      return res.status(400).json({ error: 'apiId, apiHash, and phoneNumber are required.' });
+    // Credentials are only required for the first account - later ones reuse the
+    // stored API ID/hash, so the user just enters a phone number.
+    const storedConfig = await storage.getConfig(userId);
+    const apiId = req.body.apiId ?? storedConfig.telegramApiId;
+    const apiHash = req.body.apiHash ?? storedConfig.telegramApiHash;
+
+    if (!apiId || !apiHash) {
+      return res.status(400).json({ error: 'apiId and apiHash are required.' });
+    }
+    if (!phoneNumber) {
+      return res.status(400).json({ error: 'phoneNumber is required.' });
     }
 
     try {
@@ -526,18 +802,9 @@ export function createRouter(wsServer: WsServer): Router {
         }
       }
 
-      const sessionString = pending.client.session.save() as unknown as string;
       pendingTelegramAuth.delete(userId);
-
-      const existingSessions = config.telegramSessions ?? [];
-      const updatedSessions = [...existingSessions, sessionString];
-      await storage.updateConfig(userId, { telegramSessions: updatedSessions });
-
-      // Connect the telegram client
-      const { connectTelegram } = await import('../index.js');
-      await connectTelegram(numericApiId, apiHash, updatedSessions, wsServer, userId);
-
-      res.json({ success: true });
+      const result = await finishTelegramLogin(userId, pending.client, numericApiId, apiHash);
+      res.status(result.status).json(result.body);
     } catch (err: any) {
       res.status(500).json({ error: safeError(err, 'Failed to verify Telegram code') });
     }
@@ -566,26 +833,64 @@ export function createRouter(wsServer: WsServer): Router {
         { password: () => password, onError: (err) => { throw err; } },
       );
 
-      const sessionString = pending.client.session.save() as unknown as string;
       pendingTelegramAuth.delete(userId);
-
-      const existingSessions = config.telegramSessions ?? [];
-      const updatedSessions = [...existingSessions, sessionString];
-      await storage.updateConfig(userId, { telegramSessions: updatedSessions });
-
-      const { connectTelegram } = await import('../index.js');
-      await connectTelegram(numericApiId, apiHash, updatedSessions, wsServer, userId);
-
-      res.json({ success: true });
+      const result = await finishTelegramLogin(userId, pending.client, numericApiId, apiHash);
+      res.status(result.status).json(result.body);
     } catch (err: any) {
       res.status(500).json({ error: safeError(err, 'Failed to verify 2FA password') });
     }
   });
 
+  router.get('/auth/telegram/accounts', async (req, res) => {
+    const userId = getUserId(req);
+    const config = await storage.getConfig(userId);
+    const sessions = config.telegramSessions ?? [];
+    const { getUserTelegram } = await import('../index.js');
+    const live = getUserTelegram(userId)?.getAccounts() ?? [];
+
+    // A stored session with no live client (nothing connected yet, or the
+    // manager is still starting) still gets a row, so the list always matches
+    // what is actually saved.
+    const accounts = sessions.map((_, index) => live[index] ?? {
+      index,
+      accountId: null,
+      username: null,
+      firstName: null,
+      connected: false,
+      invalid: false,
+    });
+
+    res.json({ accounts, count: accounts.length });
+  });
+
+  router.delete('/auth/telegram/sessions/:index', async (req, res) => {
+    const userId = getUserId(req);
+    const index = parseInt(req.params.index, 10);
+    const config = await storage.getConfig(userId);
+    const sessions = config.telegramSessions ?? [];
+
+    if (isNaN(index) || index < 0 || index >= sessions.length) {
+      return res.status(400).json({ error: 'Invalid Telegram account index.' });
+    }
+
+    try {
+      const { removeTelegramSession } = await import('../index.js');
+      await removeTelegramSession(userId, index);
+      const updated = sessions.filter((_, i) => i !== index);
+      await storage.updateConfig(userId, { telegramSessions: updated });
+      res.json({ success: true, count: updated.length });
+    } catch (err: any) {
+      res.status(500).json({ error: safeError(err, 'Failed to remove Telegram account') });
+    }
+  });
+
   router.post('/auth/telegram/disconnect', async (req, res) => {
     const userId = getUserId(req);
+    const { disconnectTelegram, logOutAllTelegramSessions } = await import('../index.js');
+    // Revoke the logins before dropping them, so they stop showing up under the
+    // user's active Telegram sessions.
+    await logOutAllTelegramSessions(userId).catch(() => {});
     await storage.updateConfig(userId, { telegramSessions: [] });
-    const { disconnectTelegram } = await import('../index.js');
     disconnectTelegram(userId);
     res.json({ success: true });
   });
@@ -635,15 +940,36 @@ export function createRouter(wsServer: WsServer): Router {
   const mediaCache = new Map<string, { buffer: Buffer; mimeType: string; timestamp: number }>();
   const MEDIA_CACHE_TTL = 3600_000;
 
+  // Byte-range support is what lets a <video> seek, paint its preview frame
+  // (the moov atom often sits at the end of an mp4), and play at all on iOS.
+  function sendMediaBuffer(req: Request, res: Response, buffer: Buffer, mimeType: string) {
+    res.set('Content-Type', mimeType);
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.set('Accept-Ranges', 'bytes');
+    const size = buffer.length;
+    const match = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
+    if (match && (match[1] || match[2])) {
+      // suffix form "bytes=-N" = the last N bytes
+      const start = match[1] ? parseInt(match[1], 10) : Math.max(0, size - parseInt(match[2], 10));
+      const end = match[1] && match[2] ? Math.min(parseInt(match[2], 10), size - 1) : size - 1;
+      if (start >= size || end < start) {
+        res.status(416).set('Content-Range', `bytes */${size}`).end();
+        return;
+      }
+      res.status(206).set('Content-Range', `bytes ${start}-${end}/${size}`);
+      res.send(buffer.subarray(start, end + 1));
+      return;
+    }
+    res.send(buffer);
+  }
+
   router.get('/telegram/media/:chatId/:messageId', async (req, res) => {
     const { chatId, messageId } = req.params;
     const cacheKey = `${chatId}:${messageId}`;
 
     const cached = mediaCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < MEDIA_CACHE_TTL) {
-      res.set('Content-Type', cached.mimeType);
-      res.set('Cache-Control', 'public, max-age=86400');
-      return res.send(cached.buffer);
+      return sendMediaBuffer(req, res, cached.buffer, cached.mimeType);
     }
 
     const tg = await requireTelegramManager(req, res);
@@ -658,9 +984,7 @@ export function createRouter(wsServer: WsServer): Router {
     if (result.buffer.length < 10_000_000) {
       mediaCache.set(cacheKey, { ...result, timestamp: Date.now() });
     }
-    res.set('Content-Type', result.mimeType);
-    res.set('Cache-Control', 'public, max-age=86400');
-    res.send(result.buffer);
+    sendMediaBuffer(req, res, result.buffer, result.mimeType);
   });
 
   // --- Telegram Chats ---
@@ -677,7 +1001,8 @@ export function createRouter(wsServer: WsServer): Router {
 
   router.get('/history', async (req, res) => {
     const userId = getUserId(req);
-    const rooms = await storage.getRooms(userId);
+    const guilds = await categoryGuilds(req);
+    const rooms = (await storage.getRooms(userId)).map((room) => expandRoomChannels(room, guilds));
     const result: Record<string, FrontendMessage[]> = {};
 
     // Separate Discord and Telegram channels
@@ -779,6 +1104,14 @@ export function createRouter(wsServer: WsServer): Router {
     res.json(guilds);
   });
 
+  // Roles of one guild, for the room-config mute/highlight role pickers.
+  router.get('/guilds/:guildId/roles', async (req, res) => {
+    const gateway = await requireGateway(req, res);
+    if (!gateway) return;
+    await gateway.waitUntilReady();
+    res.json(gateway.getGuildRoles(req.params.guildId));
+  });
+
   router.get('/dm-channels', async (req, res) => {
     const gateway = await requireGateway(req, res);
     if (!gateway) return;
@@ -817,42 +1150,75 @@ export function createRouter(wsServer: WsServer): Router {
     }
   });
 
+  // The full arguments a slash command was invoked with, formatted for the
+  // "used /command" line. Discord leaves them out of the message payload, so
+  // the frontend asks for them lazily -- only when the line is hovered, the
+  // same way the official client fills its command tooltip. Answers are
+  // cached: a command's arguments never change once the message exists.
+  router.get('/interaction-data/:channelId/:messageId', async (req, res) => {
+    const { channelId, messageId } = req.params;
+    const cached = interactionArgsCache.get(messageId);
+    if (cached !== undefined) return res.json({ args: cached });
+
+    const gateway = await requireGateway(req, res);
+    if (!gateway) return;
+    await gateway.waitUntilReady();
+    try {
+      const options = await gateway.fetchMessageInteractionData(channelId, messageId);
+      if (options === null) return res.status(502).json({ error: 'Failed to fetch interaction data' });
+      const args = formatCommandOptions(options);
+      if (interactionArgsCache.size >= INTERACTION_ARGS_CACHE_MAX) {
+        const oldest = interactionArgsCache.keys().next().value;
+        if (oldest !== undefined) interactionArgsCache.delete(oldest);
+      }
+      interactionArgsCache.set(messageId, args);
+      res.json({ args });
+    } catch (err: any) {
+      res.status(500).json({ error: safeError(err, 'Failed to fetch interaction data') });
+    }
+  });
+
   // --- Rooms CRUD ---
 
+  // Rooms go out with the channels of every category they watch folded into
+  // `channels`, so everything downstream keeps reading one flat list.
   router.get('/rooms', async (req, res) => {
     const userId = getUserId(req);
-    res.json(await storage.getRooms(userId));
+    const [rooms, guilds] = await Promise.all([storage.getRooms(userId), categoryGuilds(req)]);
+    res.json(rooms.map((room) => expandRoomChannels(room, guilds)));
   });
 
   router.get('/rooms/:id', async (req, res) => {
     const userId = getUserId(req);
     const room = await storage.getRoom(userId, req.params.id);
     if (!room) return res.status(404).json({ error: 'Room not found' });
-    res.json(room);
+    res.json(expandRoomChannels(room, await categoryGuilds(req)));
   });
 
   router.post('/rooms', async (req, res) => {
     const userId = getUserId(req);
-    const { name, channels, highlightedUsers, filteredUsers, filterEnabled, color } = req.body;
+    const { name, channels, categories, highlightedUsers, filteredUsers, filterEnabled, color } = req.body;
     if (!name) return res.status(400).json({ error: 'Name is required' });
 
     const room = await storage.createRoom(userId, {
       name,
-      channels: channels ?? [],
+      channels: stripDerivedChannels(channels ?? []),
+      categories: sanitizeCategories(categories),
       highlightedUsers: highlightedUsers ?? [],
       filteredUsers: filteredUsers ?? [],
       filterEnabled: filterEnabled ?? false,
       color: color ?? null,
     });
-    res.status(201).json(room);
+    res.status(201).json(expandRoomChannels(room, await categoryGuilds(req)));
   });
 
   router.put('/rooms/:id', async (req, res) => {
     const userId = getUserId(req);
-    const { name, channels, highlightedUsers, filteredUsers, filterEnabled, color, keywordPatterns, highlightMode, highlightedUserColors, hotkey } = req.body;
+    const { name, channels, categories, highlightedUsers, filteredUsers, filterEnabled, color, keywordPatterns, highlightMode, highlightedUserColors, highlightedRoles, hotkey } = req.body;
     const room = await storage.updateRoom(userId, req.params.id, {
       ...(name !== undefined && { name }),
-      ...(channels !== undefined && { channels }),
+      ...(channels !== undefined && { channels: stripDerivedChannels(channels) }),
+      ...(categories !== undefined && { categories: sanitizeCategories(categories) }),
       ...(highlightedUsers !== undefined && { highlightedUsers }),
       ...(filteredUsers !== undefined && { filteredUsers }),
       ...(filterEnabled !== undefined && { filterEnabled }),
@@ -860,10 +1226,11 @@ export function createRouter(wsServer: WsServer): Router {
       ...(keywordPatterns !== undefined && { keywordPatterns }),
       ...(highlightMode !== undefined && { highlightMode }),
       ...(highlightedUserColors !== undefined && { highlightedUserColors }),
+      ...(highlightedRoles !== undefined && { highlightedRoles }),
       ...(hotkey !== undefined && { hotkey }),
     });
     if (!room) return res.status(404).json({ error: 'Room not found' });
-    res.json(room);
+    res.json(expandRoomChannels(room, await categoryGuilds(req)));
   });
 
   router.delete('/rooms/:id', async (req, res) => {
@@ -878,13 +1245,14 @@ export function createRouter(wsServer: WsServer): Router {
   router.get('/config', async (req, res) => {
     const userId = getUserId(req);
     const fullConfig = await storage.getConfig(userId);
-    const { discordTokens, telegramSessions, slotsharkApiToken, ...safeConfig } = fullConfig;
-    res.json(safeConfig);
+    const { discordTokens, telegramSessions, slotsharkApiToken, cloudDeviceToken, ...safeConfig } = fullConfig;
+    const guilds = await categoryGuilds(req);
+    res.json({ ...safeConfig, rooms: (safeConfig.rooms ?? []).map((room) => expandRoomChannels(room, guilds)) });
   });
 
   router.put('/config', async (req, res) => {
     const userId = getUserId(req);
-    const { globalHighlightedUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushover, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, discordProxyUrl, trading } = req.body;
+    const { globalHighlightedUsers, contractDetection, guildColors, channelColors, dmColors, telegramColors, enabledGuilds, hiddenUsers, hiddenRoles, dmExcludedUsers, telegramDmsInAllDms, tgDmExcludedUsers, dmHiddenConversations, tgDmHiddenConversations, customUserNames, evmAddressColor, solAddressColor, openInDiscordApp, openInTelegramApp, mobileRoomBar, serverIconBadge, serverIconBadgeMobile, showEphemeralMessages, messageSounds, soundSettings, channelSounds, pushover, contractLinkTemplates, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts, globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, mentionsBotsEnabled, badgeClickAction, notificationClickAction, chattingEnabled, dmReadSyncEnabled, messageDisplay, compactModeAvatars, compactModeNameOnce, roleColors, mobileZoomScale, splitLayout, paneRoomIds, paneLocks, gridMirror, seenAnnouncements, onboardingComplete, discordProxyUrl, trading, sniping, feedHotkeys, focusHotkey } = req.body;
 
     // The Discord proxy only makes sense in local mode (the connection leaves the
     // user's own machine). In hosted mode the server IP is fixed, and honouring a
@@ -902,14 +1270,42 @@ export function createRouter(wsServer: WsServer): Router {
       ...(globalHighlightedUsers !== undefined && { globalHighlightedUsers }),
       ...(contractDetection !== undefined && { contractDetection }),
       ...(guildColors !== undefined && { guildColors }),
+      ...(channelColors !== undefined && { channelColors }),
       ...(dmColors !== undefined && { dmColors }),
       ...(telegramColors !== undefined && { telegramColors }),
       ...(enabledGuilds !== undefined && { enabledGuilds }),
       ...(hiddenUsers !== undefined && { hiddenUsers }),
+      ...(hiddenRoles !== undefined && { hiddenRoles }),
+      ...(dmExcludedUsers !== undefined && {
+        dmExcludedUsers: Array.isArray(dmExcludedUsers)
+          ? dmExcludedUsers.filter((e: unknown): e is string => typeof e === 'string' && e.trim().length > 0)
+          : [],
+      }),
+      ...(telegramDmsInAllDms !== undefined && { telegramDmsInAllDms: !!telegramDmsInAllDms }),
+      ...(tgDmExcludedUsers !== undefined && {
+        tgDmExcludedUsers: Array.isArray(tgDmExcludedUsers)
+          ? tgDmExcludedUsers.filter((e: unknown): e is string => typeof e === 'string' && e.trim().length > 0)
+          : [],
+      }),
+      ...(dmHiddenConversations !== undefined && {
+        dmHiddenConversations: Array.isArray(dmHiddenConversations)
+          ? dmHiddenConversations.filter((e: unknown): e is string => typeof e === 'string' && e.trim().length > 0)
+          : [],
+      }),
+      ...(tgDmHiddenConversations !== undefined && {
+        tgDmHiddenConversations: Array.isArray(tgDmHiddenConversations)
+          ? tgDmHiddenConversations.filter((e: unknown): e is string => typeof e === 'string' && e.trim().length > 0)
+          : [],
+      }),
       ...(evmAddressColor !== undefined && { evmAddressColor }),
       ...(solAddressColor !== undefined && { solAddressColor }),
       ...(openInDiscordApp !== undefined && { openInDiscordApp }),
       ...(openInTelegramApp !== undefined && { openInTelegramApp }),
+      ...(mobileRoomBar !== undefined && { mobileRoomBar: !!mobileRoomBar }),
+      ...(serverIconBadge !== undefined && { serverIconBadge: !!serverIconBadge }),
+      ...(serverIconBadgeMobile !== undefined && { serverIconBadgeMobile: !!serverIconBadgeMobile }),
+      ...(showEphemeralMessages !== undefined && { showEphemeralMessages: !!showEphemeralMessages }),
+      ...(customUserNames !== undefined && { customUserNames: sanitizeCustomUserNames(customUserNames) }),
       ...(messageSounds !== undefined && { messageSounds }),
       ...(soundSettings !== undefined && { soundSettings }),
       ...(channelSounds !== undefined && { channelSounds }),
@@ -925,10 +1321,14 @@ export function createRouter(wsServer: WsServer): Router {
       ...(mentionsRoleEnabled !== undefined && { mentionsRoleEnabled }),
       ...(mentionsHereEnabled !== undefined && { mentionsHereEnabled }),
       ...(mentionsEveryoneEnabled !== undefined && { mentionsEveryoneEnabled }),
+      ...(mentionsBotsEnabled !== undefined && { mentionsBotsEnabled }),
       ...(badgeClickAction !== undefined && { badgeClickAction }),
+      ...(notificationClickAction !== undefined && { notificationClickAction }),
       ...(chattingEnabled !== undefined && { chattingEnabled }),
+      ...(dmReadSyncEnabled !== undefined && { dmReadSyncEnabled }),
       ...(messageDisplay !== undefined && { messageDisplay }),
       ...(compactModeAvatars !== undefined && { compactModeAvatars }),
+      ...(compactModeNameOnce !== undefined && { compactModeNameOnce }),
       ...(roleColors !== undefined && { roleColors }),
       ...(mobileZoomScale !== undefined && { mobileZoomScale }),
       ...(splitLayout !== undefined && { splitLayout }),
@@ -936,10 +1336,26 @@ export function createRouter(wsServer: WsServer): Router {
       ...(paneLocks !== undefined && { paneLocks }),
       ...(gridMirror !== undefined && { gridMirror }),
       ...(seenAnnouncements !== undefined && { seenAnnouncements }),
+      ...(onboardingComplete !== undefined && { onboardingComplete: onboardingComplete === true }),
+      ...(feedHotkeys !== undefined && { feedHotkeys: sanitizeFeedHotkeys(feedHotkeys) }),
+      // Electron accelerator string; consumed by the desktop main process only.
+      ...(focusHotkey !== undefined && {
+        focusHotkey: typeof focusHotkey === 'string' && focusHotkey.length > 0 && focusHotkey.length <= 64 ? focusHotkey : null,
+      }),
       // The API token is NOT part of this object -- it lives at the top level
       // and is written only via POST /trading/token, so a Save here can never
       // blank it out.
       ...(trading !== undefined && { trading: sanitizeTradingConfig(trading, existingConfig.trading) }),
+      // Wallet ids are validated against the trading config saved in the same
+      // request when both are present, so a payload can't point a snipe at a
+      // wallet it just deleted.
+      ...(sniping !== undefined && {
+        sniping: sanitizeSnipingConfig(
+          sniping,
+          existingConfig.sniping ?? { enabled: false, configs: [] },
+          trading !== undefined ? sanitizeTradingConfig(trading, existingConfig.trading) : existingConfig.trading,
+        ),
+      }),
     });
 
     // Reconnect Discord so the new proxy takes effect immediately (local mode).
@@ -975,7 +1391,7 @@ export function createRouter(wsServer: WsServer): Router {
   // — which are deliberately included locally so a restore re-establishes
   // access — this one can spend money, and is re-issued from the Slotshark
   // dashboard in seconds.
-  const SECRET_CONFIG_KEYS = ['slotsharkApiToken'] as const;
+  const SECRET_CONFIG_KEYS = ['slotsharkApiToken', 'cloudDeviceToken'] as const;
 
   router.get('/config/export', async (req, res) => {
     const userId = getUserId(req);
@@ -1053,6 +1469,20 @@ export function createRouter(wsServer: WsServer): Router {
         };
       }
 
+      // Same reasoning as trading, but stronger: sniping spends with no click
+      // at all, so a restored backup must never come back armed.
+      if (sanitized.sniping) {
+        const existingCfg = await storage.getConfig(userId);
+        sanitized.sniping = {
+          ...sanitizeSnipingConfig(
+            sanitized.sniping,
+            existingCfg.sniping ?? { enabled: false, configs: [] },
+            sanitized.trading ?? existingCfg.trading,
+          ),
+          enabled: false,
+        };
+      }
+
       await storage.updateConfig(userId, sanitized);
 
       if (Array.isArray(importedRooms)) {
@@ -1060,9 +1490,25 @@ export function createRouter(wsServer: WsServer): Router {
         for (const room of existingRooms) {
           await storage.deleteRoom(userId, room.id);
         }
+        // Rooms get fresh ids on this device, but the pane layout written above
+        // still references the exporting machine's ids — left alone it would
+        // open dead "Unknown" panes after every restore. Remap it as the rooms
+        // are recreated; ids with no mapping (virtual feeds like 'mentions',
+        // DM keys, rooms deleted since the backup) pass through unchanged.
+        const roomIdMap = new Map<string, string>();
         for (const room of importedRooms) {
           const { id, ...roomData } = room;
-          await storage.createRoom(userId, roomData);
+          const created = await storage.createRoom(userId, {
+            ...roomData,
+            channels: stripDerivedChannels(roomData.channels ?? []),
+            categories: sanitizeCategories(roomData.categories),
+          });
+          if (typeof id === 'string' && id) roomIdMap.set(id, created.id);
+        }
+        if (Array.isArray(sanitized.paneRoomIds) && roomIdMap.size > 0) {
+          await storage.updateConfig(userId, {
+            paneRoomIds: sanitized.paneRoomIds.map((paneId: string) => roomIdMap.get(paneId) ?? paneId),
+          });
         }
       }
 
@@ -1293,6 +1739,36 @@ export function createRouter(wsServer: WsServer): Router {
     }
   });
 
+  // --- Mark read (reverse of the gateway's MESSAGE_ACK sync) ---
+
+  // Only DM channels are accepted: opening a Trenchcord room that aggregates
+  // guild channels must never mass-read those channels on the real account.
+  router.post('/channels/:channelId/ack', async (req, res) => {
+    const { channelId } = req.params;
+    const { messageId } = req.body ?? {};
+    if (!/^\d{5,25}$/.test(channelId) || typeof messageId !== 'string' || !/^\d{5,25}$/.test(messageId)) {
+      return res.status(400).json({ error: 'channelId and messageId must be Discord ids' });
+    }
+
+    const config = await storage.getConfig(getUserId(req));
+    if (!config.dmReadSyncEnabled) {
+      return res.status(403).json({ error: 'DM read sync is disabled. Enable it in Settings > General.' });
+    }
+
+    const gateway = await requireGateway(req, res);
+    if (!gateway) return;
+    if (!gateway.getDMChannels().some((dm) => dm.id === channelId)) {
+      return res.status(400).json({ error: 'Only DM channels can be marked read' });
+    }
+
+    try {
+      const success = await gateway.ackChannelMessage(channelId, messageId);
+      res.json({ success });
+    } catch (err: any) {
+      res.status(500).json({ error: safeError(err, 'Failed to mark channel read') });
+    }
+  });
+
   // --- Contracts ---
 
   router.get('/contracts', async (req, res) => {
@@ -1336,6 +1812,26 @@ export function createRouter(wsServer: WsServer): Router {
       masked: token ? maskToken(token) : null,
       walletCount: config.trading?.wallets.length ?? 0,
     });
+  });
+
+  // Which of the addresses in a message are token mints, so the buy row can
+  // drop the wallets a caller bot posts beside them. It runs here rather than
+  // in the app window because Solana's public RPC answers 403 to any request
+  // carrying an Origin header -- i.e. to every request the frontend can make.
+  router.post('/trading/mint-check', async (req, res) => {
+    if (rejectIfHosted(res)) return;
+    const { addresses } = req.body ?? {};
+    if (!Array.isArray(addresses)) {
+      return res.status(400).json({ error: 'addresses must be an array' });
+    }
+    const clean = addresses
+      .filter((a: unknown): a is string => typeof a === 'string' && SOL_ADDRESS_RE.test(a))
+      .slice(0, MAX_MINT_BATCH);
+    try {
+      res.json({ verdicts: await classifyAddresses(clean) });
+    } catch (err: any) {
+      res.status(500).json({ error: safeError(err, 'Mint check failed') });
+    }
   });
 
   router.post('/trading/token', async (req, res) => {

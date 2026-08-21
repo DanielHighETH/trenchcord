@@ -16,9 +16,65 @@ body,
   overflow: hidden;
 }
 
-html {
-  padding: env(safe-area-inset-top) env(safe-area-inset-right)
-    env(safe-area-inset-bottom) env(safe-area-inset-left);
+/*
+ * Safe-area insets as variables rather than html padding: padding on html
+ * cannot protect position:fixed surfaces (drawer, banners, modals), which
+ * position against the viewport. Each surface pads itself with these vars.
+ * env() covers mobile browsers; the iOS shell overrides the vars with
+ * measured values via an inline style (WebView.swift), because env() reads
+ * as 0 under SwiftUI's ignoresSafeArea.
+ */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
+html,
+body {
+  overscroll-behavior: none;
+}
+
+/*
+ * Native-style press feedback on phone layouts: UIKit dims controls the
+ * instant they're touched. Hover styles are compiled out for touch devices
+ * (tailwind future.hoverOnlyWhenSupported), so this is the only feedback.
+ */
+html.compact :is(button, [role='button']):active {
+  opacity: 0.6;
+}
+
+/*
+ * In the iOS shell, UI chrome must not behave like a web page: no text
+ * selection magnifier on buttons/labels, no save-image callout on long
+ * press. Message bodies opt back in with Tailwind's `select-text`, and
+ * form fields stay editable.
+ */
+html.platform-ios {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+html.platform-ios :is(input, textarea) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Phones get iOS-style scrolling without desktop scrollbar gutters. */
+html.compact ::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 body {
@@ -83,4 +139,19 @@ body {
     opacity: 1;
     transform: translateX(0);
   }
+}
+
+/* Ring flashed around a settings card when a search result jumps to it. */
+@keyframes setting-flash {
+  0%,
+  60% {
+    box-shadow: 0 0 0 2px rgb(88 101 242 / 0.9);
+  }
+  100% {
+    box-shadow: 0 0 0 2px rgb(88 101 242 / 0);
+  }
+}
+.setting-flash {
+  animation: setting-flash 1.6s ease-out;
+  border-radius: 8px;
 }

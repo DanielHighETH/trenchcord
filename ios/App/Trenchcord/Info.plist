@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Trenchcord</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UIUserInterfaceStyle</key>
+	<string>Dark</string>
+
+	<!--
+		The UI is served by the app's own backend over plain HTTP on 127.0.0.1.
+		NSAllowsLocalNetworking permits exactly that (loopback and .local) while
+		leaving App Transport Security fully enforced for every real host — the
+		Discord, Telegram and account-server connections all stay TLS-only.
+	-->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+
+	<!--
+		Debug builds reach the dev cloud API on the development Mac over LAN,
+		which triggers iOS's Local Network permission prompt; this string is
+		shown in that prompt. Release builds talk only to public hosts and
+		loopback, so the prompt never appears for real users.
+	-->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Development builds connect to the Trenchcord dev server on your computer.</string>
+
+	<!--
+		Export compliance: the app uses only standard encryption — TLS via the
+		OS, and Telegram's MTProto, which is built from standard AES/RSA/DH
+		primitives. That is exempt, so App Store Connect stops asking on upload.
+	-->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
+	<!--
+		"Open in Discord/Telegram" jumps use the apps' URL schemes. iOS only
+		lets canOpenURL() see schemes declared here — without this list the
+		buttons silently do nothing.
+	-->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>discord</string>
+		<string>tg</string>
+		<string>telegram</string>
+	</array>
+
+	<!--
+		The account dashboard's "Open Trenchcord" button (shown in Safari after
+		approving a device pairing on the phone) returns here via
+		trenchcord://. Opening it just foregrounds the app — the scenePhase
+		handler resumes the node runtime, and the pairing poll picks up the
+		approval on its own, so no URL handling code is needed.
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.trenchcord</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>trenchcord</string>
+			</array>
+		</dict>
+	</array>
+
+	<!--
+		The image viewer's Save button writes to the photo library (add-only:
+		the app can never read or browse existing photos).
+	-->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Trenchcord saves images from chats to your photo library when you tap Save.</string>
+</dict>
+</plist>

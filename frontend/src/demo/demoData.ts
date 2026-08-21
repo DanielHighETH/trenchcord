@@ -1,4 +1,4 @@
-import type { Room, AppConfig, GuildInfo, DMChannel, FrontendMessage, ContractEntry, MaskedToken } from '../types';
+import type { Room, AppConfig, GuildInfo, DMChannel, FrontendMessage, ContractEntry, MaskedToken, PriceAlert, TweetAlert, TelegramTrack, PremiumEvent, PremiumNotifyPrefs, TelegramChatInfo, TradingStatus } from '../types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -17,35 +17,27 @@ export function nextStreamId(): string {
 // IDs
 // ---------------------------------------------------------------------------
 
-const GUILD_ALPHA = 'guild-alpha-001';
-const GUILD_DEGEN = 'guild-degen-002';
-const GUILD_NFT = 'guild-nft-003';
+const GUILD_PROSPERITY = 'guild-prosperity-001';
+const GUILD_WAGMI = 'guild-wagmi-002';
+const GUILD_INVERSE = 'guild-inverse-003';
 
-const CH_ALPHA_CALLS = 'ch-alpha-calls';
-const CH_WHALE_WATCH = 'ch-whale-watch';
-const CH_GENERAL = 'ch-general';
-const CH_TOKEN_DROPS = 'ch-token-drops';
-const CH_NFT_ALERTS = 'ch-nft-alerts';
-const CH_FLOOR_WATCH = 'ch-floor-watch';
+const CH_PROS_ALPHA = 'ch-pros-alpha';
+const CH_WAGMI_GENERAL = 'ch-wagmi-general';
+const CH_WAGMI_CALLS = 'ch-wagmi-calls';
+const CH_INVERSE_CLEAN = 'ch-inverse-clean';
 
-const ROOM_ALPHA = 'room-alpha';
-const ROOM_DEGEN = 'room-degen';
-const ROOM_NFT = 'room-nft';
-const ROOM_WHALE = 'room-whale';
+const TG_CABAL = 'tg-cabal-001';
+const TG_LOUNGE = 'tg-lounge-002';
 
-const USER_WHALE = '900000000000000100';
-const USER_ALPHA = '900000000000000101';
-const USER_MIKE = '900000000000000102';
-const USER_SARAH = '900000000000000103';
-const USER_NFT = '900000000000000104';
-const USER_SOL = '900000000000000105';
-const USER_ETH = '900000000000000106';
-const USER_CHART = '900000000000000107';
+const ROOM_MAIN = 'room-main';
+const ROOM_CALLS = 'room-calls';
+const ROOM_TG = 'room-tg';
 
+// Real, well-known SOL mints so address rendering/detection behaves exactly
+// like production. The token names in the copy are made up.
+const MINT_ANSEM = '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr';
+const MINT_WIF = 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm';
 const EVM_ADDR_1 = '0xb695559b26bb2c9703ef1935c37aeae9526bab07';
-const EVM_ADDR_2 = '0xDeaD000000000000000000000000000000BeEF42';
-const SOL_ADDR_1 = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
-const SOL_ADDR_2 = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
 // ---------------------------------------------------------------------------
 // Guilds
@@ -53,32 +45,35 @@ const SOL_ADDR_2 = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
 export const DEMO_GUILDS: GuildInfo[] = [
   {
-    id: GUILD_ALPHA,
-    name: 'Alpha Hunters',
+    id: GUILD_PROSPERITY,
+    name: 'Prosperity DAO',
     icon: null,
     channels: [
-      { id: CH_ALPHA_CALLS, name: 'alpha-calls', type: 0 },
-      { id: CH_WHALE_WATCH, name: 'whale-watch', type: 0 },
+      { id: CH_PROS_ALPHA, name: '👾｜alpha', type: 0 },
     ],
   },
   {
-    id: GUILD_DEGEN,
-    name: 'Degen Lounge',
+    id: GUILD_WAGMI,
+    name: 'WAGMI DAO',
     icon: null,
     channels: [
-      { id: CH_GENERAL, name: 'general', type: 0 },
-      { id: CH_TOKEN_DROPS, name: 'token-drops', type: 0 },
+      { id: CH_WAGMI_GENERAL, name: 'wagmi-general', type: 0 },
+      { id: CH_WAGMI_CALLS, name: 'wagmi-calls', type: 0 },
     ],
   },
   {
-    id: GUILD_NFT,
-    name: 'NFT Collective',
+    id: GUILD_INVERSE,
+    name: 'Inverse',
     icon: null,
     channels: [
-      { id: CH_NFT_ALERTS, name: 'nft-alerts', type: 0 },
-      { id: CH_FLOOR_WATCH, name: 'floor-watch', type: 0 },
+      { id: CH_INVERSE_CLEAN, name: 'clean-chat', type: 0 },
     ],
   },
+];
+
+export const DEMO_TELEGRAM_CHATS: TelegramChatInfo[] = [
+  { id: TG_CABAL, title: 'Cabal Calls', type: 'channel', photo: null },
+  { id: TG_LOUNGE, title: 'Trench Lounge', type: 'supergroup', photo: null },
 ];
 
 // ---------------------------------------------------------------------------
@@ -87,60 +82,85 @@ export const DEMO_GUILDS: GuildInfo[] = [
 
 export const DEMO_ROOMS: Room[] = [
   {
-    id: ROOM_ALPHA,
-    name: 'Alpha Calls',
+    id: ROOM_MAIN,
+    name: 'Main',
     channels: [
-      { guildId: GUILD_ALPHA, channelId: CH_ALPHA_CALLS, guildName: 'Alpha Hunters', channelName: 'alpha-calls' },
-      { guildId: GUILD_ALPHA, channelId: CH_WHALE_WATCH, guildName: 'Alpha Hunters', channelName: 'whale-watch' },
+      { guildId: GUILD_PROSPERITY, channelId: CH_PROS_ALPHA, guildName: 'Prosperity DAO', channelName: '👾｜alpha' },
+      { guildId: GUILD_WAGMI, channelId: CH_WAGMI_GENERAL, guildName: 'WAGMI DAO', channelName: 'wagmi-general' },
+      { guildId: GUILD_INVERSE, channelId: CH_INVERSE_CLEAN, guildName: 'Inverse', channelName: 'clean-chat' },
+      { source: 'telegram', guildId: null, channelId: TG_CABAL, channelName: 'Cabal Calls' },
     ],
-    highlightedUsers: [USER_WHALE, USER_ALPHA],
+    highlightedUsers: [],
     filteredUsers: [],
     filterEnabled: false,
     color: '#2c2f3e',
-    keywordPatterns: [
-      { pattern: 'stealth launch', matchMode: 'includes', label: 'stealth' },
-    ],
   },
   {
-    id: ROOM_DEGEN,
-    name: 'Degen Chat',
+    id: ROOM_CALLS,
+    name: 'Calls',
     channels: [
-      { guildId: GUILD_DEGEN, channelId: CH_GENERAL, guildName: 'Degen Lounge', channelName: 'general' },
-      { guildId: GUILD_DEGEN, channelId: CH_TOKEN_DROPS, guildName: 'Degen Lounge', channelName: 'token-drops' },
+      { guildId: GUILD_PROSPERITY, channelId: CH_PROS_ALPHA, guildName: 'Prosperity DAO', channelName: '👾｜alpha' },
+      { guildId: GUILD_WAGMI, channelId: CH_WAGMI_CALLS, guildName: 'WAGMI DAO', channelName: 'wagmi-calls' },
+      { source: 'telegram', guildId: null, channelId: TG_CABAL, channelName: 'Cabal Calls' },
     ],
     highlightedUsers: [],
     filteredUsers: [],
     filterEnabled: false,
     color: '#2a332e',
+  },
+  {
+    id: ROOM_TG,
+    name: 'Telegram',
+    channels: [
+      { source: 'telegram', guildId: null, channelId: TG_CABAL, channelName: 'Cabal Calls' },
+      { source: 'telegram', guildId: null, channelId: TG_LOUNGE, channelName: 'Trench Lounge' },
+    ],
+    highlightedUsers: [],
+    filteredUsers: [],
+    filterEnabled: false,
+    color: '#26323e',
     keywordPatterns: [
-      { pattern: '100x', matchMode: 'includes', label: '100x' },
+      { pattern: 'presale', matchMode: 'includes', label: 'presale' },
     ],
-  },
-  {
-    id: ROOM_NFT,
-    name: 'NFT Signals',
-    channels: [
-      { guildId: GUILD_NFT, channelId: CH_NFT_ALERTS, guildName: 'NFT Collective', channelName: 'nft-alerts' },
-      { guildId: GUILD_NFT, channelId: CH_FLOOR_WATCH, guildName: 'NFT Collective', channelName: 'floor-watch' },
-    ],
-    highlightedUsers: [USER_NFT],
-    filteredUsers: [],
-    filterEnabled: false,
-    color: '#332c3e',
-  },
-  {
-    id: ROOM_WHALE,
-    name: 'Whale Alerts',
-    channels: [
-      { guildId: GUILD_ALPHA, channelId: CH_WHALE_WATCH, guildName: 'Alpha Hunters', channelName: 'whale-watch' },
-      { guildId: GUILD_DEGEN, channelId: CH_TOKEN_DROPS, guildName: 'Degen Lounge', channelName: 'token-drops' },
-    ],
-    highlightedUsers: [USER_WHALE],
-    filteredUsers: [],
-    filterEnabled: false,
-    color: '#3a2c2c',
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Authors
+// ---------------------------------------------------------------------------
+
+const USER_WOLFIE = '900000000000000100';
+const USER_ASHTON = '900000000000000101';
+const USER_SAM = '900000000000000102';
+const USER_NICK = '900000000000000103';
+const USER_JENZ = '900000000000000104';
+const USER_WHATEVER = '900000000000000105';
+const USER_KONDA = '900000000000000106';
+const USER_LUCAS = '900000000000000107';
+const USER_BRIX = '900000000000000108';
+const USER_PILKS = '900000000000000109';
+const USER_MERA = '900000000000000110';
+const USER_RICK = '900000000000000111';
+
+const authors = {
+  wolfie: { id: USER_WOLFIE, username: 'wolfie', displayName: 'wolfie', avatar: null, roleColor: '#00b0f4' },
+  ashton: { id: USER_ASHTON, username: 'ashton', displayName: 'ashton', avatar: null, roleColor: '#faa61a' },
+  sam: { id: USER_SAM, username: 'sam', displayName: 'Sam', avatar: null, roleColor: '#2ecc71' },
+  nick: { id: USER_NICK, username: 'nick', displayName: 'Nick', avatar: null, roleColor: '#f47b67' },
+  jenz: { id: USER_JENZ, username: 'jenz', displayName: 'jenz', avatar: null },
+  whatever: { id: USER_WHATEVER, username: 'Whatever', displayName: 'Whatever', avatar: null },
+  konda: { id: USER_KONDA, username: 'konda', displayName: 'konda', avatar: null, roleColor: '#e67e22' },
+  lucas: { id: USER_LUCAS, username: 'lucas', displayName: 'Lucas CABAL MAFIA', avatar: null, roleColor: '#d4a017' },
+  brix: { id: USER_BRIX, username: 'brix', displayName: 'brix', avatar: null, roleColor: '#9b59b6' },
+  pilks: { id: USER_PILKS, username: 'pilks', displayName: 'pilks', avatar: null },
+  mera: { id: USER_MERA, username: 'mera', displayName: 'mera', avatar: null, roleColor: '#eb459e' },
+  rick: { id: USER_RICK, username: 'Rick', displayName: 'Rick', avatar: null, roleColor: '#43b581', isBot: true },
+  // Telegram: a channel posts as itself; group members post by name.
+  // (Numeric ids, like real Telegram — avatar fallbacks BigInt-parse them.)
+  tgCabal: { id: '7000000000000000001', username: 'Cabal Calls', displayName: 'Cabal Calls', avatar: null },
+  tgDario: { id: '7000000000000000002', username: 'dario', displayName: 'Dario', avatar: null },
+  tgMeeks: { id: '7000000000000000003', username: 'meeks', displayName: 'meeks', avatar: null },
+};
 
 // ---------------------------------------------------------------------------
 // Config
@@ -149,25 +169,28 @@ export const DEMO_ROOMS: Room[] = [
 export const DEMO_CONFIG: AppConfig = {
   discordTokens: [],
   rooms: DEMO_ROOMS,
-  globalHighlightedUsers: [USER_WHALE, USER_ALPHA],
+  globalHighlightedUsers: [USER_WOLFIE, USER_ASHTON],
   contractDetection: true,
   guildColors: {
-    [GUILD_ALPHA]: '#2d3142',
-    [GUILD_DEGEN]: '#2d3832',
-    [GUILD_NFT]: '#382d42',
+    [GUILD_PROSPERITY]: '#2d3142',
+    [GUILD_WAGMI]: '#2d3832',
+    [GUILD_INVERSE]: '#38352d',
   },
+  channelColors: {},
   dmColors: {},
-  enabledGuilds: [GUILD_ALPHA, GUILD_DEGEN, GUILD_NFT],
+  enabledGuilds: [GUILD_PROSPERITY, GUILD_WAGMI, GUILD_INVERSE],
   evmAddressColor: '#fee75c',
   solAddressColor: '#14f195',
   openInDiscordApp: false,
   openInTelegramApp: false,
   hiddenUsers: {},
+  hiddenRoles: {},
   messageSounds: false,
   soundSettings: {
     highlight: { enabled: true, volume: 80, useCustom: false },
     contractAlert: { enabled: true, volume: 80, useCustom: false },
     keywordAlert: { enabled: true, volume: 80, useCustom: false },
+    premiumAlert: { enabled: true, volume: 80, useCustom: false },
   },
   pushover: { enabled: false, appToken: '', userKey: '', priority: 0, sound: 'pushover', triggers: { highlightedUser: false, highlightedUserContract: false, contract: false, keyword: false }, filters: { userIds: [], channelIds: [], guildIds: [] } },
   contractLinkTemplates: { evm: '', sol: '', solPlatform: 'axiom', evmPlatform: 'gmgn' },
@@ -175,20 +198,23 @@ export const DEMO_CONFIG: AppConfig = {
   showFullContractAddress: false,
   autoOpenHighlightedContracts: false,
   globalKeywordPatterns: [
-    { pattern: 'airdrop', matchMode: 'includes', label: 'airdrop' },
+    { pattern: 'presale', matchMode: 'includes', label: 'presale' },
   ],
   keywordAlertsEnabled: true,
   desktopNotifications: false,
   mentionsUserEnabled: true,
   mentionsRoleEnabled: true,
+  mentionsBotsEnabled: true,
   mentionsHereEnabled: false,
   mentionsEveryoneEnabled: false,
   badgeClickAction: 'discord',
   channelSounds: {},
   userNameCache: {},
   chattingEnabled: false,
+  dmReadSyncEnabled: false,
   messageDisplay: 'default',
   compactModeAvatars: true,
+  compactModeNameOnce: false,
   roleColors: true,
   mobileZoomScale: 1,
   splitLayout: 'row',
@@ -196,28 +222,58 @@ export const DEMO_CONFIG: AppConfig = {
   paneLocks: [],
   gridMirror: false,
   seenAnnouncements: [],
-  telegramColors: {},
-  // Trading is inert in the demo -- the store rejects buys before any request.
+  telegramColors: {
+    [TG_CABAL]: '#26323e',
+    [TG_LOUNGE]: '#2c3a3a',
+  },
+  // Trading looks fully set up so buy buttons and the sniper render, but the
+  // store rejects actual buys before any request leaves the app.
   trading: {
-    enabled: false,
+    enabled: true,
     region: 'us',
-    wallets: [],
-    activeWalletIds: [],
-    walletAmountMode: 'per_wallet',
-    presetAmounts: [0.5, 1, 3, 5, 10],
+    wallets: [
+      { id: 'demo-wallet-1', label: 'Main', address: 'GJtaN2GEZsWnQxgQvzTdmBWQfSJwn6Wsb8dTL5ajb1q7' },
+      { id: 'demo-wallet-2', label: 'Sniper', address: '5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9' },
+    ],
+    activeWalletIds: ['demo-wallet-1', 'demo-wallet-2'],
+    walletAmountMode: 'split',
+    presetAmounts: [1, 3, 5, 10, 20],
     slippage: 20,
     tip: null,
     priorityFee: null,
     antimev: true,
     requireDoubleClick: false,
     buttonSize: 'md',
-    buttonBgColor: '#383a40',
-    buttonTextColor: '#dbdee1',
+    buttonBgColor: '#23a55a',
+    buttonTextColor: '#ffffff',
     showContractPill: true,
     openSiteOnBuy: false,
     buySitePlatform: 'default',
     buySiteUrl: '',
   },
+  sniping: {
+    enabled: true,
+    configs: [
+      {
+        id: 'demo-snipe-1',
+        name: 'Insiders',
+        enabled: true,
+        roomId: ROOM_MAIN,
+        mode: 'users',
+        users: [USER_WOLFIE, USER_ASHTON],
+        solAmount: 0.5,
+        walletIds: ['demo-wallet-2'],
+        resnipeMode: 'never',
+        limitSells: [],
+      },
+    ],
+  },
+};
+
+export const DEMO_TRADING_STATUS: TradingStatus = {
+  configured: true,
+  masked: 'slk_****…****demo',
+  walletCount: 2,
 };
 
 // ---------------------------------------------------------------------------
@@ -228,7 +284,7 @@ export const DEMO_DM_CHANNELS: DMChannel[] = [
   {
     id: 'dm-channel-001',
     recipients: [
-      { id: USER_ALPHA, username: 'AlphaLeaker', global_name: 'Alpha Leaker', avatar: null },
+      { id: USER_WOLFIE, username: 'wolfie', global_name: 'wolfie', avatar: null },
     ],
   },
 ];
@@ -275,156 +331,215 @@ function msg(
   };
 }
 
-const authors = {
-  whale: { id: USER_WHALE, username: 'WhaleTracker', displayName: 'WhaleTracker', avatar: null },
-  alpha: { id: USER_ALPHA, username: 'AlphaLeaker', displayName: 'Alpha Leaker', avatar: null },
-  mike: { id: USER_MIKE, username: 'degen_mike', displayName: 'Degen Mike', avatar: null },
-  sarah: { id: USER_SARAH, username: 'crypto_sarah', displayName: 'Crypto Sarah', avatar: null },
-  nft: { id: USER_NFT, username: 'nft_collector', displayName: 'NFT Collector', avatar: null },
-  sol: { id: USER_SOL, username: 'sol_maxi', displayName: 'Sol Maxi', avatar: null },
-  eth: { id: USER_ETH, username: 'eth_bull', displayName: 'ETH Bull', avatar: null },
-  chart: { id: USER_CHART, username: 'chart_wizard', displayName: 'Chart Wizard', avatar: null },
-};
+function tgMsg(
+  id: string,
+  chatId: string,
+  chatTitle: string,
+  author: FrontendMessage['author'],
+  content: string,
+  timestamp: string,
+  overrides: Partial<FrontendMessage> = {},
+): FrontendMessage {
+  return msg(id, chatId, null, chatTitle, null, author, content, timestamp, {
+    source: 'telegram',
+    ...overrides,
+  });
+}
+
+/**
+ * A Rick-style scanner reply: hyperlinked headline embed with the stat block,
+ * token links, the CA in a code pill, and a link-button row. Shared with the
+ * promo tour so its live-injected scan looks identical.
+ */
+export function buildRickScan(
+  id: string,
+  mint: string,
+  tokenName: string,
+  ticker: string,
+  timestamp: string,
+  reply: { id: string; authorId?: string; author: string; content: string; roleColor?: string | null },
+  channel: { channelId: string; guildId: string; channelName: string; guildName: string },
+): FrontendMessage {
+  const dex = `https://dexscreener.com/solana/${mint}`;
+  return msg(id, channel.channelId, channel.guildId, channel.channelName, channel.guildName, authors.rick, '', timestamp, {
+    hasContractAddress: true,
+    contractAddresses: [mint],
+    referencedMessage: { id: reply.id, authorId: reply.authorId, author: reply.author, roleColor: reply.roleColor, content: reply.content, mentions: {} },
+    embeds: [
+      {
+        type: 'rich',
+        title: `${tokenName} [412K/8.4K%] - ${ticker}/SOL ⬆`,
+        url: dex,
+        color: 0x57f287,
+        description: [
+          `🟢 **Solana @ Raydium** 🔥 \`#3\``,
+          `💰 USD: \`0.0004120\``,
+          `💎 FDV: \`412K\` ➡ \`465K\` \`[12m]\``,
+          `💦 Liq: \`41.2K\` \`[x10]\` ‼ \`0%\``,
+          `📊 Vol: \`152M\` · Age: \`1h\``,
+          `⚡ 1H: \`482K\` · \`241%\` 🅑 \`2.1K\` Ⓢ \`1.5K\``,
+          ``,
+          `👥 TH: [11.2](${dex})·[2.9](${dex})·[2.4](${dex})·[2.2](${dex})·[2.1](${dex}) \`[28%]\``,
+          `🖨 Total: \`731\` · avg \`14w\` old`,
+          `🌱 Fresh 1D: \`7%\` · 7D: \`24%\``,
+          `🦎 Chart: [DEX](${dex}) · [DEF](https://www.defined.fi/sol/${mint})`,
+          ``,
+          `\`${mint}\``,
+          ``,
+          `[MAE](${dex})·[BAN](${dex})·[BNK](${dex})·[PDR](${dex})·[BLO](${dex})·[STB](${dex})`,
+          `[TRO](${dex})·[TRT](${dex})·[GMG](${dex})·[PHO](${dex})·[AXI](${dex})·[EXP](${dex})`,
+        ].join('\n'),
+      },
+    ],
+    components: [
+      { type: 1, components: [{ type: 2, style: 5, label: 'PDR', url: dex }] },
+    ],
+    reactions: [{ emoji: { id: null, name: '🗑' }, count: 1 }],
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Initial messages per room
 // ---------------------------------------------------------------------------
 
-const alphaMessages: FrontendMessage[] = [
-  msg('m-a1', CH_ALPHA_CALLS, GUILD_ALPHA, 'alpha-calls', 'Alpha Hunters', authors.mike, 'anyone watching the ETH chart? big green candle forming', minutesAgo(58)),
-  msg('m-a2', CH_ALPHA_CALLS, GUILD_ALPHA, 'alpha-calls', 'Alpha Hunters', authors.sarah, 'yeah volume is picking up, looks like a breakout', minutesAgo(55)),
-  msg('m-a3', CH_ALPHA_CALLS, GUILD_ALPHA, 'alpha-calls', 'Alpha Hunters', authors.whale, `new token just deployed on ETH: ${EVM_ADDR_1}`, minutesAgo(48), {
+// Prosperity #alpha — the main action: banter, a call, Rick's scan.
+const prosAlpha = {
+  chatter1: msg('m-p1', CH_PROS_ALPHA, GUILD_PROSPERITY, '👾｜alpha', 'Prosperity DAO', authors.konda, 'anything moving or are we just staring at charts again', minutesAgo(48)),
+  chatter2: msg('m-p2', CH_PROS_ALPHA, GUILD_PROSPERITY, '👾｜alpha', 'Prosperity DAO', authors.whatever, 'pleaseeeeeeeee\nath', minutesAgo(45)),
+  chatter3: msg('m-p3', CH_PROS_ALPHA, GUILD_PROSPERITY, '👾｜alpha', 'Prosperity DAO', authors.brix, 'u didnt sell?\nlul', minutesAgo(44), {
+    referencedMessage: { id: 'm-p2', authorId: USER_WHATEVER, author: 'Whatever', content: 'pleaseeeeeeeee\nath', mentions: {} },
+  }),
+  wolfieCall: msg('m-p4', CH_PROS_ALPHA, GUILD_PROSPERITY, '👾｜alpha', 'Prosperity DAO', authors.wolfie, MINT_ANSEM, minutesAgo(40), {
     isHighlighted: true,
     hasContractAddress: true,
-    contractAddresses: [EVM_ADDR_1],
+    contractAddresses: [MINT_ANSEM],
   }),
-  msg('m-a4', CH_ALPHA_CALLS, GUILD_ALPHA, 'alpha-calls', 'Alpha Hunters', authors.mike, 'whale just dropped a CA, checking it now', minutesAgo(47)),
-  msg('m-a5', CH_WHALE_WATCH, GUILD_ALPHA, 'whale-watch', 'Alpha Hunters', authors.chart, 'chart looks clean, low tax, liq locked', minutesAgo(45), {
-    referencedMessage: { id: 'm-a3', author: 'WhaleTracker', content: `new token just deployed on ETH: ${EVM_ADDR_1}`, mentions: {} },
+  rickScan: buildRickScan('m-p5', MINT_ANSEM, 'Ansem', 'ANSEM', minutesAgo(40), { id: 'm-p4', authorId: USER_WOLFIE, author: 'wolfie', content: MINT_ANSEM, roleColor: authors.wolfie.roleColor }, { channelId: CH_PROS_ALPHA, guildId: GUILD_PROSPERITY, channelName: '👾｜alpha', guildName: 'Prosperity DAO' }),
+  react1: msg('m-p6', CH_PROS_ALPHA, GUILD_PROSPERITY, '👾｜alpha', 'Prosperity DAO', authors.mera, 'in. chart looks stupid good', minutesAgo(37), {
+    referencedMessage: { id: 'm-p4', authorId: USER_WOLFIE, author: 'wolfie', roleColor: authors.wolfie.roleColor, content: MINT_ANSEM, mentions: {} },
+    reactions: [{ emoji: { id: null, name: '🔥' }, count: 4 }],
   }),
-  msg('m-a6', CH_ALPHA_CALLS, GUILD_ALPHA, 'alpha-calls', 'Alpha Hunters', authors.alpha, `stealth launch incoming on SOL 👀 ${SOL_ADDR_1}`, minutesAgo(40), {
+  react2: msg('m-p7', CH_PROS_ALPHA, GUILD_PROSPERITY, '👾｜alpha', 'Prosperity DAO', authors.lucas, 'idk why ppl arent bidding this one', minutesAgo(36)),
+  thesis: msg('m-p8', CH_PROS_ALPHA, GUILD_PROSPERITY, '👾｜alpha', 'Prosperity DAO', authors.nick, "bro your thesis was 'it went up'. bullish", minutesAgo(28), {
+    referencedMessage: { id: 'm-p7', authorId: USER_LUCAS, author: 'Lucas CABAL MAFIA', roleColor: authors.lucas.roleColor, content: 'idk why ppl arent bidding this one', mentions: {} },
+    reactions: [{ emoji: { id: null, name: '😭' }, count: 2 }],
+  }),
+  ashtonNote: msg('m-p9', CH_PROS_ALPHA, GUILD_PROSPERITY, '👾｜alpha', 'Prosperity DAO', authors.ashton, 'second entry loading imo, watch the 15m', minutesAgo(25), {
     isHighlighted: true,
-    hasContractAddress: true,
-    contractAddresses: [SOL_ADDR_1],
-    matchedKeywords: ['stealth'],
   }),
-  msg('m-a7', CH_ALPHA_CALLS, GUILD_ALPHA, 'alpha-calls', 'Alpha Hunters', authors.sol, 'aping in, chart looks good', minutesAgo(38), {
-    reactions: [
-      { emoji: { id: null, name: '🔥' }, count: 5 },
-      { emoji: { id: null, name: '🚀' }, count: 3 },
-    ],
+  revive: msg('m-p10', CH_PROS_ALPHA, GUILD_PROSPERITY, '👾｜alpha', 'Prosperity DAO', authors.whatever, 'can this thing revive or is it done', minutesAgo(12)),
+  leaderboard: msg('m-p11', CH_PROS_ALPHA, GUILD_PROSPERITY, '👾｜alpha', 'Prosperity DAO', authors.sam, 'he isnt 2nd on the fomo leaderboard for nothing', minutesAgo(8), {
+    referencedMessage: { id: 'm-p9', authorId: USER_ASHTON, author: 'ashton', roleColor: authors.ashton.roleColor, content: 'second entry loading imo, watch the 15m', mentions: {} },
+    reactions: [{ emoji: { id: null, name: '🔥' }, count: 1 }],
   }),
-  msg('m-a8', CH_WHALE_WATCH, GUILD_ALPHA, 'whale-watch', 'Alpha Hunters', authors.eth, 'whale wallet just moved 500 ETH to a new address, watching closely', minutesAgo(32)),
-  msg('m-a9', CH_ALPHA_CALLS, GUILD_ALPHA, 'alpha-calls', 'Alpha Hunters', authors.sarah, 'dev is based, they shipped on two previous projects', minutesAgo(28)),
-  msg('m-a10', CH_ALPHA_CALLS, GUILD_ALPHA, 'alpha-calls', 'Alpha Hunters', authors.whale, 'just added more to my SOL bag, this one has legs', minutesAgo(22), {
-    isHighlighted: true,
-    reactions: [
-      { emoji: { id: null, name: '💯' }, count: 8 },
-    ],
+};
+
+// WAGMI #wagmi-general — everyday chatter, not all of it crypto.
+const wagmiGeneral = [
+  msg('m-w1', CH_WAGMI_GENERAL, GUILD_WAGMI, 'wagmi-general', 'WAGMI DAO', authors.sam, 'gm', minutesAgo(60)),
+  msg('m-w2', CH_WAGMI_GENERAL, GUILD_WAGMI, 'wagmi-general', 'WAGMI DAO', authors.jenz, 'gm gm', minutesAgo(59)),
+  msg('m-w3', CH_WAGMI_GENERAL, GUILD_WAGMI, 'wagmi-general', 'WAGMI DAO', authors.nick, 'anyone watch the game last night', minutesAgo(52)),
+  msg('m-w4', CH_WAGMI_GENERAL, GUILD_WAGMI, 'wagmi-general', 'WAGMI DAO', authors.sam, 'painful. dont wanna talk about it', minutesAgo(51), {
+    referencedMessage: { id: 'm-w3', authorId: USER_NICK, author: 'Nick', roleColor: authors.nick.roleColor, content: 'anyone watch the game last night', mentions: {} },
+    reactions: [{ emoji: { id: null, name: '💀' }, count: 3 }],
   }),
-  msg('m-a11', CH_WHALE_WATCH, GUILD_ALPHA, 'whale-watch', 'Alpha Hunters', authors.chart, '15m chart showing bullish divergence on the RSI, expecting a bounce here', minutesAgo(15)),
-  msg('m-a12', CH_ALPHA_CALLS, GUILD_ALPHA, 'alpha-calls', 'Alpha Hunters', authors.mike, 'anyone have alpha on the next big airdrop?', minutesAgo(8), {
-    matchedKeywords: ['airdrop'],
+  msg('m-w5', CH_WAGMI_GENERAL, GUILD_WAGMI, 'wagmi-general', 'WAGMI DAO', authors.konda, 'too many catalysts at 15m', minutesAgo(33)),
+  msg('m-w6', CH_WAGMI_GENERAL, GUILD_WAGMI, 'wagmi-general', 'WAGMI DAO', authors.brix, 'prob this ig', minutesAgo(32), {
+    referencedMessage: { id: 'm-w5', authorId: USER_KONDA, author: 'konda', roleColor: authors.konda.roleColor, content: 'too many catalysts at 15m', mentions: {} },
   }),
+  msg('m-w7', CH_WAGMI_GENERAL, GUILD_WAGMI, 'wagmi-general', 'WAGMI DAO', authors.brix, 'still good gimme 6m', minutesAgo(10)),
 ];
 
-const degenMessages: FrontendMessage[] = [
-  msg('m-d1', CH_GENERAL, GUILD_DEGEN, 'general', 'Degen Lounge', authors.mike, 'gm degens', minutesAgo(62)),
-  msg('m-d2', CH_GENERAL, GUILD_DEGEN, 'general', 'Degen Lounge', authors.sol, 'gm! another day another 10x', minutesAgo(60)),
-  msg('m-d3', CH_GENERAL, GUILD_DEGEN, 'general', 'Degen Lounge', authors.sarah, "just woke up to a 5x on last night's play, love this market", minutesAgo(55)),
-  msg('m-d4', CH_TOKEN_DROPS, GUILD_DEGEN, 'token-drops', 'Degen Lounge', authors.eth, `new memecoin on Base, degen play: ${EVM_ADDR_2}`, minutesAgo(50), {
+// WAGMI #wagmi-calls — a second caller channel for the Calls room.
+const wagmiCalls = {
+  ashtonCall: msg('m-wc1', CH_WAGMI_CALLS, GUILD_WAGMI, 'wagmi-calls', 'WAGMI DAO', authors.ashton, `adding here. dip entry\n${MINT_WIF}`, minutesAgo(90), {
+    isHighlighted: true,
     hasContractAddress: true,
-    contractAddresses: [EVM_ADDR_2],
+    contractAddresses: [MINT_WIF],
   }),
-  msg('m-d5', CH_GENERAL, GUILD_DEGEN, 'general', 'Degen Lounge', authors.mike, 'lol this is either going to 100x or rug, no in between', minutesAgo(45), {
-    matchedKeywords: ['100x'],
-    reactions: [
-      { emoji: { id: null, name: '😂' }, count: 12 },
-      { emoji: { id: null, name: '💀' }, count: 4 },
-    ],
-  }),
-  msg('m-d6', CH_GENERAL, GUILD_DEGEN, 'general', 'Degen Lounge', authors.chart, 'risk management is key, only ape what you can lose', minutesAgo(42)),
-  msg('m-d7', CH_TOKEN_DROPS, GUILD_DEGEN, 'token-drops', 'Degen Lounge', authors.sol, `hot SOL drop just went live: ${SOL_ADDR_2}`, minutesAgo(35), {
-    hasContractAddress: true,
-    contractAddresses: [SOL_ADDR_2],
-  }),
-  msg('m-d8', CH_GENERAL, GUILD_DEGEN, 'general', 'Degen Lounge', authors.sarah, 'the market is heating up, feels like early 2021 vibes', minutesAgo(25)),
-  msg('m-d9', CH_GENERAL, GUILD_DEGEN, 'general', 'Degen Lounge', authors.mike, "anyone know when the big airdrop drops? I've been farming for weeks", minutesAgo(18), {
-    matchedKeywords: ['airdrop'],
-    mentions: { [USER_SARAH]: 'Crypto Sarah' },
-  }),
-  msg('m-d10', CH_TOKEN_DROPS, GUILD_DEGEN, 'token-drops', 'Degen Lounge', authors.eth, 'new listings on the DEX screener, keep your eyes peeled', minutesAgo(10)),
+  sized: msg('m-wc2', CH_WAGMI_CALLS, GUILD_WAGMI, 'wagmi-calls', 'WAGMI DAO', authors.brix, 'sized in small, sl set', minutesAgo(88)),
+};
+
+// Inverse #clean-chat — dry one-liners.
+const inverseClean = [
+  msg('m-i1', CH_INVERSE_CLEAN, GUILD_INVERSE, 'clean-chat', 'Inverse', authors.pilks, 'quiet morning huh', minutesAgo(55)),
+  msg('m-i2', CH_INVERSE_CLEAN, GUILD_INVERSE, 'clean-chat', 'Inverse', authors.jenz, 'someone launched a pope coin again', minutesAgo(30)),
+  msg('m-i3', CH_INVERSE_CLEAN, GUILD_INVERSE, 'clean-chat', 'Inverse', authors.pilks, 'lunch break. dont rug while im gone', minutesAgo(5)),
 ];
 
-const nftMessages: FrontendMessage[] = [
-  msg('m-n1', CH_NFT_ALERTS, GUILD_NFT, 'nft-alerts', 'NFT Collective', authors.nft, 'new PFP collection just minted out in 5 minutes, crazy demand', minutesAgo(70), {
-    isHighlighted: true,
-  }),
-  msg('m-n2', CH_FLOOR_WATCH, GUILD_NFT, 'floor-watch', 'NFT Collective', authors.sarah, 'floor on CryptoPunks just hit 55 ETH, steady climb', minutesAgo(60)),
-  msg('m-n3', CH_NFT_ALERTS, GUILD_NFT, 'nft-alerts', 'NFT Collective', authors.nft, 'keep an eye on this upcoming drop, art looks insane', minutesAgo(52), {
-    isHighlighted: true,
-    embeds: [{
-      title: 'Chromatic Worlds — Mint Live',
-      description: 'A generative art collection exploring color theory through algorithmic landscapes. 3,333 unique pieces.',
-      url: 'https://example.com/chromatic-worlds',
-      color: 0x9b59b6,
-      footer: { text: 'Mint Price: 0.08 ETH' },
-    }],
-  }),
-  msg('m-n4', CH_FLOOR_WATCH, GUILD_NFT, 'floor-watch', 'NFT Collective', authors.eth, 'BAYC floor holding strong at 28 ETH, no panic selling', minutesAgo(45)),
-  msg('m-n5', CH_NFT_ALERTS, GUILD_NFT, 'nft-alerts', 'NFT Collective', authors.mike, 'the art market on-chain is exploding rn, so many good projects', minutesAgo(38)),
-  msg('m-n6', CH_FLOOR_WATCH, GUILD_NFT, 'floor-watch', 'NFT Collective', authors.chart, 'floor tracker update:\n- Pudgy Penguins: 11.2 ETH (+5%)\n- Azuki: 6.8 ETH (+2%)\n- Milady: 4.1 ETH (-1%)', minutesAgo(30)),
-  msg('m-n7', CH_NFT_ALERTS, GUILD_NFT, 'nft-alerts', 'NFT Collective', authors.nft, 'just sniped a rare trait below floor, these analytics tools are a game changer', minutesAgo(20), {
-    isHighlighted: true,
-    reactions: [
-      { emoji: { id: null, name: '🎯' }, count: 6 },
+// Telegram — a calls channel and a casual group.
+const tgCabalMsgs = [
+  tgMsg('m-t1', TG_CABAL, 'Cabal Calls', authors.tgCabal, `$ANSEM looking primed. entry zone 380-400k, invalidation if it loses 350k\n\n${MINT_ANSEM}`, minutesAgo(35), {
+    hasContractAddress: true,
+    contractAddresses: [MINT_ANSEM],
+    buttons: [
+      { text: '📈 Chart', url: `https://dexscreener.com/solana/${MINT_ANSEM}` },
+      { text: '🤖 Quick buy', url: `https://t.me/` },
     ],
   }),
-  msg('m-n8', CH_FLOOR_WATCH, GUILD_NFT, 'floor-watch', 'NFT Collective', authors.sarah, 'volume on Blur is up 40% today, big players are accumulating', minutesAgo(12)),
+  tgMsg('m-t2', TG_CABAL, 'Cabal Calls', authors.tgCabal, 'presale list for the next one opens 20:00 UTC. members only, link stays the same', minutesAgo(22), {
+    matchedKeywords: ['presale'],
+  }),
+  tgMsg('m-t3', TG_CABAL, 'Cabal Calls', authors.tgCabal, 'reminder: we never dm first. report impersonators', minutesAgo(9)),
 ];
 
-const whaleMessages: FrontendMessage[] = [
-  msg('m-w1', CH_WHALE_WATCH, GUILD_ALPHA, 'whale-watch', 'Alpha Hunters', authors.chart, 'tracking whale wallet 0x7a...3f, just loaded up on 3 new tokens', minutesAgo(55)),
-  msg('m-w2', CH_TOKEN_DROPS, GUILD_DEGEN, 'token-drops', 'Degen Lounge', authors.eth, `fresh contract just went live: ${EVM_ADDR_2}`, minutesAgo(50), {
-    hasContractAddress: true,
-    contractAddresses: [EVM_ADDR_2],
+const tgLoungeMsgs = [
+  tgMsg('m-t4', TG_LOUNGE, 'Trench Lounge', authors.tgDario, "who's still holding from yesterday", minutesAgo(41)),
+  tgMsg('m-t5', TG_LOUNGE, 'Trench Lounge', authors.tgMeeks, 'me. unfortunately', minutesAgo(40)),
+  tgMsg('m-t6', TG_LOUNGE, 'Trench Lounge', authors.tgDario, 'lmaooo we are so back (we are not back)', minutesAgo(39), {
+    reactions: [{ emoji: { id: null, name: '😂' }, count: 7 }],
   }),
-  msg('m-w3', CH_WHALE_WATCH, GUILD_ALPHA, 'whale-watch', 'Alpha Hunters', authors.whale, `whale alert: massive buy on ${SOL_ADDR_1} — 250 SOL in one tx`, minutesAgo(42), {
-    isHighlighted: true,
-    hasContractAddress: true,
-    contractAddresses: [SOL_ADDR_1],
-    reactions: [
-      { emoji: { id: null, name: '🐋' }, count: 15 },
-      { emoji: { id: null, name: '🚀' }, count: 9 },
-    ],
-  }),
-  msg('m-w4', CH_TOKEN_DROPS, GUILD_DEGEN, 'token-drops', 'Degen Lounge', authors.sol, 'following that whale, in for 10 SOL', minutesAgo(40)),
-  msg('m-w5', CH_WHALE_WATCH, GUILD_ALPHA, 'whale-watch', 'Alpha Hunters', authors.whale, 'another large wallet accumulated, this token is getting serious attention', minutesAgo(30), {
-    isHighlighted: true,
-  }),
-  msg('m-w6', CH_TOKEN_DROPS, GUILD_DEGEN, 'token-drops', 'Degen Lounge', authors.mike, 'the whale tracking rooms in trenchcord are so useful ngl', minutesAgo(20), {
-    reactions: [
-      { emoji: { id: null, name: '💯' }, count: 3 },
-    ],
-  }),
-  msg('m-w7', CH_WHALE_WATCH, GUILD_ALPHA, 'whale-watch', 'Alpha Hunters', authors.chart, 'whale just sold 20% of their bag, taking profits. 4h chart still bullish though', minutesAgo(12)),
+  tgMsg('m-t7', TG_LOUNGE, 'Trench Lounge', authors.tgMeeks, 'ok the cabal call is actually moving, im in', minutesAgo(28)),
 ];
 
+// DM — wolfie shares early.
 const dmMessages: FrontendMessage[] = [
-  msg('m-dm1', 'dm-channel-001', null, 'DM', null, authors.alpha, 'hey, check this token before it goes public', minutesAgo(30)),
-  msg('m-dm2', 'dm-channel-001', null, 'DM', null, authors.alpha, `CA: ${SOL_ADDR_1}`, minutesAgo(29), {
+  msg('m-dm1', 'dm-channel-001', null, 'DM', null, authors.wolfie, 'yo', minutesAgo(70)),
+  msg('m-dm2', 'dm-channel-001', null, 'DM', null, authors.wolfie, `check this before i post it in alpha\n${MINT_ANSEM}`, minutesAgo(69), {
     hasContractAddress: true,
-    contractAddresses: [SOL_ADDR_1],
+    contractAddresses: [MINT_ANSEM],
   }),
-  msg('m-dm3', 'dm-channel-001', null, 'DM', null, authors.alpha, 'dev is doxxed, team looks solid. NFA but I am in heavy', minutesAgo(28)),
+  msg('m-dm3', 'dm-channel-001', null, 'DM', null, authors.wolfie, 'dev is a known guy, second project. dont size stupid', minutesAgo(68)),
 ];
+
+function byTime(msgs: FrontendMessage[]): FrontendMessage[] {
+  return [...msgs].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+
+const p = prosAlpha;
+const wc = wagmiCalls;
+
+// A past snipe for the Snipes feed: ashton's WIF call auto-bought.
+const snipedCall: FrontendMessage = {
+  ...wc.ashtonCall,
+  snipeInfo: {
+    status: 'bought',
+    mint: MINT_WIF,
+    configName: 'Insiders',
+    solAmount: 0.5,
+    walletsOk: 1,
+    walletsTotal: 1,
+    timestamp: minutesAgo(90),
+  },
+};
 
 export const DEMO_MESSAGES: Record<string, FrontendMessage[]> = {
-  [ROOM_ALPHA]: alphaMessages,
-  [ROOM_DEGEN]: degenMessages,
-  [ROOM_NFT]: nftMessages,
-  [ROOM_WHALE]: whaleMessages,
+  [ROOM_MAIN]: byTime([
+    ...Object.values(p),
+    ...wagmiGeneral,
+    ...inverseClean,
+    ...tgCabalMsgs,
+  ]),
+  [ROOM_CALLS]: byTime([
+    p.wolfieCall, p.rickScan, p.react1, p.ashtonNote,
+    wc.ashtonCall, wc.sized,
+    ...tgCabalMsgs,
+  ]),
+  [ROOM_TG]: byTime([...tgCabalMsgs, ...tgLoungeMsgs]),
   ['dm:dm-channel-001']: dmMessages,
+  // The live backend mirrors every DM into the aggregate "All DMs" feed.
+  dms: dmMessages,
+  snipes: [snipedCall],
 };
 
 // ---------------------------------------------------------------------------
@@ -433,76 +548,66 @@ export const DEMO_MESSAGES: Record<string, FrontendMessage[]> = {
 
 export const DEMO_CONTRACTS: ContractEntry[] = [
   {
-    address: EVM_ADDR_1,
-    chain: 'evm',
-    evmChain: 'eth',
-    authorId: USER_WHALE,
-    authorName: 'WhaleTracker',
-    channelId: CH_ALPHA_CALLS,
-    channelName: 'alpha-calls',
-    guildId: GUILD_ALPHA,
-    guildName: 'Alpha Hunters',
-    roomIds: [ROOM_ALPHA],
-    messageId: 'm-a3',
-    timestamp: minutesAgo(48),
-    firstSeen: true,
-  },
-  {
-    address: SOL_ADDR_1,
+    address: MINT_ANSEM,
     chain: 'sol',
-    authorId: USER_ALPHA,
-    authorName: 'Alpha Leaker',
-    channelId: CH_ALPHA_CALLS,
-    channelName: 'alpha-calls',
-    guildId: GUILD_ALPHA,
-    guildName: 'Alpha Hunters',
-    roomIds: [ROOM_ALPHA],
-    messageId: 'm-a6',
+    authorId: USER_WOLFIE,
+    authorName: 'wolfie',
+    channelId: CH_PROS_ALPHA,
+    channelName: '👾｜alpha',
+    guildId: GUILD_PROSPERITY,
+    guildName: 'Prosperity DAO',
+    roomIds: [ROOM_MAIN, ROOM_CALLS],
+    messageId: 'm-p4',
     timestamp: minutesAgo(40),
     firstSeen: true,
+    content: MINT_ANSEM,
   },
   {
-    address: EVM_ADDR_2,
+    address: MINT_ANSEM,
+    chain: 'sol',
+    authorId: '7000000000000000001',
+    authorName: 'Cabal Calls',
+    channelId: TG_CABAL,
+    channelName: 'Cabal Calls',
+    guildId: null,
+    guildName: null,
+    roomIds: [ROOM_MAIN, ROOM_CALLS, ROOM_TG],
+    messageId: 'm-t1',
+    timestamp: minutesAgo(35),
+    firstSeen: false,
+    source: 'telegram',
+    content: '$ANSEM looking primed. entry zone 380-400k…',
+  },
+  {
+    address: MINT_WIF,
+    chain: 'sol',
+    authorId: USER_ASHTON,
+    authorName: 'ashton',
+    channelId: CH_WAGMI_CALLS,
+    channelName: 'wagmi-calls',
+    guildId: GUILD_WAGMI,
+    guildName: 'WAGMI DAO',
+    roomIds: [ROOM_CALLS],
+    messageId: 'm-wc1',
+    timestamp: minutesAgo(90),
+    firstSeen: true,
+    content: 'adding here. dip entry',
+  },
+  {
+    address: EVM_ADDR_1,
     chain: 'evm',
     evmChain: 'base',
-    authorId: USER_ETH,
-    authorName: 'ETH Bull',
-    channelId: CH_TOKEN_DROPS,
-    channelName: 'token-drops',
-    guildId: GUILD_DEGEN,
-    guildName: 'Degen Lounge',
-    roomIds: [ROOM_DEGEN, ROOM_WHALE],
-    messageId: 'm-d4',
-    timestamp: minutesAgo(50),
+    authorId: USER_KONDA,
+    authorName: 'konda',
+    channelId: CH_PROS_ALPHA,
+    channelName: '👾｜alpha',
+    guildId: GUILD_PROSPERITY,
+    guildName: 'Prosperity DAO',
+    roomIds: [ROOM_MAIN],
+    messageId: 'm-old-1',
+    timestamp: minutesAgo(180),
     firstSeen: true,
-  },
-  {
-    address: SOL_ADDR_2,
-    chain: 'sol',
-    authorId: USER_SOL,
-    authorName: 'Sol Maxi',
-    channelId: CH_TOKEN_DROPS,
-    channelName: 'token-drops',
-    guildId: GUILD_DEGEN,
-    guildName: 'Degen Lounge',
-    roomIds: [ROOM_DEGEN],
-    messageId: 'm-d7',
-    timestamp: minutesAgo(35),
-    firstSeen: true,
-  },
-  {
-    address: SOL_ADDR_1,
-    chain: 'sol',
-    authorId: USER_WHALE,
-    authorName: 'WhaleTracker',
-    channelId: CH_WHALE_WATCH,
-    channelName: 'whale-watch',
-    guildId: GUILD_ALPHA,
-    guildName: 'Alpha Hunters',
-    roomIds: [ROOM_WHALE],
-    messageId: 'm-w3',
-    timestamp: minutesAgo(42),
-    firstSeen: false,
+    content: 'base play from earlier',
   },
 ];
 
@@ -512,32 +617,30 @@ export const DEMO_CONTRACTS: ContractEntry[] = [
 
 export const STREAM_POOL: Array<{
   channelId: string;
-  guildId: string;
+  guildId: string | null;
   channelName: string;
-  guildName: string;
+  guildName: string | null;
+  source?: 'telegram';
   author: FrontendMessage['author'];
   content: string;
   roomIds: string[];
   overrides?: Partial<FrontendMessage>;
 }> = [
-  { channelId: CH_ALPHA_CALLS, guildId: GUILD_ALPHA, channelName: 'alpha-calls', guildName: 'Alpha Hunters', author: authors.mike, content: 'volume just spiked on the 5m, something is brewing', roomIds: [ROOM_ALPHA] },
-  { channelId: CH_GENERAL, guildId: GUILD_DEGEN, channelName: 'general', guildName: 'Degen Lounge', author: authors.sol, content: 'lol just saw someone ape 100 SOL into a 2 minute old token', roomIds: [ROOM_DEGEN] },
-  { channelId: CH_WHALE_WATCH, guildId: GUILD_ALPHA, channelName: 'whale-watch', guildName: 'Alpha Hunters', author: authors.chart, content: 'another whale wallet just moved 1M USDC to a DEX, big swap incoming', roomIds: [ROOM_ALPHA, ROOM_WHALE] },
-  { channelId: CH_NFT_ALERTS, guildId: GUILD_NFT, channelName: 'nft-alerts', guildName: 'NFT Collective', author: authors.nft, content: 'rare trait just listed 30% below floor, sniping it', roomIds: [ROOM_NFT], overrides: { isHighlighted: true } },
-  { channelId: CH_TOKEN_DROPS, guildId: GUILD_DEGEN, channelName: 'token-drops', guildName: 'Degen Lounge', author: authors.eth, content: 'new verified contract on etherscan, dev renounced ownership', roomIds: [ROOM_DEGEN, ROOM_WHALE] },
-  { channelId: CH_ALPHA_CALLS, guildId: GUILD_ALPHA, channelName: 'alpha-calls', guildName: 'Alpha Hunters', author: authors.sarah, content: 'the narrative is shifting to AI tokens again, watch for rotations', roomIds: [ROOM_ALPHA] },
-  { channelId: CH_GENERAL, guildId: GUILD_DEGEN, channelName: 'general', guildName: 'Degen Lounge', author: authors.mike, content: 'anyone else farming that airdrop on the L2? deadline is tomorrow', roomIds: [ROOM_DEGEN], overrides: { matchedKeywords: ['airdrop'] } },
-  { channelId: CH_FLOOR_WATCH, guildId: GUILD_NFT, channelName: 'floor-watch', guildName: 'NFT Collective', author: authors.sarah, content: 'floor on that new collection just 2x since mint, holders are strong', roomIds: [ROOM_NFT] },
-  { channelId: CH_WHALE_WATCH, guildId: GUILD_ALPHA, channelName: 'whale-watch', guildName: 'Alpha Hunters', author: authors.whale, content: 'big accumulation happening right now, not selling any of my positions', roomIds: [ROOM_ALPHA, ROOM_WHALE], overrides: { isHighlighted: true } },
-  { channelId: CH_TOKEN_DROPS, guildId: GUILD_DEGEN, channelName: 'token-drops', guildName: 'Degen Lounge', author: authors.sol, content: 'another meme coin launch on Pump.fun, careful with these', roomIds: [ROOM_DEGEN, ROOM_WHALE] },
-  { channelId: CH_ALPHA_CALLS, guildId: GUILD_ALPHA, channelName: 'alpha-calls', guildName: 'Alpha Hunters', author: authors.alpha, content: 'trust the process, we are still early', roomIds: [ROOM_ALPHA], overrides: { isHighlighted: true, reactions: [{ emoji: { id: null, name: '🫡' }, count: 4 }] } },
-  { channelId: CH_GENERAL, guildId: GUILD_DEGEN, channelName: 'general', guildName: 'Degen Lounge', author: authors.chart, content: 'BTC dominance dropping, altseason signal is flashing', roomIds: [ROOM_DEGEN] },
-  { channelId: CH_NFT_ALERTS, guildId: GUILD_NFT, channelName: 'nft-alerts', guildName: 'NFT Collective', author: authors.mike, content: 'the generative art space is producing some incredible work lately', roomIds: [ROOM_NFT] },
-  { channelId: CH_ALPHA_CALLS, guildId: GUILD_ALPHA, channelName: 'alpha-calls', guildName: 'Alpha Hunters', author: authors.eth, content: 'gas fees on ETH are stupidly low right now, perfect time to move', roomIds: [ROOM_ALPHA] },
-  { channelId: CH_FLOOR_WATCH, guildId: GUILD_NFT, channelName: 'floor-watch', guildName: 'NFT Collective', author: authors.chart, content: 'weekly volume on OpenSea just broke previous ATH, bullish signal', roomIds: [ROOM_NFT] },
-  { channelId: CH_WHALE_WATCH, guildId: GUILD_ALPHA, channelName: 'whale-watch', guildName: 'Alpha Hunters', author: authors.chart, content: 'smart money is rotating from L1s into infra plays, follow the flow', roomIds: [ROOM_ALPHA, ROOM_WHALE] },
-  { channelId: CH_GENERAL, guildId: GUILD_DEGEN, channelName: 'general', guildName: 'Degen Lounge', author: authors.sol, content: 'just hit my profit target, taking some off the table 📈', roomIds: [ROOM_DEGEN], overrides: { reactions: [{ emoji: { id: null, name: '👏' }, count: 7 }] } },
-  { channelId: CH_TOKEN_DROPS, guildId: GUILD_DEGEN, channelName: 'token-drops', guildName: 'Degen Lounge', author: authors.mike, content: 'stealth launch just went live, no pre-sale, fair launch only', roomIds: [ROOM_DEGEN, ROOM_WHALE] },
+  { channelId: CH_PROS_ALPHA, guildId: GUILD_PROSPERITY, channelName: '👾｜alpha', guildName: 'Prosperity DAO', author: authors.sam, content: 'volume ticking up on the 5m', roomIds: [ROOM_MAIN, ROOM_CALLS] },
+  { channelId: CH_WAGMI_GENERAL, guildId: GUILD_WAGMI, channelName: 'wagmi-general', guildName: 'WAGMI DAO', author: authors.jenz, content: 'im so tired of being early and selling late', roomIds: [ROOM_MAIN] },
+  { channelId: CH_INVERSE_CLEAN, guildId: GUILD_INVERSE, channelName: 'clean-chat', guildName: 'Inverse', author: authors.pilks, content: 'clean chat stays clean. take it to the trenches', roomIds: [ROOM_MAIN] },
+  { channelId: TG_CABAL, guildId: null, channelName: 'Cabal Calls', guildName: null, source: 'telegram', author: authors.tgCabal, content: 'watching two setups rn, one post coming', roomIds: [ROOM_MAIN, ROOM_CALLS, ROOM_TG] },
+  { channelId: CH_PROS_ALPHA, guildId: GUILD_PROSPERITY, channelName: '👾｜alpha', guildName: 'Prosperity DAO', author: authors.whatever, content: 'ok who bought the top 😭', roomIds: [ROOM_MAIN, ROOM_CALLS], overrides: { reactions: [{ emoji: { id: null, name: '😂' }, count: 3 }] } },
+  { channelId: CH_WAGMI_GENERAL, guildId: GUILD_WAGMI, channelName: 'wagmi-general', guildName: 'WAGMI DAO', author: authors.nick, content: 'new phone who dis', roomIds: [ROOM_MAIN] },
+  { channelId: CH_PROS_ALPHA, guildId: GUILD_PROSPERITY, channelName: '👾｜alpha', guildName: 'Prosperity DAO', author: authors.wolfie, content: 'next call after this candle closes', roomIds: [ROOM_MAIN, ROOM_CALLS], overrides: { isHighlighted: true } },
+  { channelId: TG_LOUNGE, guildId: null, channelName: 'Trench Lounge', guildName: null, source: 'telegram', author: authors.tgMeeks, content: "anyone else's feed lagging or just me", roomIds: [ROOM_TG] },
+  { channelId: CH_INVERSE_CLEAN, guildId: GUILD_INVERSE, channelName: 'clean-chat', guildName: 'Inverse', author: authors.jenz, content: 'gm at 3pm. rough one', roomIds: [ROOM_MAIN] },
+  { channelId: CH_PROS_ALPHA, guildId: GUILD_PROSPERITY, channelName: '👾｜alpha', guildName: 'Prosperity DAO', author: authors.konda, content: 'chart said up so it went down. classic', roomIds: [ROOM_MAIN, ROOM_CALLS] },
+  { channelId: CH_WAGMI_GENERAL, guildId: GUILD_WAGMI, channelName: 'wagmi-general', guildName: 'WAGMI DAO', author: authors.brix, content: '6 monitors and still poor', roomIds: [ROOM_MAIN], overrides: { reactions: [{ emoji: { id: null, name: '💀' }, count: 2 }] } },
+  { channelId: CH_PROS_ALPHA, guildId: GUILD_PROSPERITY, channelName: '👾｜alpha', guildName: 'Prosperity DAO', author: authors.ashton, content: 'eyes on. dont chase', roomIds: [ROOM_MAIN, ROOM_CALLS], overrides: { isHighlighted: true } },
+  { channelId: CH_PROS_ALPHA, guildId: GUILD_PROSPERITY, channelName: '👾｜alpha', guildName: 'Prosperity DAO', author: authors.lucas, content: 'spread thin rn, only quality entries', roomIds: [ROOM_MAIN, ROOM_CALLS] },
+  { channelId: TG_CABAL, guildId: null, channelName: 'Cabal Calls', guildName: null, source: 'telegram', author: authors.tgCabal, content: 'reminder: we never dm first', roomIds: [ROOM_MAIN, ROOM_CALLS, ROOM_TG] },
+  { channelId: CH_WAGMI_GENERAL, guildId: GUILD_WAGMI, channelName: 'wagmi-general', guildName: 'WAGMI DAO', author: authors.sam, content: 'lets get this bread', roomIds: [ROOM_MAIN] },
 ];
 
 export function buildStreamMessage(poolIndex: number): { message: FrontendMessage; roomIds: string[] } {
@@ -553,8 +656,183 @@ export function buildStreamMessage(poolIndex: number): { message: FrontendMessag
       entry.author,
       entry.content,
       new Date().toISOString(),
-      entry.overrides,
+      { ...(entry.source ? { source: entry.source } : {}), ...entry.overrides },
     ),
     roomIds: entry.roomIds,
   };
 }
+
+// ── Premium alerts demo data ─────────────────────────────────────────────────
+
+export const DEMO_PRICE_ALERTS: PriceAlert[] = [
+  {
+    id: 'demo-price-1',
+    kind: 'cex',
+    symbol: 'SOL',
+    condition: 'goes_over',
+    target: 'price',
+    value: 300,
+    basePrice: 261.4,
+    urgency: 'critical',
+    triggered: false,
+    enabled: true,
+    createdAt: new Date(Date.now() - 2 * 86400_000).toISOString(),
+  },
+  {
+    id: 'demo-price-2',
+    kind: 'dex',
+    chain: 'sol',
+    contractAddress: MINT_ANSEM,
+    tokenSymbol: 'ANSEM',
+    tokenName: 'Ansem',
+    condition: 'percent_up',
+    target: 'mcap',
+    value: 50,
+    baseMcap: 412_000,
+    urgency: 'normal',
+    triggered: false,
+    enabled: true,
+    createdAt: new Date(Date.now() - 86400_000).toISOString(),
+  },
+  {
+    id: 'demo-price-3',
+    kind: 'metal',
+    symbol: 'XAU/USD',
+    condition: 'goes_under',
+    target: 'price',
+    value: 2400,
+    basePrice: 2489.2,
+    urgency: 'normal',
+    triggered: false,
+    enabled: false,
+    createdAt: new Date(Date.now() - 5 * 86400_000).toISOString(),
+  },
+];
+
+export const DEMO_TWEET_ALERTS: TweetAlert[] = [
+  {
+    id: 'demo-tweet-1',
+    kind: 'tweet',
+    author: 'satoshi',
+    subType: 'any',
+    keywords: [],
+    urgency: 'critical',
+    enabled: true,
+    createdAt: new Date(Date.now() - 3 * 86400_000).toISOString(),
+  },
+  {
+    id: 'demo-tweet-2',
+    kind: 'keyword',
+    author: 'danhigh_eth',
+    subType: 'tweet',
+    keywords: ['airdrop', 'launch'],
+    urgency: 'critical',
+    enabled: true,
+    createdAt: new Date(Date.now() - 86400_000).toISOString(),
+  },
+  {
+    id: 'demo-tweet-3',
+    kind: 'tweet',
+    author: 'trenchcordapp',
+    subType: 'any',
+    keywords: [],
+    urgency: 'normal',
+    enabled: true,
+    createdAt: new Date(Date.now() - 12 * 3600_000).toISOString(),
+  },
+];
+
+export const DEMO_TELEGRAM_TRACKS: TelegramTrack[] = [
+  {
+    id: 'demo-tg-1',
+    channelUsername: 'cabalcalls',
+    keywords: ['presale'],
+    enabled: true,
+    createdAt: new Date(Date.now() - 86400_000).toISOString(),
+    channelStatus: 'joined',
+    channelTitle: 'Cabal Calls',
+    channelError: null,
+  },
+];
+
+export const DEMO_PREMIUM_EVENTS: PremiumEvent[] = [
+  {
+    id: '3',
+    kind: 'price',
+    source_id: 'demo-price-1',
+    title: 'SOL alert triggered',
+    body: 'Price goes over $290.0000\nCurrent: $291.5400',
+    url: null,
+    payload: { alert_kind: 'cex', symbol: 'SOL' },
+    urgency: 'critical',
+    created_at: new Date(Date.now() - 20 * 60_000).toISOString(),
+  },
+  {
+    id: '4',
+    kind: 'tweet',
+    source_id: 'demo-tweet-3',
+    title: 'trenchcordapp tweeted',
+    body: 'Trenchcord v2.0 is out — your Discord and Telegram, supercharged for trenching 🪖',
+    url: 'https://x.com/trenchcordapp',
+    payload: { tweet_kind: 'tweet', author: 'trenchcordapp' },
+    urgency: 'normal',
+    created_at: new Date(Date.now() - 45 * 60_000).toISOString(),
+  },
+  {
+    id: '2',
+    kind: 'tweet',
+    source_id: 'demo-tweet-2',
+    title: 'danhigh_eth tweeted',
+    body: 'The launch is live. LFG.\n\nMatched: launch',
+    url: 'https://x.com/danhigh_eth',
+    payload: { tweet_kind: 'keyword', author: 'danhigh_eth' },
+    urgency: 'critical',
+    created_at: new Date(Date.now() - 2 * 3600_000).toISOString(),
+  },
+  {
+    id: '1',
+    kind: 'telegram',
+    source_id: 'demo-tg-1',
+    title: '@cabalcalls mentioned: presale',
+    body: 'presale list for the next one opens 20:00 UTC. members only',
+    url: 'https://t.me/cabalcalls/1234',
+    payload: { channel: 'cabalcalls', msg_id: 1234 },
+    urgency: 'normal',
+    created_at: new Date(Date.now() - 6 * 3600_000).toISOString(),
+  },
+];
+
+export const DEMO_PREMIUM_NOTIFY: PremiumNotifyPrefs = {
+  pushoverUserKey: 'uDemoDemoDemoDemoDemoDemoDemo1',
+  pushoverEnabled: true,
+  telegramDm: false,
+  discordDm: false,
+  telegramLinked: false,
+  discordLinked: false,
+};
+
+export const DEMO_PREMIUM_BOTS = {
+  telegram: 'TrenchcordBot',
+  discord: 'Trenchcord',
+};
+
+// ---------------------------------------------------------------------------
+// Handles for the scripted promo overlays (tour.tsx and scenes.tsx), which
+// inject their own messages into the same rooms/channels the static data uses.
+// ---------------------------------------------------------------------------
+
+export const TOUR_REFS = {
+  ROOM_MAIN,
+  ROOM_CALLS,
+  ROOM_TG,
+  GUILD_PROSPERITY,
+  CH_PROS_ALPHA,
+  GUILD_WAGMI,
+  CH_WAGMI_GENERAL,
+  CH_WAGMI_CALLS,
+  GUILD_INVERSE,
+  CH_INVERSE_CLEAN,
+  TG_CABAL,
+  TG_LOUNGE,
+  authors,
+};

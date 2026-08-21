@@ -4,8 +4,8 @@ import { Package, Download, KeyRound, Play, AlertTriangle, Send } from 'lucide-r
 import { AnimatedSection } from './AnimatedSection';
 
 const tabs = [
-  { id: 'requirements', label: 'Requirements', icon: Package },
   { id: 'installation', label: 'Installation', icon: Download },
+  { id: 'requirements', label: 'Requirements', icon: Package },
   { id: 'token', label: 'Discord Token', icon: KeyRound },
   { id: 'telegram', label: 'Telegram', icon: Send },
   { id: 'running', label: 'Running', icon: Play },
@@ -64,7 +64,29 @@ function InstallationContent() {
             >
               desktop app for macOS or Windows
             </a>{' '}
-            — no Node, no terminal. The steps below are only for self-hosting from source.
+            — no Node, no terminal, same fully local setup. The steps below are only if you'd
+            rather run it from source.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-start gap-3 rounded-lg border border-dc-green/30 bg-dc-green/5 p-4">
+        <KeyRound size={18} className="text-dc-green shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-semibold text-dc-green">First launch: link your Trenchcord account</p>
+          <p className="text-xs text-dc-text-muted mt-1">
+            Before anything else, Trenchcord shows a pairing code and asks you to link a Trenchcord
+            account. Create one (or sign in) at{' '}
+            <a
+              href="https://dashboard.trenchcord.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-dc-green hover:underline"
+            >
+              dashboard.trenchcord.app
+            </a>
+            , approve the code there, and an active subscription unlocks the app — then paste your
+            Discord token and you're in. Payment happens on the dashboard, never in the app.
           </p>
         </div>
       </div>
@@ -140,6 +162,21 @@ function TokenContent() {
         </div>
       </div>
 
+      <div>
+        <span className="text-[10px] font-bold tracking-widest text-dc-text-faint uppercase">
+          Video walkthrough
+        </span>
+        <video
+          controls
+          playsInline
+          preload="metadata"
+          poster="/discord-token-tour-poster.jpg"
+          className="w-full block mt-1.5 rounded-lg border border-dc-divider shadow-lg shadow-black/30"
+        >
+          <source src="/discord-token-tour.mp4" type="video/mp4" />
+        </video>
+      </div>
+
       <div className="space-y-2.5">
         {steps.map((step, i) => (
           <div key={i} className="flex items-start gap-3">
@@ -151,15 +188,6 @@ function TokenContent() {
             </div>
           </div>
         ))}
-      </div>
-
-      <div className="space-y-2">
-        <p className="text-xs text-dc-text-faint">Once you have your token, paste it into the setup screen on first launch:</p>
-        <img
-          src="/discord_token.png"
-          alt="Trenchcord token setup screen"
-          className="rounded-lg border border-dc-divider shadow-lg shadow-black/30"
-        />
       </div>
     </div>
   );
@@ -189,6 +217,21 @@ function TelegramContent() {
             Your API ID, API hash, and session are encrypted at rest with AES-256-GCM. Your phone number and 2FA password are never stored or logged — they're used only during the auth handshake.
           </p>
         </div>
+      </div>
+
+      <div>
+        <span className="text-[10px] font-bold tracking-widest text-dc-text-faint uppercase">
+          Video walkthrough
+        </span>
+        <video
+          controls
+          playsInline
+          preload="metadata"
+          poster="/telegram-token-tour-poster.jpg"
+          className="w-full block mt-1.5 rounded-lg border border-dc-divider shadow-lg shadow-black/30"
+        >
+          <source src="/telegram-token-tour.mp4" type="video/mp4" />
+        </video>
       </div>
 
       <div>
@@ -254,7 +297,7 @@ const tabContent: Record<TabId, React.FC> = {
 };
 
 export function Tutorial() {
-  const [activeTab, setActiveTab] = useState<TabId>('requirements');
+  const [activeTab, setActiveTab] = useState<TabId>('installation');
 
   const Content = tabContent[activeTab];
 

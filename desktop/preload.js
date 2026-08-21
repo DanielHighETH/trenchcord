@@ -12,4 +12,11 @@ contextBridge.exposeInMainWorld('trenchcord', {
     ipcRenderer.on('popout:closed', listener);
     return () => ipcRenderer.removeListener('popout:closed', listener);
   },
+  // Register/replace the OS-wide "bring Trenchcord to front" shortcut.
+  // Pass null/'' to unregister. Resolves false if the OS rejected the key.
+  setFocusShortcut: (accelerator) => ipcRenderer.invoke('focusShortcut:set', accelerator ?? null),
+  // Opt-in auto-update (Windows only; off by default). `supported` tells the
+  // renderer whether to show the toggle at all.
+  getAutoUpdate: () => ipcRenderer.invoke('autoUpdate:get'),
+  setAutoUpdate: (enabled) => ipcRenderer.invoke('autoUpdate:set', enabled === true),
 });

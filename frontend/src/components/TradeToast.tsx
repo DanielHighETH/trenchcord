@@ -16,29 +16,33 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string) 
 
   return (
     <div
-      className={`flex items-start gap-3 p-3 rounded-lg shadow-xl border ${
+      // Desktop: an opaque panel tinted green/red -- the outcome of a buy has
+      // to be readable at a glance, not blended into whatever it covers.
+      // Phones: a solid green/red pill, louder and half the size, which drops
+      // the tint layer (compact:bg-none) for its own flat colour.
+      className={`flex items-start gap-3 p-3 rounded-lg shadow-xl border bg-[#16171d] bg-gradient-to-b compact:gap-2 compact:p-2 compact:bg-none compact:shadow-lg ${
         isSuccess
-          ? 'bg-discord-green/10 border-discord-green/30'
-          : 'bg-discord-red/10 border-discord-red/30'
+          ? 'from-discord-green/15 to-discord-green/15 border-discord-green/30 compact:bg-discord-green compact:border-discord-green'
+          : 'from-discord-red/15 to-discord-red/15 border-discord-red/30 compact:bg-discord-red compact:border-discord-red'
       }`}
       style={{ animation: 'slideIn 0.3s ease-out' }}
     >
       <div className="mt-0.5 shrink-0">
         {isSuccess ? (
-          <Check size={18} className="text-discord-green" />
+          <Check size={18} className="text-discord-green compact:text-white" />
         ) : (
-          <AlertCircle size={18} className="text-discord-red" />
+          <AlertCircle size={18} className="text-discord-red compact:text-white" />
         )}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-white">{toast.title}</p>
+        <p className="text-sm font-medium text-white compact:text-xs compact:font-bold">{toast.title}</p>
         {toast.detail && (
-          <p className="text-xs text-discord-text-muted mt-0.5 break-words">{toast.detail}</p>
+          <p className="text-xs text-discord-text-muted mt-0.5 break-words compact:text-[11px] compact:mt-0 compact:text-white/85 compact:truncate">{toast.detail}</p>
         )}
       </div>
       <button
         onClick={() => onDismiss(toast.id)}
-        className="text-discord-text-muted hover:text-white transition-colors shrink-0"
+        className="text-discord-text-muted hover:text-white transition-colors shrink-0 compact:text-white/80"
         title="Dismiss"
       >
         <X size={14} />
@@ -58,7 +62,7 @@ export default function TradeToast() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 w-80 max-w-[calc(100vw-2rem)]">
+    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 w-80 max-w-[calc(100vw-2rem)] compact:bottom-[calc(3.25rem+var(--safe-bottom))] compact:left-3 compact:right-3 compact:w-auto compact:gap-1.5">
       {toasts.map((toast) => (
         <ToastRow key={toast.id} toast={toast} onDismiss={dismissToast} />
       ))}

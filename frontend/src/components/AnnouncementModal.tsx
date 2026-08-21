@@ -8,6 +8,7 @@ import {
   getSeenIds,
   type Announcement,
 } from '../utils/announcements';
+import { isTourMode, isSceneMode } from '../demo/demoStore';
 
 const REFRESH_MS = 6 * 60 * 60 * 1000; // re-check every 6 hours
 
@@ -26,8 +27,15 @@ export default function AnnouncementModal() {
   // source of truth for dismissals; localStorage is unreliable on desktop where
   // each launch runs on a fresh origin.
   const configExpected = useAppStore((s) => !!(s.authStatus?.configured || s.previewMode));
+  // authStatus === null means the status check hasn't answered (or failed) —
+  // deciding "unconfigured" then would fall back to localStorage alone, which
+  // iOS evicts, and re-show announcements the config already knows were read.
+  const authKnown = useAppStore((s) => s.authStatus !== null || s.previewMode);
 
   const load = useCallback(async () => {
+    // The scripted promo tour/scenes must not get an announcement parked over
+    // every scene of the recording.
+    if (isTourMode || isSceneMode) return;
     setAnnouncements(await fetchAnnouncements());
   }, []);
 
@@ -45,6 +53,7 @@ export default function AnnouncementModal() {
   const current = useMemo(() => {
     // Wait for config before deciding, so we don't briefly flash an announcement
     // the user already dismissed on a previous run.
+    if (!authKnown) return null;
     if (configExpected && !config) return null;
     const seen = new Set<string>([
       ...getSeenIds(),
@@ -52,7 +61,7 @@ export default function AnnouncementModal() {
       ...sessionDismissed,
     ]);
     return selectNewestUnseen(announcements, seen);
-  }, [announcements, config, configExpected, sessionDismissed]);
+  }, [announcements, config, configExpected, authKnown, sessionDismissed]);
 
   if (!current) return null;
 
@@ -74,8 +83,8 @@ export default function AnnouncementModal() {
   const style = LEVEL_STYLES[current.level] ?? LEVEL_STYLES.info;
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <div className={`w-full max-w-md bg-discord-darker border ${style.ring} rounded-lg shadow-2xl overflow-hidden`}>
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 pt-[calc(1rem+var(--safe-top))] pb-[calc(1rem+var(--safe-bottom))] bg-black/70 backdrop-blur-sm animate-fade-in">
+      <div className={`w-full max-w-md bg-discord-darker border ${style.ring} rounded-lg shadow-2xl overflow-hidden animate-pop-in`}>
         <div className="flex items-start gap-3 px-5 pt-5">
           <div className="mt-0.5">
             {current.level === 'critical' || current.level === 'warning' ? (

@@ -3,6 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <script>
+      // Compact-mode classes must be on <html> before the stylesheet applies —
+      // React render is gated behind an async session check, far too late for
+      // first paint. The iOS shell injects __TRENCHCORD_PLATFORM__ via a
+      // WKUserScript at document start, which always runs before this.
+      // App.tsx keeps `compact` in sync with resizes for the web case.
+      (function () {
+        var c = document.documentElement.classList;
+        if (window.__TRENCHCORD_PLATFORM__ === 'ios') c.add('platform-ios', 'compact');
+        else if (window.innerWidth < 768) c.add('compact');
+      })();
+    </script>
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />

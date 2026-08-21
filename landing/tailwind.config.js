@@ -9,6 +9,8 @@ export default {
           darker: '#111214',
           sidebar: '#2b2d31',
           main: '#313338',
+          'header-primary': '#f2f3f5',
+          'header-secondary': '#b5bac1',
           input: '#383a40',
           hover: '#35373c',
           blurple: '#5865f2',

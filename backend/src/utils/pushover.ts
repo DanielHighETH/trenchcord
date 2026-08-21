@@ -1,4 +1,5 @@
 import type { PushoverConfig } from '../discord/types.js';
+import { appFetch } from './http.js';
 
 const PUSHOVER_URL = 'https://api.pushover.net/1/messages.json';
 
@@ -30,7 +31,7 @@ export async function sendPushover(config: PushoverConfig, msg: PushoverMessage)
     if (msg.url) body.url = msg.url;
     if (msg.urlTitle) body.url_title = msg.urlTitle;
 
-    const res = await fetch(PUSHOVER_URL, {
+    const res = await appFetch(PUSHOVER_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

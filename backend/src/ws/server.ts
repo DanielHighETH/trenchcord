@@ -146,7 +146,7 @@ export class WsServer {
     }
   }
 
-  broadcastMessageUpdate(update: { messageId: string; channelId: string; embeds?: FrontendMessage['embeds']; content?: string; attachments?: FrontendMessage['attachments']; editedTimestamp?: string | null }, roomIds: string[], userId?: string): void {
+  broadcastMessageUpdate(update: { messageId: string; channelId: string; embeds?: FrontendMessage['embeds']; content?: string; attachments?: FrontendMessage['attachments']; components?: FrontendMessage['components']; mentions?: Record<string, string>; editedTimestamp?: string | null }, roomIds: string[], userId?: string): void {
     const payload = JSON.stringify({ type: 'message_update', data: update, roomIds });
     for (const [ws, state] of this.clients) {
       if (ws.readyState !== WebSocket.OPEN) continue;
@@ -166,6 +166,16 @@ export class WsServer {
     }
   }
 
+  broadcastMessageAck(data: { channelId: string; messageId: string }, roomIds: string[], userId?: string): void {
+    const payload = JSON.stringify({ type: 'message_ack', data, roomIds });
+    for (const [ws, state] of this.clients) {
+      if (ws.readyState !== WebSocket.OPEN) continue;
+      if (this.shouldSendToClient(state, roomIds, userId)) {
+        ws.send(payload);
+      }
+    }
+  }
+
   broadcastAlert(alert: { type: string; message: FrontendMessage; reason: string }, userId?: string): void {
     const payload = JSON.stringify({ type: 'alert', data: alert });
     for (const [ws, state] of this.clients) {
@@ -177,6 +187,15 @@ export class WsServer {
 
   broadcastReactionUpdate(data: { channelId: string; messageId: string; emoji: { id: string | null; name: string; animated?: boolean }; delta: number }, userId?: string): void {
     const payload = JSON.stringify({ type: 'reaction_update', data });
+    for (const [ws, state] of this.clients) {
+      if (ws.readyState !== WebSocket.OPEN) continue;
+      if (isHostedMode() && userId && state.userId !== userId) continue;
+      ws.send(payload);
+    }
+  }
+
+  broadcastPollVoteUpdate(data: { channelId: string; messageId: string; answerId: number; delta: number }, userId?: string): void {
+    const payload = JSON.stringify({ type: 'poll_vote_update', data });
     for (const [ws, state] of this.clients) {
       if (ws.readyState !== WebSocket.OPEN) continue;
       if (isHostedMode() && userId && state.userId !== userId) continue;

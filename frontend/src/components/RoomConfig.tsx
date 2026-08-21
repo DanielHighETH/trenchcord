@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
-import type { ChannelRef, KeywordPattern, KeywordMatchMode, HighlightMode } from '../types';
-import { X, Search, Plus, Trash2, Hash, MessageCircle, Users, Filter, AlertTriangle, Palette, Send } from 'lucide-react';
+import type { ChannelRef, CategoryRef, GuildInfo, KeywordPattern, KeywordMatchMode, HighlightMode, Room } from '../types';
+import { X, Search, Plus, Trash2, Hash, MessageCircle, Users, Filter, AlertTriangle, Palette, Send, Star, EyeOff, FolderPlus, FolderCheck } from 'lucide-react';
 import ColorPickerWithAlpha from './ColorPickerWithAlpha';
 
 export default function RoomConfig() {
@@ -19,6 +19,10 @@ export default function RoomConfig() {
   const fetchConfig = useAppStore((s) => s.fetchConfig);
   const updateConfig = useAppStore((s) => s.updateConfig);
   const allMessages = useAppStore((s) => s.messages);
+  const guildRoles = useAppStore((s) => s.guildRoles);
+  const fetchGuildRoles = useAppStore((s) => s.fetchGuildRoles);
+  const hideRole = useAppStore((s) => s.hideRole);
+  const unhideRole = useAppStore((s) => s.unhideRole);
   const telegramChats = useAppStore((s) => s.telegramChats);
   const fetchTelegramChats = useAppStore((s) => s.fetchTelegramChats);
   const authStatus = useAppStore((s) => s.authStatus);
@@ -40,6 +44,7 @@ export default function RoomConfig() {
 
   const [name, setName] = useState('');
   const [selectedChannels, setSelectedChannels] = useState<ChannelRef[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<CategoryRef[]>([]);
   const [highlightedUsers, setHighlightedUsers] = useState<string[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<string[]>([]);
   const [filterEnabled, setFilterEnabled] = useState(false);
@@ -48,11 +53,13 @@ export default function RoomConfig() {
   const [newUserId, setNewUserId] = useState('');
   const [newFilterUser, setNewFilterUser] = useState('');
   const [search, setSearch] = useState('');
-  const [tab, setTab] = useState<'channels' | 'users' | 'filter' | 'keywords'>('channels');
+  const [tab, setTab] = useState<'channels' | 'users' | 'roles' | 'filter' | 'keywords'>('channels');
   const [platformTab, setPlatformTab] = useState<'discord' | 'telegram'>('discord');
   const [roomKeywordPatterns, setRoomKeywordPatterns] = useState<KeywordPattern[]>([]);
   const [highlightMode, setHighlightMode] = useState<HighlightMode>('background');
   const [highlightedUserColors, setHighlightedUserColors] = useState<Record<string, string>>({});
+  const [highlightedRoles, setHighlightedRoles] = useState<NonNullable<Room['highlightedRoles']>>([]);
+  const [roleSearch, setRoleSearch] = useState('');
   const [newKeywordPattern, setNewKeywordPattern] = useState('');
   const [newKeywordMatchMode, setNewKeywordMatchMode] = useState<KeywordMatchMode>('includes');
   const [newKeywordLabel, setNewKeywordLabel] = useState('');
@@ -72,7 +79,10 @@ export default function RoomConfig() {
   useEffect(() => {
     if (editingRoom) {
       setName(editingRoom.name);
-      setSelectedChannels([...editingRoom.channels]);
+      // The API folds category channels into `channels`; they are not picks of
+      // their own and must not be saved back as such.
+      setSelectedChannels(editingRoom.channels.filter((c) => !c.categoryId));
+      setSelectedCategories((editingRoom.categories ?? []).map((c) => ({ ...c, excludedChannelIds: [...(c.excludedChannelIds ?? [])] })));
       setHighlightedUsers([...editingRoom.highlightedUsers]);
       setFilteredUsers([...(editingRoom.filteredUsers ?? [])]);
       setFilterEnabled(editingRoom.filterEnabled ?? false);
@@ -81,9 +91,11 @@ export default function RoomConfig() {
       setRoomKeywordPatterns([...(editingRoom.keywordPatterns ?? [])]);
       setHighlightMode(editingRoom.highlightMode ?? 'background');
       setHighlightedUserColors({ ...(editingRoom.highlightedUserColors ?? {}) });
+      setHighlightedRoles([...(editingRoom.highlightedRoles ?? [])]);
     } else {
       setName('');
       setSelectedChannels([]);
+      setSelectedCategories([]);
       setHighlightedUsers([]);
       setFilteredUsers([]);
       setFilterEnabled(false);
@@ -92,13 +104,26 @@ export default function RoomConfig() {
       setRoomKeywordPatterns([]);
       setHighlightMode('background');
       setHighlightedUserColors({});
+      setHighlightedRoles([]);
     }
+    setRoleSearch('');
     setSearch('');
     setNewUserId('');
     setNewFilterUser('');
     const initialTab = configModalTab && configModalTab !== 'global' ? configModalTab : 'channels';
     setTab(initialTab);
   }, [editingRoom, configModalOpen, configModalTab]);
+
+  // Role pickers need the role list of every server this room watches.
+  const roleGuildIds = [...new Set(
+    [...selectedChannels.map((c) => c.guildId), ...selectedCategories.map((c) => c.guildId)]
+      .filter((g): g is string => !!g)
+  )];
+  useEffect(() => {
+    if (!configModalOpen) return;
+    for (const gId of roleGuildIds) fetchGuildRoles(gId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configModalOpen, roleGuildIds.join(','), fetchGuildRoles]);
 
   if (!configModalOpen || configModalTab === 'global') return null;
 
@@ -113,11 +138,72 @@ export default function RoomConfig() {
     }
   };
 
-  const toggleChannelEmbeds = (channelId: string) => {
+  const isCategorySelected = (categoryId: string) =>
+    selectedCategories.some((c) => c.categoryId === categoryId);
+
+  /**
+   * Import or drop a whole category. Importing takes every channel under it,
+   * now and later; dropping forgets which of them had been switched off.
+   */
+  const toggleCategory = (guild: GuildInfo, category: { id: string; name: string }) => {
+    setSelectedCategories((prev) =>
+      prev.some((c) => c.categoryId === category.id)
+        ? prev.filter((c) => c.categoryId !== category.id)
+        : [...prev, {
+            guildId: guild.id,
+            categoryId: category.id,
+            guildName: guild.name,
+            categoryName: category.name,
+            excludedChannelIds: [],
+          }]
+    );
+  };
+
+  /** Switch one channel of an imported category on or off by hand. */
+  const setCategoryChannelEnabled = (categoryId: string, channelId: string, enabled: boolean) => {
+    setSelectedCategories((prev) =>
+      prev.map((c) => {
+        if (c.categoryId !== categoryId) return c;
+        const excluded = c.excludedChannelIds ?? [];
+        return {
+          ...c,
+          excludedChannelIds: enabled
+            ? excluded.filter((id) => id !== channelId)
+            : [...new Set([...excluded, channelId])],
+        };
+      })
+    );
+    // A channel switched off also loses the individual pick that an embed
+    // override promoted it to, or it would stay in the room anyway.
+    if (!enabled) setSelectedChannels((prev) => prev.filter((c) => c.channelId !== channelId));
+  };
+
+  /** The imported category a channel currently comes into the room through. */
+  const coveringCategory = (channelId: string): CategoryRef | undefined =>
+    selectedCategories.find((cat) => {
+      if ((cat.excludedChannelIds ?? []).includes(channelId)) return false;
+      const guild = guilds.find((g) => g.id === cat.guildId);
+      return guild?.channels.some((ch) => ch.id === channelId && ch.parentId === cat.categoryId) ?? false;
+    });
+
+  /**
+   * Per-channel settings live on an individual pick, so turning embeds off for
+   * a channel that only belongs through its category promotes it to one --
+   * and turning them back on hands it back to the category.
+   */
+  const toggleChannelEmbeds = (ref: ChannelRef) => {
+    const picked = selectedChannels.find((c) => c.channelId === ref.channelId);
+    if (!picked) {
+      setSelectedChannels((prev) => [...prev, { ...ref, categoryId: undefined, disableEmbeds: true }]);
+      return;
+    }
+    const disable = !picked.disableEmbeds;
+    if (!disable && coveringCategory(ref.channelId)) {
+      setSelectedChannels((prev) => prev.filter((c) => c.channelId !== ref.channelId));
+      return;
+    }
     setSelectedChannels((prev) =>
-      prev.map((c) =>
-        c.channelId === channelId ? { ...c, disableEmbeds: !c.disableEmbeds } : c
-      )
+      prev.map((c) => (c.channelId === ref.channelId ? { ...c, disableEmbeds: disable } : c))
     );
   };
 
@@ -154,10 +240,14 @@ export default function RoomConfig() {
     setSaving(true);
     try {
       if (editingRoom) {
-        await updateRoom(editingRoom.id, { name, channels: selectedChannels, highlightedUsers, filteredUsers, filterEnabled, color: roomColor || null, keywordPatterns: roomKeywordPatterns, highlightMode, highlightedUserColors, hotkey: hotkey || null });
+        await updateRoom(editingRoom.id, { name, channels: selectedChannels, categories: selectedCategories, highlightedUsers, filteredUsers, filterEnabled, color: roomColor || null, keywordPatterns: roomKeywordPatterns, highlightMode, highlightedUserColors, highlightedRoles, hotkey: hotkey || null });
       } else {
         if (!name.trim()) return;
-        await createRoom(name.trim(), selectedChannels, highlightedUsers, roomColor || null, filteredUsers, filterEnabled);
+        const created = await createRoom(name.trim(), selectedChannels, highlightedUsers, roomColor || null, filteredUsers, filterEnabled, selectedCategories);
+        // POST /rooms doesn't take highlightedRoles; attach them right after.
+        if (created && highlightedRoles.length > 0) {
+          await updateRoom(created.id, { highlightedRoles });
+        }
       }
       closeConfigModal();
     } finally {
@@ -167,14 +257,65 @@ export default function RoomConfig() {
 
   const activeEnabledGuilds = config?.enabledGuilds ?? [];
 
+  // What the imported categories currently resolve to. Mirrors the server's
+  // own expansion, so the modal shows the room exactly as it will run.
+  const derivedChannels: ChannelRef[] = (() => {
+    const picked = new Set(selectedChannels.map((c) => c.channelId));
+    const out: ChannelRef[] = [];
+    for (const cat of selectedCategories) {
+      const guild = guilds.find((g) => g.id === cat.guildId);
+      if (!guild) continue;
+      const excluded = new Set(cat.excludedChannelIds ?? []);
+      for (const ch of guild.channels) {
+        if (ch.parentId !== cat.categoryId || excluded.has(ch.id) || picked.has(ch.id)) continue;
+        out.push({
+          source: 'discord',
+          guildId: guild.id,
+          channelId: ch.id,
+          guildName: guild.name,
+          channelName: ch.name,
+          categoryId: cat.categoryId,
+        });
+      }
+    }
+    return out;
+  })();
+
+  const effectiveChannels: ChannelRef[] = [...selectedChannels, ...derivedChannels];
+
+  const guildNameOf = (gId: string) =>
+    guilds.find((g) => g.id === gId)?.name ??
+    selectedChannels.find((c) => c.guildId === gId)?.guildName ??
+    selectedCategories.find((c) => c.guildId === gId)?.guildName ??
+    gId;
+  const hiddenRolesCfg = config?.hiddenRoles ?? {};
+
+  // Channels grouped the way Discord shows them: loose channels first, then
+  // one block per category. A guild whose payload carried no categories simply
+  // renders as one loose block, exactly as before.
+  const q = search.trim().toLowerCase();
   const filteredGuilds = guilds
     .filter((g) => activeEnabledGuilds.includes(g.id))
-    .map((g) => ({
-      ...g,
-      channels: g.channels.filter(
-        (c) => !search || c.name.toLowerCase().includes(search.toLowerCase()) || g.name.toLowerCase().includes(search.toLowerCase())
-      ),
-    })).filter((g) => g.channels.length > 0);
+    .map((g) => {
+      const categories = [...(g.categories ?? [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+      const categoryById = new Map(categories.map((c) => [c.id, c]));
+      const guildMatches = !q || g.name.toLowerCase().includes(q);
+      const visible = g.channels.filter((c) => {
+        if (!q || guildMatches || c.name.toLowerCase().includes(q)) return true;
+        const cat = c.parentId ? categoryById.get(c.parentId) : undefined;
+        return !!cat && cat.name.toLowerCase().includes(q);
+      });
+
+      const groups: { category: { id: string; name: string } | null; channels: GuildInfo['channels'] }[] = [];
+      const loose = visible.filter((c) => !c.parentId || !categoryById.has(c.parentId));
+      if (loose.length > 0) groups.push({ category: null, channels: loose });
+      for (const cat of categories) {
+        const channels = visible.filter((c) => c.parentId === cat.id);
+        if (channels.length > 0) groups.push({ category: cat, channels });
+      }
+      return { ...g, groups };
+    })
+    .filter((g) => g.groups.length > 0);
 
   const filteredDMs = dmChannels.filter(
     (dm) =>
@@ -193,9 +334,9 @@ export default function RoomConfig() {
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70" onClick={closeConfigModal}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 animate-fade-in" onClick={closeConfigModal}>
       <div
-        className="bg-discord-sidebar rounded-t-xl sm:rounded-lg shadow-2xl w-full sm:max-w-2xl h-[90vh] sm:h-auto sm:max-h-[80vh] flex flex-col"
+        className="bg-discord-sidebar rounded-t-xl sm:rounded-lg shadow-2xl w-full sm:max-w-2xl h-[90dvh] sm:h-auto sm:max-h-[80vh] flex flex-col animate-pop-in compact:animate-sheet-up"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -229,6 +370,16 @@ export default function RoomConfig() {
             }`}
           >
             Highlights
+          </button>
+          <button
+            onClick={() => setTab('roles')}
+            className={`px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
+              tab === 'roles'
+                ? 'border-discord-blurple text-white'
+                : 'border-transparent text-discord-text-muted hover:text-discord-text'
+            }`}
+          >
+            Roles
           </button>
           <button
             onClick={() => setTab('filter')}
@@ -294,8 +445,8 @@ export default function RoomConfig() {
                 </div>
               </div>
 
-              {/* Hotkey */}
-              <div className="mb-4">
+              {/* Hotkey — physical-keyboard feature, meaningless on the phone */}
+              <div className="mb-4 compact:hidden">
                 <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
                   Hotkey
                 </label>
@@ -328,17 +479,69 @@ export default function RoomConfig() {
 
               {/* Selected count */}
               <div className="text-[11px] text-discord-text-muted mb-3">
-                {selectedChannels.length} channel{selectedChannels.length !== 1 ? 's' : ''} selected
+                {effectiveChannels.length} channel{effectiveChannels.length !== 1 ? 's' : ''} selected
+                {selectedCategories.length > 0 && (
+                  <>
+                    {' · '}
+                    following {selectedCategories.length} categor{selectedCategories.length !== 1 ? 'ies' : 'y'}
+                    {derivedChannels.length > 0 && ` (${derivedChannels.length} channel${derivedChannels.length !== 1 ? 's' : ''}, kept in sync)`}
+                  </>
+                )}
               </div>
 
+              {/* Followed categories */}
+              {selectedCategories.length > 0 && (
+                <div className="mb-4 border border-discord-divider rounded p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-1.5 flex items-center gap-1.5">
+                    <FolderCheck size={12} />
+                    Followed categories
+                  </div>
+                  <p className="text-[11px] text-discord-text-muted mb-2">
+                    Channels added to these categories join the room by themselves; channels deleted or
+                    moved out of them leave it.
+                  </p>
+                  <div className="space-y-1.5">
+                    {selectedCategories.map((cat) => {
+                      const guild = guilds.find((g) => g.id === cat.guildId);
+                      const excluded = cat.excludedChannelIds ?? [];
+                      const live = guild
+                        ? guild.channels.filter((c) => c.parentId === cat.categoryId && !excluded.includes(c.id)).length
+                        : null;
+                      return (
+                        <div key={cat.categoryId} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-discord-dark/50">
+                          <div className="min-w-0">
+                            <div className="text-sm text-discord-text truncate">
+                              {cat.guildName ? `${cat.guildName} / ` : ''}{cat.categoryName ?? cat.categoryId}
+                            </div>
+                            <div className="text-[10px] text-discord-text-muted">
+                              {live === null
+                                ? 'Channel list loads once Discord connects'
+                                : `${live} channel${live !== 1 ? 's' : ''}`}
+                              {excluded.length > 0 && ` · ${excluded.length} switched off`}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => setSelectedCategories((prev) => prev.filter((c) => c.categoryId !== cat.categoryId))}
+                            title="Stop following this category"
+                            className="shrink-0 p-1 rounded text-discord-text-muted hover:text-discord-red hover:bg-discord-hover/50 transition-colors"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Per-channel embed settings */}
-              {selectedChannels.length > 0 && (
+              {effectiveChannels.length > 0 && (
                 <div className="mb-4 border border-discord-divider rounded p-3">
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
                     Embeds per channel
                   </div>
                   <div className="space-y-1.5">
-                    {selectedChannels.map((ch) => (
+                    {effectiveChannels.map((ch) => (
                       <div key={ch.channelId} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-discord-dark/50">
                         <div className="flex items-center gap-1.5 min-w-0">
                           {ch.source === 'telegram'
@@ -352,7 +555,7 @@ export default function RoomConfig() {
                           </span>
                         </div>
                         <button
-                          onClick={() => toggleChannelEmbeds(ch.channelId)}
+                          onClick={() => toggleChannelEmbeds(ch)}
                           className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded transition-colors ${
                             ch.disableEmbeds
                               ? 'bg-discord-red/20 text-discord-red'
@@ -369,7 +572,7 @@ export default function RoomConfig() {
 
               {/* Guild message colors */}
               {(() => {
-                const roomGuildIds = [...new Set(selectedChannels.map((c) => c.guildId).filter(Boolean))] as string[];
+                const roomGuildIds = [...new Set(effectiveChannels.map((c) => c.guildId).filter(Boolean))] as string[];
                 if (roomGuildIds.length === 0) return null;
                 const guildColors = config?.guildColors ?? {};
                 return (
@@ -383,7 +586,7 @@ export default function RoomConfig() {
                     </p>
                     <div className="space-y-1.5">
                       {roomGuildIds.map((guildId) => {
-                        const guildName = selectedChannels.find((c) => c.guildId === guildId)?.guildName
+                        const guildName = effectiveChannels.find((c) => c.guildId === guildId)?.guildName
                           ?? guilds.find((g) => g.id === guildId)?.name
                           ?? guildId;
                         return (
@@ -408,6 +611,60 @@ export default function RoomConfig() {
                           </div>
                         );
                       })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Channel message colors (override the guild color) */}
+              {(() => {
+                const roomGuildChannels = effectiveChannels.filter((c) => c.guildId && c.source !== 'telegram');
+                if (roomGuildChannels.length === 0) return null;
+                const guildColors = config?.guildColors ?? {};
+                const channelColors = config?.channelColors ?? {};
+                return (
+                  <div className="mb-4 border border-discord-divider rounded p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2 flex items-center gap-1.5">
+                      <Palette size={12} />
+                      Channel Message Colors
+                    </div>
+                    <p className="text-xs text-discord-text-muted mb-2">
+                      Give a channel its own color, overriding its guild color. Channels without their own
+                      color follow the guild color. Changes apply globally.
+                    </p>
+                    <div className="space-y-1.5">
+                      {roomGuildChannels.map((ch) => (
+                        <div key={ch.channelId} className="flex items-center gap-2.5 px-2 py-1.5 rounded bg-discord-dark/50">
+                          <ColorPickerWithAlpha
+                            value={channelColors[ch.channelId] || guildColors[ch.guildId!] || '#313338'}
+                            onChange={(c) => updateConfig({ channelColors: { ...channelColors, [ch.channelId]: c } })}
+                            defaultColor={guildColors[ch.guildId!] || '#313338'}
+                          />
+                          <span className="text-sm text-discord-text flex-1 truncate">
+                            {ch.guildName ? `${ch.guildName} / ` : ''}{ch.channelName ?? ch.channelId}
+                          </span>
+                          <span
+                            className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded ${
+                              channelColors[ch.channelId]
+                                ? 'bg-discord-blurple/20 text-discord-blurple'
+                                : 'bg-discord-dark text-discord-text-muted'
+                            }`}
+                          >
+                            {channelColors[ch.channelId] ? 'CUSTOM' : 'GUILD COLOR'}
+                          </span>
+                          {channelColors[ch.channelId] && (
+                            <button
+                              onClick={() => {
+                                const { [ch.channelId]: _, ...rest } = channelColors;
+                                updateConfig({ channelColors: rest });
+                              }}
+                              className="text-discord-text-muted hover:text-white shrink-0"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 );
@@ -558,30 +815,81 @@ export default function RoomConfig() {
                               <Users size={12} />
                               {guild.name}
                             </div>
-                            <div className="space-y-0.5 ml-2">
-                              {guild.channels.map((ch) => {
-                                const selected = isChannelSelected(ch.id);
+                            <div className="space-y-2 ml-2">
+                              {guild.groups.map((group) => {
+                                const category = group.category;
+                                const imported = category
+                                  ? selectedCategories.find((c) => c.categoryId === category.id)
+                                  : undefined;
                                 return (
-                                  <button
-                                    key={ch.id}
-                                    onClick={() =>
-                                      toggleChannel({
-                                        guildId: guild.id,
-                                        channelId: ch.id,
-                                        guildName: guild.name,
-                                        channelName: ch.name,
-                                      })
-                                    }
-                                    className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm text-left transition-colors ${
-                                      selected
-                                        ? 'bg-discord-blurple/20 text-discord-blurple'
-                                        : 'text-discord-channel-icon hover:bg-discord-hover/50 hover:text-discord-text'
-                                    }`}
-                                  >
-                                    <Hash size={14} />
-                                    <span className="truncate">{ch.name}</span>
-                                    {selected && <span className="ml-auto text-[10px]">ADDED</span>}
-                                  </button>
+                                  <div key={category?.id ?? 'uncategorized'}>
+                                    {category && (
+                                      <div className="flex items-center gap-1.5 mb-0.5">
+                                        <span className="text-[10px] font-semibold uppercase tracking-wide text-discord-text-muted truncate">
+                                          {category.name}
+                                        </span>
+                                        <button
+                                          onClick={() => toggleCategory(guild, category)}
+                                          title={
+                                            imported
+                                              ? 'Stop following this category'
+                                              : 'Add every channel in this category, including ones added later'
+                                          }
+                                          className={`ml-auto shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                                            imported
+                                              ? 'bg-discord-blurple/20 text-discord-blurple hover:bg-discord-blurple/30'
+                                              : 'text-discord-text-muted hover:bg-discord-hover/50 hover:text-discord-text'
+                                          }`}
+                                        >
+                                          {imported ? <FolderCheck size={11} /> : <FolderPlus size={11} />}
+                                          {imported ? 'FOLLOWING' : 'ADD CATEGORY'}
+                                        </button>
+                                      </div>
+                                    )}
+                                    <div className="space-y-0.5">
+                                      {group.channels.map((ch) => {
+                                        const picked = isChannelSelected(ch.id);
+                                        const excluded = !!imported && (imported.excludedChannelIds ?? []).includes(ch.id);
+                                        const fromCategory = !!imported && !excluded && !picked;
+                                        return (
+                                          <button
+                                            key={ch.id}
+                                            onClick={() => {
+                                              // Inside a followed category the click switches the
+                                              // channel off or back on; elsewhere it is a plain pick.
+                                              if (imported) {
+                                                setCategoryChannelEnabled(imported.categoryId, ch.id, excluded);
+                                              } else {
+                                                toggleChannel({
+                                                  guildId: guild.id,
+                                                  channelId: ch.id,
+                                                  guildName: guild.name,
+                                                  channelName: ch.name,
+                                                });
+                                              }
+                                            }}
+                                            className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm text-left transition-colors ${
+                                              picked || fromCategory
+                                                ? 'bg-discord-blurple/20 text-discord-blurple'
+                                                : excluded
+                                                  ? 'text-discord-text-muted/60 line-through hover:bg-discord-hover/50'
+                                                  : 'text-discord-channel-icon hover:bg-discord-hover/50 hover:text-discord-text'
+                                            }`}
+                                          >
+                                            <Hash size={14} />
+                                            <span className="truncate">{ch.name}</span>
+                                            {picked ? (
+                                              <span className="ml-auto text-[10px]">ADDED</span>
+                                            ) : fromCategory ? (
+                                              <span className="ml-auto text-[10px]">CATEGORY</span>
+                                            ) : excluded ? (
+                                              <span className="ml-auto text-[10px]">OFF</span>
+                                            ) : null}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
                                 );
                               })}
                             </div>
@@ -760,41 +1068,211 @@ export default function RoomConfig() {
                   return (
                   <div
                     key={uid}
-                    className="flex items-center justify-between px-3 py-2 bg-discord-dark rounded"
+                    className="flex flex-wrap items-center justify-between gap-y-2.5 px-3 py-2 compact:py-3 bg-discord-dark rounded"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
+                    {/* On phones the color/opacity controls wrap onto their own
+                        full-width line — inline they overlap the username. */}
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       {isTgUser && <Send size={12} className="text-[#2AABEE] shrink-0" />}
-                      <span className={`text-sm ${isTgUser ? 'text-[#2AABEE]' : 'font-mono'}`} style={isTgUser ? undefined : { color: highlightedUserColors[uid] || '#f2f3f5' }}>{uid}</span>
+                      <span className={`text-sm ${isTgUser ? 'text-[#2AABEE]' : 'font-mono'} truncate`} style={isTgUser ? undefined : { color: highlightedUserColors[uid] || '#f2f3f5' }}>{uid}</span>
                       {!isTgUser && userNameMap.has(uid) && (
-                        <span className="text-[11px] text-discord-text-muted">{userNameMap.get(uid)}</span>
+                        <span className="text-[11px] compact:text-xs text-discord-text-muted truncate">{userNameMap.get(uid)}</span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => removeHighlightedUser(uid)}
+                      className="text-discord-text-muted hover:text-discord-red shrink-0 order-2 compact:p-1.5 compact:-m-1.5 ml-2"
+                    >
+                      <Trash2 size={14} className="compact:w-4 compact:h-4" />
+                    </button>
+                    <div className="flex items-center gap-2 shrink-0 order-1 compact:order-3 compact:w-full">
                       <ColorPickerWithAlpha
                         value={highlightedUserColors[uid] || '#5865f2'}
                         onChange={(c) => setHighlightedUserColors((prev) => ({ ...prev, [uid]: c }))}
                         defaultColor="#5865f2"
+                        className="compact:flex-1"
                       />
                       {highlightedUserColors[uid] && (
                         <button
                           onClick={() => setHighlightedUserColors((prev) => { const next = { ...prev }; delete next[uid]; return next; })}
-                          className="text-[10px] text-discord-text-muted hover:text-discord-text"
+                          className="text-[10px] compact:text-xs text-discord-text-muted hover:text-discord-text shrink-0"
                           title="Reset to default"
                         >
                           Reset
                         </button>
                       )}
-                      <button
-                        onClick={() => removeHighlightedUser(uid)}
-                        className="text-discord-text-muted hover:text-discord-red shrink-0"
-                      >
-                        <Trash2 size={14} />
-                      </button>
                     </div>
                   </div>
                   );
                 })}
               </div>
+            </>
+          )}
+
+          {tab === 'roles' && (
+            <>
+              <p className="text-sm text-discord-text-muted mb-4">
+                Highlight or mute entire server roles. Highlighting works like highlighted
+                users — messages from anyone holding the role light up and alert (saved with
+                the room). Muting hides everyone with the role and applies server-wide,
+                immediately.
+              </p>
+
+              {roleGuildIds.length === 0 ? (
+                <p className="text-sm text-discord-text-muted text-center py-6">
+                  Add Discord channels to this room first — roles are listed per server.
+                </p>
+              ) : (
+                <>
+                  {highlightedRoles.length > 0 && (
+                    <div className="mb-4">
+                      <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
+                        Highlighted Roles
+                      </label>
+                      <div className="space-y-1">
+                        {highlightedRoles.map((hr) => (
+                          <div
+                            key={hr.roleId}
+                            className="flex flex-wrap items-center justify-between gap-y-2.5 px-3 py-2 compact:py-3 bg-discord-dark rounded"
+                          >
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <Star size={12} className="shrink-0 text-discord-yellow" />
+                              <span className="text-sm truncate" style={{ color: hr.color || '#f2f3f5' }}>{hr.roleName}</span>
+                              <span className="text-[11px] text-discord-text-muted truncate">{guildNameOf(hr.guildId)}</span>
+                            </div>
+                            <button
+                              onClick={() => setHighlightedRoles((prev) => prev.filter((r) => r.roleId !== hr.roleId))}
+                              className="text-discord-text-muted hover:text-discord-red shrink-0 order-2 compact:p-1.5 compact:-m-1.5 ml-2"
+                            >
+                              <Trash2 size={14} className="compact:w-4 compact:h-4" />
+                            </button>
+                            <div className="flex items-center gap-2 shrink-0 order-1 compact:order-3 compact:w-full">
+                              <ColorPickerWithAlpha
+                                value={hr.color || '#5865f2'}
+                                onChange={(c) => setHighlightedRoles((prev) => prev.map((r) => r.roleId === hr.roleId ? { ...r, color: c } : r))}
+                                defaultColor="#5865f2"
+                                className="compact:flex-1"
+                              />
+                              {hr.color && (
+                                <button
+                                  onClick={() => setHighlightedRoles((prev) => prev.map((r) => r.roleId === hr.roleId ? { ...r, color: undefined } : r))}
+                                  className="text-[10px] compact:text-xs text-discord-text-muted hover:text-discord-text shrink-0"
+                                  title="Reset to default"
+                                >
+                                  Reset
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {roleGuildIds.some((gId) => (hiddenRolesCfg[gId] ?? []).length > 0) && (
+                    <div className="mb-4">
+                      <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
+                        Muted Roles (server-wide)
+                      </label>
+                      <div className="space-y-1">
+                        {roleGuildIds.flatMap((gId) =>
+                          (hiddenRolesCfg[gId] ?? []).map((entry) => (
+                            <div
+                              key={`${gId}:${entry.roleId}`}
+                              className="flex items-center justify-between gap-2 px-3 py-2 bg-discord-dark rounded"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <EyeOff size={12} className="shrink-0 text-discord-red/70" />
+                                <span className="text-sm text-white truncate">{entry.roleName}</span>
+                                <span className="text-[11px] text-discord-text-muted truncate">{guildNameOf(gId)}</span>
+                              </div>
+                              <button
+                                onClick={() => unhideRole(gId, entry.roleId)}
+                                className="text-discord-text-muted hover:text-discord-red shrink-0"
+                                title="Unmute role"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
+                    Server Roles
+                  </label>
+                  <div className="relative mb-3">
+                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-discord-text-muted" />
+                    <input
+                      type="text"
+                      value={roleSearch}
+                      onChange={(e) => setRoleSearch(e.target.value)}
+                      placeholder="Search roles..."
+                      className="w-full bg-discord-dark border-none rounded pl-8 pr-3 py-2 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple"
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
+                    />
+                  </div>
+                  {roleGuildIds.map((gId) => {
+                    const roles = (guildRoles[gId] ?? []).filter(
+                      (r) => !roleSearch || r.name.toLowerCase().includes(roleSearch.toLowerCase())
+                    );
+                    return (
+                      <div key={gId} className="mb-3">
+                        {roleGuildIds.length > 1 && (
+                          <div className="text-xs font-semibold text-discord-text-muted mb-1.5">{guildNameOf(gId)}</div>
+                        )}
+                        {roles.length === 0 ? (
+                          <p className="text-sm text-discord-text-muted py-2">
+                            {(guildRoles[gId] ?? []).length === 0
+                              ? 'No roles available for this server yet.'
+                              : 'No roles match your search.'}
+                          </p>
+                        ) : (
+                          <div className="space-y-0.5 max-h-[260px] overflow-y-auto pr-1">
+                            {roles.map((role) => {
+                              const isHl = highlightedRoles.some((r) => r.roleId === role.id);
+                              const isMuted = (hiddenRolesCfg[gId] ?? []).some((r) => r.roleId === role.id);
+                              return (
+                                <div
+                                  key={role.id}
+                                  className="flex items-center justify-between gap-2 px-3 py-1.5 rounded hover:bg-discord-dark/60"
+                                >
+                                  <span className="text-sm truncate" style={{ color: role.color ?? '#f2f3f5' }}>{role.name}</span>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      onClick={() =>
+                                        isHl
+                                          ? setHighlightedRoles((prev) => prev.filter((r) => r.roleId !== role.id))
+                                          : setHighlightedRoles((prev) => [...prev, { roleId: role.id, roleName: role.name, guildId: gId }])
+                                      }
+                                      className={`p-1.5 rounded transition-colors ${isHl ? 'text-discord-yellow bg-discord-yellow/10' : 'text-discord-text-muted hover:text-discord-yellow'}`}
+                                      title={isHl ? 'Remove highlight' : 'Highlight role'}
+                                    >
+                                      <Star size={14} />
+                                    </button>
+                                    <button
+                                      onClick={() => (isMuted ? unhideRole(gId, role.id) : hideRole(gId, role.id, role.name))}
+                                      className={`p-1.5 rounded transition-colors ${isMuted ? 'text-discord-red bg-discord-red/10' : 'text-discord-text-muted hover:text-discord-red'}`}
+                                      title={isMuted ? 'Unmute role' : 'Mute role (server-wide)'}
+                                    >
+                                      <EyeOff size={14} />
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
             </>
           )}
 
@@ -1016,7 +1494,7 @@ export default function RoomConfig() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-3 sm:py-4 border-t border-discord-divider shrink-0">
+        <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-3 sm:py-4 border-t border-discord-divider shrink-0 compact:pb-[calc(0.75rem+var(--safe-bottom))]">
           <button
             onClick={closeConfigModal}
             className="px-4 py-2 text-sm text-discord-text-muted hover:text-white transition-colors"

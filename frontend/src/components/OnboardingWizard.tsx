@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
 import type { ChannelRef } from '../types';
 import { Check, ChevronRight, ChevronLeft, Hash, Search, Sparkles, Layers, Eye, Zap, AlertTriangle, Settings2 } from 'lucide-react';
+import { webpSafeUrl } from './Message';
 
 const ONBOARDING_KEY = 'trenchcord_onboarding_complete';
 
@@ -116,6 +117,9 @@ export default function OnboardingWizard({ onComplete, userId }: { onComplete: (
       setStep('done');
     } else if (step === 'done') {
       markOnboardingComplete(userId);
+      // localStorage is only a fallback — iOS evicts WKWebView storage under
+      // disk pressure, so the durable record lives in the server config.
+      void updateConfig({ onboardingComplete: true });
       onComplete();
     }
   };
@@ -137,7 +141,7 @@ export default function OnboardingWizard({ onComplete, userId }: { onComplete: (
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-discord-darker overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-discord-darker overflow-y-auto pt-[var(--safe-top)] pb-[var(--safe-bottom)]">
       <div className="w-full max-w-2xl mx-4 my-4">
         {/* Progress dots */}
         <div className="flex items-center justify-center gap-2 mb-8">
@@ -240,7 +244,7 @@ export default function OnboardingWizard({ onComplete, userId }: { onComplete: (
                         >
                           {guild.icon ? (
                             <img
-                              src={`https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.webp?size=32`}
+                              src={webpSafeUrl(`https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.webp?size=32`)}
                               alt=""
                               className="w-8 h-8 rounded-full shrink-0"
                             />

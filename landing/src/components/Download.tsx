@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Apple, Check, Copy, Terminal, ShieldCheck } from 'lucide-react';
+import { Apple, Check, Copy, Smartphone, Terminal, ShieldCheck } from 'lucide-react';
 import { AnimatedSection } from './AnimatedSection';
 
-const MAC_DOWNLOAD = 'https://github.com/DanielHighETH/trenchcord/releases/download/v1.0.0/Trenchcord-1.0.0-arm64.dmg';
-const WIN_DOWNLOAD = 'https://github.com/DanielHighETH/trenchcord/releases/download/v1.0.0/Trenchcord-Setup-1.0.0.exe';
+const MAC_DOWNLOAD = 'https://github.com/DanielHighETH/trenchcord/releases/latest/download/Trenchcord-mac.dmg';
+const WIN_DOWNLOAD = 'https://github.com/DanielHighETH/trenchcord/releases/latest/download/Trenchcord-Setup.exe';
 const RELEASES = 'https://github.com/DanielHighETH/trenchcord/releases/latest';
+const TESTFLIGHT = 'https://testflight.apple.com/join/zbF1qyRT';
+const TESTFLIGHT_APP = 'https://apps.apple.com/app/testflight/id899247664';
 
 const XATTR_CMD = 'xattr -cr /Applications/Trenchcord.app';
 
@@ -35,8 +37,9 @@ export function Download() {
         <AnimatedSection className="text-center mb-10">
           <h2 className="text-2xl sm:text-4xl font-bold text-white">Download Trenchcord</h2>
           <p className="mt-3 text-dc-text-muted max-w-xl mx-auto text-sm">
-            Desktop app for macOS and Windows. Your token and data stay entirely on your own
-            machine — nothing is ever sent to a server.
+            Desktop app for macOS and Windows, plus an iPhone beta — the same public, auditable
+            code, packaged. Everything runs on your own device, and your tokens and data never
+            leave it.
           </p>
         </AnimatedSection>
 
@@ -118,6 +121,70 @@ export function Download() {
           </div>
         </AnimatedSection>
 
+        <AnimatedSection delay={0.15}>
+          {/* iPhone beta */}
+          <div className="mt-4 flex flex-col sm:flex-row items-center gap-6 rounded-lg border border-dc-divider bg-dc-sidebar p-6">
+            <div className="flex-1 w-full">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-11 h-11 rounded-lg bg-dc-dark border border-dc-divider flex items-center justify-center">
+                  <Smartphone size={22} className="text-dc-text" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-white">iPhone</h3>
+                  <p className="text-xs text-dc-text-faint">Beta · installed via TestFlight</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-dc-text-muted leading-relaxed mb-3">
+                The beta installs through TestFlight, Apple's official app for beta software — you
+                need it on your iPhone first:
+              </p>
+              <ol className="text-xs text-dc-text-muted leading-relaxed mb-4 space-y-1.5">
+                <li>
+                  <span className="text-dc-text font-medium">1.</span> Install{' '}
+                  <a
+                    href={TESTFLIGHT_APP}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-dc-blurple hover:underline"
+                  >
+                    TestFlight
+                  </a>{' '}
+                  from the App Store — it's free and made by Apple
+                </li>
+                <li>
+                  <span className="text-dc-text font-medium">2.</span> Point your iPhone camera at
+                  the code — or tap the button if you're reading this on your phone
+                </li>
+                <li>
+                  <span className="text-dc-text font-medium">3.</span> In TestFlight, tap{' '}
+                  <span className="text-dc-text">Accept</span>, then{' '}
+                  <span className="text-dc-text">Install</span> — Trenchcord lands on your home
+                  screen like any other app
+                </li>
+              </ol>
+
+              <a
+                href={TESTFLIGHT}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded bg-dc-blurple text-white font-medium text-sm hover:bg-dc-blurple-hover transition-colors"
+              >
+                Join the beta on TestFlight
+              </a>
+            </div>
+
+            <img
+              src="/ios-testflight-qr.png"
+              alt="QR code — scan with your iPhone camera to join the Trenchcord beta on TestFlight"
+              width={176}
+              height={176}
+              loading="lazy"
+              className="w-44 h-44 rounded-lg shrink-0"
+            />
+          </div>
+        </AnimatedSection>
+
         <AnimatedSection delay={0.2}>
           <p className="mt-6 text-center text-xs text-dc-text-faint">
             Looking for a specific version, or the checksums?{' '}
@@ -133,7 +200,7 @@ export function Download() {
               }}
               className="text-dc-blurple hover:underline"
             >
-              Self-host it instead
+              Run it from source instead
             </a>
             .
           </p>

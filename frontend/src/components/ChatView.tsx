@@ -3,6 +3,52 @@ import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import { useAppStore } from '../stores/appStore';
 import ChatPane from './ChatPane';
 import { Hash, PanelLeftOpen } from 'lucide-react';
+import { isIOSApp } from '../utils/platform';
+
+/**
+ * iOS-app-only quick switcher along the bottom edge, so multi-room users don't
+ * have to open the drawer for every hop. Toggleable in Settings → General;
+ * hidden outright with fewer than two rooms. Never shown on desktop — a
+ * narrow desktop window is not a phone.
+ */
+function MobileRoomBar({ activeRoomId }: { activeRoomId: string }) {
+  const rooms = useAppStore((s) => s.rooms);
+  const unreadCounts = useAppStore((s) => s.unreadCounts);
+  const setPaneRoom = useAppStore((s) => s.setPaneRoom);
+  const enabled = useAppStore((s) => s.config?.mobileRoomBar ?? true);
+
+  if (!isIOSApp() || !enabled || rooms.length < 2) return null;
+
+  return (
+    <div className="shrink-0 flex overflow-x-auto scrollbar-none px-2 pt-1.5 pb-[calc(0.375rem+var(--safe-bottom))] bg-discord-sidebar border-t border-discord-darker/40">
+      {/* mx-auto centers the pills when they fit; with more rooms than fit,
+          the row overflows and scrolls from the left as usual. */}
+      <div className="flex gap-1 mx-auto">
+        {rooms.map((room) => {
+          const active = room.id === activeRoomId;
+          const unread = unreadCounts[room.id] ?? 0;
+          return (
+            <button
+              key={room.id}
+              onClick={() => setPaneRoom(0, room.id)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm whitespace-nowrap shrink-0 transition-colors ${
+                active ? 'bg-discord-hover-light text-white' : 'text-discord-text-muted'
+              }`}
+            >
+              <Hash size={14} className="opacity-60 shrink-0" />
+              <span className="max-w-[7rem] truncate">{room.name}</span>
+              {unread > 0 && !active && (
+                <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-discord-blurple text-white text-[11px] font-semibold flex items-center justify-center">
+                  {unread > 99 ? '99+' : unread}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function ChatView() {
   const paneRoomIds = useAppStore((s) => s.paneRoomIds);
@@ -42,8 +88,18 @@ export default function ChatView() {
   const vHandleCls = `h-1 bg-discord-dark transition-colors ${editMode ? 'hover:bg-discord-blurple cursor-row-resize' : ''}`;
   const hHandleCls = `w-1 bg-discord-dark transition-colors ${editMode ? 'hover:bg-discord-blurple cursor-col-resize' : ''}`;
 
-  if (count === 1) {
-    return <ChatPane roomId={paneRoomIds[0]} paneIndex={0} paneCount={1} editMode={editMode} />;
+  // One chat at a time on a phone. A 4-pane split leaves each pane ~90px wide,
+  // and the drag handles between them are 1px targets — neither survives touch.
+  // Rooms are switched from the sidebar instead, which already overlays on mobile.
+  if (count === 1 || isIOSApp()) {
+    return (
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
+        <div className="flex-1 min-h-0 flex">
+          <ChatPane roomId={paneRoomIds[0]} paneIndex={0} paneCount={1} editMode={editMode} />
+        </div>
+        <MobileRoomBar activeRoomId={paneRoomIds[0]} />
+      </div>
+    );
   }
 
   // Two-rows / grid mode: columns-first so each column's height splits are

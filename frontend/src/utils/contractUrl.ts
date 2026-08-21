@@ -2,6 +2,10 @@ import type { ContractLinkTemplates, TradingConfig } from '../types';
 
 const REFERRALS = { axiom: 'danielref', padre: 'daniel_dev', gmgn: 'danieldev', bloom: 'daniel' };
 
+// fomo.family spells out chain names in its URLs where we use short slugs;
+// chains not listed here (base, robinhood, ...) already match ours.
+const FOMO_CHAIN_SLUGS: Record<string, string> = { eth: 'ethereum', bsc: 'bnb' };
+
 export const DEFAULT_LINK_TEMPLATES: ContractLinkTemplates = {
   evm: 'https://gmgn.ai/base/token/{address}',
   sol: 'https://axiom.trade/t/{address}?chain=sol',
@@ -24,6 +28,10 @@ function getPresetTemplate(platform: string, chain: 'sol' | 'evm', evmChain?: st
       return chain === 'sol'
         ? `https://gmgn.ai/sol/token/${REFERRALS.gmgn}_{address}`
         : `https://gmgn.ai/${evmSlug}/token/${REFERRALS.gmgn}_{address}`;
+    case 'fomo':
+      return chain === 'sol'
+        ? 'https://fomo.family/tokens/solana/{address}'
+        : `https://fomo.family/tokens/${FOMO_CHAIN_SLUGS[evmSlug] ?? evmSlug}/{address}`;
     default:
       return chain === 'sol'
         ? 'https://axiom.trade/t/{address}?chain=sol'

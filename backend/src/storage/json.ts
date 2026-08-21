@@ -2,6 +2,7 @@ import { configStore } from '../config/store.js';
 import { contractLog } from '../utils/contractLog.js';
 import type { StorageProvider } from './interface.js';
 import type { AppConfig, Room } from '../discord/types.js';
+import type { CategoryMatch } from '../discord/roomCategories.js';
 import type { ContractEntry } from '../utils/contractLog.js';
 
 /**
@@ -46,16 +47,16 @@ export class JsonStorageProvider implements StorageProvider {
     return configStore.deleteRoom(roomId);
   }
 
-  async getRoomsForChannel(_userId: string, channelId: string): Promise<Room[]> {
-    return configStore.getRoomsForChannel(channelId);
+  async getRoomsForChannel(_userId: string, channelId: string, category?: CategoryMatch | null): Promise<Room[]> {
+    return configStore.getRoomsForChannel(channelId, category);
   }
 
-  async isChannelSubscribed(_userId: string, channelId: string): Promise<boolean> {
-    return configStore.isChannelSubscribed(channelId);
+  async isChannelSubscribed(_userId: string, channelId: string, category?: CategoryMatch | null): Promise<boolean> {
+    return configStore.isChannelSubscribed(channelId, category);
   }
 
-  async isUserHighlighted(_userId: string, discordUserId: string, roomId?: string, username?: string | null): Promise<boolean> {
-    return configStore.isUserHighlighted(discordUserId, roomId, username);
+  async isUserHighlighted(_userId: string, discordUserId: string, roomId?: string, username?: string | null, roleIds?: string[]): Promise<boolean> {
+    return configStore.isUserHighlighted(discordUserId, roomId, username, roleIds);
   }
 
   async getContracts(_userId: string, limit?: number, since?: string): Promise<ContractEntry[]> {

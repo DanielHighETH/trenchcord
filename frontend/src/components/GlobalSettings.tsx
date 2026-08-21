@@ -1,18 +1,23 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAppStore } from '../stores/appStore';
-import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, SplitLayout, SlotsharkRegion, TradingWallet, TradeButtonSize, BuySitePlatform, WalletAmountMode } from '../types';
+import type { SolPlatform, EvmPlatform, ContractClickAction, BadgeClickAction, NotificationClickAction, KeywordPattern, KeywordMatchMode, SoundSettings, SoundType, SoundConfig, PushoverPriority, PushoverSound, PushoverTriggers, PushoverFilters, MessageDisplay, SplitLayout, SlotsharkRegion, TradingWallet, TradeButtonSize, BuySitePlatform, WalletAmountMode, SnipingConfig, FeedHotkeys } from '../types';
 import { PUSHOVER_SOUNDS } from '../types';
-import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, PanelLeftOpen, Send, Download, AlertTriangle, AtSign, CandlestickChart, Check } from 'lucide-react';
+import { Key, Search, Plus, Trash2, Eye, EyeOff, Volume2, Upload, Play, Users, Shield, Tag, Zap, Settings2, ArrowLeft, HelpCircle, Bell, BellRing, PanelLeftOpen, Send, Download, DatabaseBackup, AlertTriangle, AtSign, CandlestickChart, Check, BadgeCheck, ExternalLink, Loader2, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, X, MessagesSquare } from 'lucide-react';
 import { requestNotificationPermission } from '../utils/desktopNotification';
 import { previewSound, previewPreset, PRESET_SOUNDS } from '../utils/notificationSound';
 import ColorPickerWithAlpha, { colorWithExtraAlpha } from './ColorPickerWithAlpha';
 import TelegramSetup from './TelegramSetup';
+import AccountPanel from './AccountPanel';
 import { isHostedMode, getAccessToken } from '../lib/supabase';
+import { isIOSApp, isCompactLayout, useCompactLayout } from '../utils/platform';
+import { backupTelegramSessionCount } from '../utils/backup';
+import { requestInstantDrawerOpen } from '../utils/drawer';
 
-type Section = 'tokens' | 'general' | 'contracts' | 'trading' | 'sounds' | 'pushover' | 'keywords' | 'mentions' | 'users' | 'guilds' | 'help';
+type Section = 'tokens' | 'account' | 'general' | 'contracts' | 'trading' | 'sounds' | 'pushover' | 'keywords' | 'mentions' | 'dms' | 'users' | 'guilds' | 'backup' | 'help';
 
-const SECTIONS: { id: Section; label: string; icon: typeof Key }[] = [
+const ALL_SECTIONS: { id: Section; label: string; icon: typeof Key }[] = [
   { id: 'tokens', label: 'Tokens', icon: Key },
+  { id: 'account', label: 'Account & Subscription', icon: BadgeCheck },
   { id: 'general', label: 'General', icon: Settings2 },
   { id: 'contracts', label: 'Contracts', icon: Zap },
   { id: 'trading', label: 'Trading', icon: CandlestickChart },
@@ -20,10 +25,136 @@ const SECTIONS: { id: Section; label: string; icon: typeof Key }[] = [
   { id: 'pushover', label: 'Pushover', icon: Bell },
   { id: 'keywords', label: 'Keywords', icon: Tag },
   { id: 'mentions', label: 'Mentions', icon: AtSign },
+  { id: 'dms', label: 'Direct Messages', icon: MessagesSquare },
   { id: 'users', label: 'Highlighted Users', icon: Users },
   { id: 'guilds', label: 'Guilds', icon: Shield },
+  { id: 'backup', label: 'Backup & Restore', icon: DatabaseBackup },
   { id: 'help', label: 'Help & Features', icon: HelpCircle },
 ];
+
+const SECTIONS = ALL_SECTIONS;
+
+const SECTION_META = new Map(ALL_SECTIONS.map((s) => [s.id, s]));
+
+/** Boolean settings the search results can flip in place. Keys are wired to
+    their local draft state inside the component, so a completeness error here
+    is a compile error there. */
+type SearchToggleKey =
+  | 'roleColors' | 'serverIconBadge' | 'showEphemeralMessages' | 'contractDetection' | 'openInDiscordApp' | 'openInTelegramApp'
+  | 'chattingEnabled' | 'dmReadSyncEnabled' | 'autoUpdate' | 'mobileRoomBar' | 'telegramDmsInAllDms'
+  | 'showFullContractAddress' | 'autoOpenHighlightedContracts'
+  | 'tradingEnabled' | 'snipingEnabled' | 'tradingAntimev' | 'tradingShowContractPill'
+  | 'tradingOpenSiteOnBuy' | 'tradingRequireDoubleClick'
+  | 'desktopNotifications' | 'messageSounds' | 'pushoverEnabled' | 'keywordAlertsEnabled'
+  | 'mentionsUser' | 'mentionsRole' | 'mentionsHere' | 'mentionsEveryone' | 'mentionsBots';
+
+type SettingSearchCtx = {
+  compact: boolean;
+  ios: boolean;
+  hosted: boolean;
+  focusShortcut: boolean;
+  autoUpdate: boolean;
+};
+
+type SettingSearchEntry = {
+  section: Section;
+  /** Name shown in results. Doubles as the scroll target unless `anchor` is set. */
+  label: string;
+  /** On-screen h3/h4 heading to scroll to when it differs from `label`. */
+  anchor?: string;
+  /** Extra search terms beyond the label and section name. */
+  keywords?: string;
+  /** Boolean settings get a switch right in the result row. */
+  toggle?: SearchToggleKey;
+  /** Hide entries whose setting isn't rendered on this platform/mode. */
+  when?: (ctx: SettingSearchCtx) => boolean;
+};
+
+// Searchable map of every setting. `label`/`anchor` must match the heading
+// text rendered below — that's how a result scrolls to its card — so renaming
+// a heading means updating its entry here.
+const SETTINGS_INDEX: SettingSearchEntry[] = [
+  // Tokens
+  { section: 'tokens', label: 'Discord Tokens', keywords: 'account token auth add remove login' },
+  { section: 'tokens', label: 'Connection', keywords: 'proxy http https vpn network', when: (c) => !c.hosted && !c.ios },
+  { section: 'tokens', label: 'Telegram', keywords: 'account connect login phone number session' },
+  // Account
+  { section: 'account', label: 'Account & Subscription', keywords: 'cloud link device pairing premium plan renew manage' },
+  // General
+  { section: 'general', label: 'Message Display', keywords: 'cozy compact density avatars chat view' },
+  { section: 'general', label: 'Split Screen Layout', keywords: 'panes grid row multi pane', when: (c) => !c.ios },
+  { section: 'general', label: 'Role Colors', keywords: 'username discord colored names', toggle: 'roleColors' },
+  { section: 'general', label: 'Source Badge', keywords: 'server icon channel name message badge', toggle: 'serverIconBadge' },
+  { section: 'general', label: 'Ephemeral Messages', keywords: 'only you can see this bot reply hidden private temporary too old to delete', toggle: 'showEphemeralMessages' },
+  { section: 'general', label: 'Feed Hotkeys', keywords: 'keyboard shortcut key jump contract mentions keywords snipes alerts dms', when: (c) => !c.compact },
+  { section: 'general', label: 'Bring Trenchcord To Front', keywords: 'global shortcut hotkey focus window foreground', when: (c) => c.focusShortcut && !c.compact },
+  { section: 'general', label: 'Automatic Updates', keywords: 'auto update download install windows github releases', toggle: 'autoUpdate', when: (c) => c.autoUpdate },
+  { section: 'general', label: 'Mobile Zoom Scale', keywords: 'zoom size scale phone bigger smaller', when: (c) => !c.ios },
+  { section: 'general', label: 'Bottom Room Bar', keywords: 'room switcher quick bar iphone', toggle: 'mobileRoomBar', when: (c) => c.ios },
+  { section: 'general', label: 'Contract Detection', keywords: 'detect sol evm address messages ca', toggle: 'contractDetection' },
+  { section: 'general', label: 'Open in Discord App', keywords: 'deeplink jump channel badge click', toggle: 'openInDiscordApp' },
+  { section: 'general', label: 'Open in Telegram App', keywords: 'deeplink jump tg channel badge click', toggle: 'openInTelegramApp' },
+  { section: 'general', label: 'Badge Click Action', keywords: 'keyword contract badge click discord platform both' },
+  { section: 'general', label: 'Notification Click', keywords: 'toast click open trenchcord discord telegram' },
+  { section: 'general', label: 'Chat / Send Messages', keywords: 'send messages typing reply input write', toggle: 'chattingEnabled' },
+  { section: 'general', label: 'DM Read Sync', keywords: 'mark read discord unread badge ack sync dms seen', toggle: 'dmReadSyncEnabled' },
+  // Contracts
+  { section: 'contracts', label: 'Contract Click Action', keywords: 'copy open address click clipboard' },
+  { section: 'contracts', label: 'Display Full Contract Address', keywords: 'shortened full address show', toggle: 'showFullContractAddress' },
+  { section: 'contracts', label: 'Trading Platform', keywords: 'axiom padre bloom gmgn fomo custom sol evm chart links open' },
+  { section: 'contracts', label: 'Auto-Open Highlighted Contracts', keywords: 'automatically open tab highlighted user posts contract', toggle: 'autoOpenHighlightedContracts' },
+  { section: 'contracts', label: 'Address Colors', keywords: 'evm sol color highlight contract' },
+  // Trading (hidden in hosted mode, where the whole section is unavailable)
+  { section: 'trading', label: 'Enable Trading', keywords: 'buy buttons slotshark solana swap', toggle: 'tradingEnabled', when: (c) => !c.hosted },
+  { section: 'trading', label: 'Enable Sniping', keywords: 'snipe auto buy configs', toggle: 'snipingEnabled', when: (c) => !c.hosted },
+  { section: 'trading', label: 'API Token', keywords: 'slotshark key token save', when: (c) => !c.hosted },
+  { section: 'trading', label: 'Server Region', keywords: 'us eu latency slotshark', when: (c) => !c.hosted },
+  { section: 'trading', label: 'Wallets', keywords: 'wallet public key solana add multi', when: (c) => !c.hosted },
+  { section: 'trading', label: 'Buy Amounts (SOL)', keywords: 'preset amounts buttons sol quick', when: (c) => !c.hosted },
+  { section: 'trading', label: 'Execution', keywords: 'slippage tip priority fee auto', when: (c) => !c.hosted },
+  { section: 'trading', label: 'Anti-MEV Protection', anchor: 'Execution', keywords: 'mev sandwich protection', toggle: 'tradingAntimev', when: (c) => !c.hosted },
+  { section: 'trading', label: 'Button Appearance', keywords: 'size color background text buy buttons preview', when: (c) => !c.hosted },
+  { section: 'trading', label: 'Contract Pill on Buy Row', anchor: 'Button Appearance', keywords: 'show address pill buy row', toggle: 'tradingShowContractPill', when: (c) => !c.hosted },
+  { section: 'trading', label: 'Open Chart on Buy', keywords: 'site chart open buy trading', toggle: 'tradingOpenSiteOnBuy', when: (c) => !c.hosted },
+  { section: 'trading', label: 'Misclick Protection', keywords: 'double click confirm arm buy accidental', toggle: 'tradingRequireDoubleClick', when: (c) => !c.hosted },
+  // Sounds & Notifications
+  { section: 'sounds', label: 'Desktop Notifications', keywords: 'browser notification permission popup', toggle: 'desktopNotifications' },
+  { section: 'sounds', label: 'Sound Settings', keywords: 'notification sounds master volume highlight contract keyword premium custom preset upload', toggle: 'messageSounds' },
+  { section: 'sounds', label: 'Channel Sounds', keywords: 'per channel sound every message volume' },
+  // Pushover
+  { section: 'pushover', label: 'Enable Pushover', anchor: 'Pushover', keywords: 'push phone notifications mobile', toggle: 'pushoverEnabled' },
+  { section: 'pushover', label: 'Credentials', anchor: 'Credentials', keywords: 'pushover api token user key app' },
+  { section: 'pushover', label: 'Triggers', keywords: 'pushover events highlighted user contract keyword' },
+  { section: 'pushover', label: 'Filters', keywords: 'pushover user guild channel filter narrow' },
+  { section: 'pushover', label: 'Notification Settings', keywords: 'pushover priority sound emergency quiet hours' },
+  // Keywords
+  { section: 'keywords', label: 'Keyword Alerts', keywords: 'enable regex pattern matching alerts', toggle: 'keywordAlertsEnabled' },
+  { section: 'keywords', label: 'Global Keyword Patterns', keywords: 'regex pattern contains exact match add label' },
+  // Mentions
+  { section: 'mentions', label: 'User Mentions', anchor: 'Mentions', keywords: 'mention ping direct @', toggle: 'mentionsUser' },
+  { section: 'mentions', label: 'Role Mentions', anchor: 'Mentions', keywords: 'mention ping role @', toggle: 'mentionsRole' },
+  { section: 'mentions', label: '@here Mentions', anchor: 'Mentions', keywords: 'mention ping here channel', toggle: 'mentionsHere' },
+  { section: 'mentions', label: '@everyone Mentions', anchor: 'Mentions', keywords: 'mention ping everyone channel', toggle: 'mentionsEveryone' },
+  { section: 'mentions', label: 'Mentions from Bots', anchor: 'Mentions', keywords: 'mention ping bot rick reply respond', toggle: 'mentionsBots' },
+
+  { section: 'dms', label: 'Discord Excluded Users', keywords: 'dm direct message exclude user skip hide feed bot spam' },
+  { section: 'dms', label: 'Telegram DMs', keywords: 'telegram tg dm include all dms feed collect', toggle: 'telegramDmsInAllDms' },
+  { section: 'dms', label: 'Telegram Excluded Users', keywords: 'telegram tg dm direct message exclude user skip hide feed bot spam' },
+  { section: 'dms', label: 'Hidden Conversations (Discord)', keywords: 'dm direct message hide conversation sidebar exclude user bot spam remove' },
+  { section: 'dms', label: 'Hidden Conversations (Telegram)', keywords: 'telegram tg dm direct message hide conversation sidebar exclude user bot spam remove' },
+  // Highlighted users
+  { section: 'users', label: 'Global Highlighted Users', keywords: 'highlight user id telegram username track alert' },
+  { section: 'users', label: 'Custom Renames', keywords: 'rename user custom name nickname' },
+  // Guilds
+  { section: 'guilds', label: 'Enabled Guilds', keywords: 'server enable disable guild list' },
+  { section: 'guilds', label: 'Guild Message Colors', keywords: 'server background color message' },
+  { section: 'guilds', label: 'DM Message Colors', keywords: 'direct message background color' },
+  { section: 'guilds', label: 'Telegram Chat Colors', keywords: 'telegram background color chat' },
+  // Backup
+  { section: 'backup', label: 'Backup & Restore', keywords: 'export import settings backup restore json file' },
+];
+
+const EMPTY_SNIPING: SnipingConfig = { enabled: false, configs: [] };
 
 // Slotshark wallet pubkeys and token mints are base58, 32-44 chars.
 const SOL_ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -67,6 +198,7 @@ export default function GlobalSettings() {
   const fetchGuilds = useAppStore((s) => s.fetchGuilds);
   const fetchDMChannels = useAppStore((s) => s.fetchDMChannels);
   const fetchConfig = useAppStore((s) => s.fetchConfig);
+  const rehydrateLayout = useAppStore((s) => s.rehydrateLayout);
   const maskedTokens = useAppStore((s) => s.maskedTokens);
   const fetchMaskedTokens = useAppStore((s) => s.fetchMaskedTokens);
   const addToken = useAppStore((s) => s.addToken);
@@ -76,13 +208,24 @@ export default function GlobalSettings() {
   const settingsSection = useAppStore((s) => s.settingsSection);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
+  const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
   const authStatus = useAppStore((s) => s.authStatus);
   const telegramDisconnect = useAppStore((s) => s.telegramDisconnect);
+  const telegramAccounts = useAppStore((s) => s.telegramAccounts);
+  const fetchTelegramAccounts = useAppStore((s) => s.fetchTelegramAccounts);
+  const telegramRemoveAccount = useAppStore((s) => s.telegramRemoveAccount);
   const fetchRooms = useAppStore((s) => s.fetchRooms);
   const tradingStatus = useAppStore((s) => s.tradingStatus);
   const fetchTradingStatus = useAppStore((s) => s.fetchTradingStatus);
+  const subscriptionStatus = useAppStore((s) => s.subscriptionStatus);
+  const fetchSubscriptionStatus = useAppStore((s) => s.fetchSubscriptionStatus);
+  const startCloudLink = useAppStore((s) => s.startCloudLink);
+  const fetchCloudLinkStatus = useAppStore((s) => s.fetchCloudLinkStatus);
+  const refreshCloudSubscription = useAppStore((s) => s.refreshCloudSubscription);
+  const unlinkCloud = useAppStore((s) => s.unlinkCloud);
   const saveSlotsharkToken = useAppStore((s) => s.saveSlotsharkToken);
   const removeSlotsharkToken = useAppStore((s) => s.removeSlotsharkToken);
+  const renameUser = useAppStore((s) => s.renameUser);
 
   const userNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -100,8 +243,49 @@ export default function GlobalSettings() {
   }, [allMessages, config?.userNameCache]);
 
   const [section, setSection] = useState<Section>((settingsSection as Section) || 'tokens');
+  const compact = useCompactLayout();
+  // Phone navigation is a two-level drill-down like the iOS Settings app: a
+  // root list of sections, then the section as its own page with a back
+  // button. Targeted navigation ("Go to Settings → Tokens" links) skips the
+  // root. Desktop keeps the persistent sidebar nav.
+  const [mobileRoot, setMobileRoot] = useState(() => isCompactLayout() && !settingsSection);
+  const [cloudPairing, setCloudPairing] = useState<{ code: string; approveUrl?: string } | null>(null);
+  const [cloudBusy, setCloudBusy] = useState(false);
+  const [cloudError, setCloudError] = useState<string | null>(null);
+
+  // --- Settings search ---
+  const [settingsSearch, setSettingsSearch] = useState('');
+  // Heading text a clicked result should scroll to once its section renders.
+  const [pendingSettingAnchor, setPendingSettingAnchor] = useState<string | null>(null);
+  const settingsContentRef = useRef<HTMLDivElement>(null);
+
+  // Account section: keep status fresh, and poll while a pairing code is
+  // outstanding so the card flips to "linked" the moment it's approved.
+  useEffect(() => {
+    if (section !== 'account') return;
+    fetchSubscriptionStatus();
+    if (!cloudPairing) return;
+    const timer = setInterval(() => {
+      fetchCloudLinkStatus().then((state) => {
+        if (state && state.state !== 'pending') {
+          setCloudPairing(null);
+          if (state.state === 'idle' && state.error) setCloudError(state.error);
+        }
+      });
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [section, cloudPairing, fetchSubscriptionStatus, fetchCloudLinkStatus]);
   const [globalUsers, setGlobalUsers] = useState<string[]>([]);
   const [newUserId, setNewUserId] = useState('');
+  const [dmExcludedUsers, setDmExcludedUsers] = useState<string[]>([]);
+  const [newDmExcludedUser, setNewDmExcludedUser] = useState('');
+  const [telegramDmsInAllDms, setTelegramDmsInAllDms] = useState(true);
+  const [tgDmExcludedUsers, setTgDmExcludedUsers] = useState<string[]>([]);
+  const [newTgDmExcludedUser, setNewTgDmExcludedUser] = useState('');
+  const [dmHiddenConversations, setDmHiddenConversations] = useState<string[]>([]);
+  const [newDmHiddenConversation, setNewDmHiddenConversation] = useState('');
+  const [tgDmHiddenConversations, setTgDmHiddenConversations] = useState<string[]>([]);
+  const [newTgDmHiddenConversation, setNewTgDmHiddenConversation] = useState('');
   const [contractDetection, setContractDetection] = useState(true);
   const [guildColors, setGuildColors] = useState<Record<string, string>>({});
   const [dmColors, setDmColors] = useState<Record<string, string>>({});
@@ -110,14 +294,15 @@ export default function GlobalSettings() {
   const [guildSearch, setGuildSearch] = useState('');
   const [evmAddressColor, setEvmAddressColor] = useState('#fee75c');
   const [solAddressColor, setSolAddressColor] = useState('#14f195');
-  const [openInDiscordApp, setOpenInDiscordApp] = useState(false);
-  const [openInTelegramApp, setOpenInTelegramApp] = useState(false);
+  const [openInDiscordApp, setOpenInDiscordApp] = useState(true);
+  const [openInTelegramApp, setOpenInTelegramApp] = useState(true);
   const [messageSounds, setMessageSounds] = useState(false);
   const defaultSoundConfig: SoundConfig = { enabled: true, volume: 80, useCustom: false };
   const [soundSettings, setSoundSettings] = useState<SoundSettings>({
     highlight: { ...defaultSoundConfig },
     contractAlert: { ...defaultSoundConfig },
     keywordAlert: { ...defaultSoundConfig },
+    premiumAlert: { ...defaultSoundConfig },
   });
   const [channelSounds, setChannelSounds] = useState<Record<string, SoundConfig>>({});
   const [uploadingSoundType, setUploadingSoundType] = useState<SoundType | null>(null);
@@ -133,6 +318,7 @@ export default function GlobalSettings() {
   const defaultFilters: PushoverFilters = { userIds: [], channelIds: [], guildIds: [] };
   const [pushoverTriggers, setPushoverTriggers] = useState<PushoverTriggers>({ ...defaultTriggers });
   const [pushoverFilters, setPushoverFilters] = useState<PushoverFilters>({ ...defaultFilters });
+  const [appTokenHelpOpen, setAppTokenHelpOpen] = useState(false);
   const [solPlatform, setSolPlatform] = useState<SolPlatform>('axiom');
   const [evmPlatform, setEvmPlatform] = useState<EvmPlatform>('gmgn');
   const [customSolUrl, setCustomSolUrl] = useState('');
@@ -147,12 +333,29 @@ export default function GlobalSettings() {
   const [mentionsRoleEnabled, setMentionsRoleEnabled] = useState(true);
   const [mentionsHereEnabled, setMentionsHereEnabled] = useState(false);
   const [mentionsEveryoneEnabled, setMentionsEveryoneEnabled] = useState(false);
+  const [mentionsBotsEnabled, setMentionsBotsEnabled] = useState(true);
   const [badgeClickAction, setBadgeClickAction] = useState<BadgeClickAction>('discord');
+  const [notificationClickAction, setNotificationClickAction] = useState<NotificationClickAction>('trenchcord');
   const [chattingEnabled, setChattingEnabled] = useState(false);
+  const [dmReadSyncEnabled, setDmReadSyncEnabled] = useState(false);
   const [messageDisplay, setMessageDisplay] = useState<MessageDisplay>('default');
   const [compactModeAvatars, setCompactModeAvatars] = useState(true);
+  const [compactModeNameOnce, setCompactModeNameOnce] = useState(false);
   const [roleColors, setRoleColors] = useState(true);
   const [mobileZoomScale, setMobileZoomScale] = useState(1);
+  const [mobileRoomBar, setMobileRoomBar] = useState(true);
+  // Separate desktop/phone keys so each platform keeps its own setting (both
+  // default on); the UI shows the one for the current layout.
+  const [serverIconBadge, setServerIconBadge] = useState(true);
+  const [serverIconBadgeMobile, setServerIconBadgeMobile] = useState(true);
+  const [showEphemeralMessages, setShowEphemeralMessages] = useState(true);
+  const [feedHotkeys, setFeedHotkeys] = useState<FeedHotkeys>({});
+  const [focusHotkey, setFocusHotkey] = useState<string | null>(null);
+  // Desktop-app auto-update opt-in. Lives in the Electron main process (not the
+  // backend config), so it's read/written over IPC and applies immediately —
+  // no Save button involved. Hidden entirely unless the platform supports it.
+  const [autoUpdateSupported, setAutoUpdateSupported] = useState(false);
+  const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(false);
   const [splitLayout, setSplitLayout] = useState<SplitLayout>('row');
   const [newKeywordPattern, setNewKeywordPattern] = useState('');
   const [newKeywordMatchMode, setNewKeywordMatchMode] = useState<KeywordMatchMode>('includes');
@@ -166,6 +369,7 @@ export default function GlobalSettings() {
   const [proxySaving, setProxySaving] = useState(false);
   const [proxySaved, setProxySaved] = useState(false);
   const [showTelegramSetup, setShowTelegramSetup] = useState(false);
+  const [telegramError, setTelegramError] = useState('');
 
   // --- Trading (Slotshark) ---
   const [tradingEnabled, setTradingEnabled] = useState(false);
@@ -195,17 +399,35 @@ export default function GlobalSettings() {
   const [newWalletAddress, setNewWalletAddress] = useState('');
   const [walletError, setWalletError] = useState('');
 
+  // --- Sniping ---
+  // Only the global on/off switch lives here (under Trading); the configs
+  // themselves are managed on the Snipes feed page.
+  const [snipingEnabled, setSnipingEnabled] = useState(false);
+
   useEffect(() => {
     fetchGuilds();
     fetchDMChannels();
     fetchConfig();
     fetchMaskedTokens();
+    fetchTelegramAccounts();
     fetchTradingStatus();
-  }, [fetchGuilds, fetchDMChannels, fetchConfig, fetchMaskedTokens, fetchTradingStatus]);
+  }, [fetchGuilds, fetchDMChannels, fetchConfig, fetchMaskedTokens, fetchTelegramAccounts, fetchTradingStatus]);
+
+  useEffect(() => {
+    window.trenchcord?.getAutoUpdate?.().then(({ supported, enabled }) => {
+      setAutoUpdateSupported(supported);
+      setAutoUpdateEnabled(enabled);
+    });
+  }, []);
 
   useEffect(() => {
     if (config) {
       setGlobalUsers(config.globalHighlightedUsers);
+      setDmExcludedUsers(config.dmExcludedUsers ?? []);
+      setTelegramDmsInAllDms(config.telegramDmsInAllDms ?? true);
+      setTgDmExcludedUsers(config.tgDmExcludedUsers ?? []);
+      setDmHiddenConversations(config.dmHiddenConversations ?? []);
+      setTgDmHiddenConversations(config.tgDmHiddenConversations ?? []);
       setContractDetection(config.contractDetection);
       setGuildColors(config.guildColors ?? {});
       setDmColors(config.dmColors ?? {});
@@ -213,14 +435,15 @@ export default function GlobalSettings() {
       setEnabledGuilds(config.enabledGuilds ?? []);
       setEvmAddressColor(config.evmAddressColor ?? '#fee75c');
       setSolAddressColor(config.solAddressColor ?? '#14f195');
-      setOpenInDiscordApp(config.openInDiscordApp ?? false);
-      setOpenInTelegramApp(config.openInTelegramApp ?? false);
+      setOpenInDiscordApp(config.openInDiscordApp ?? true);
+      setOpenInTelegramApp(config.openInTelegramApp ?? true);
       setMessageSounds(config.messageSounds ?? false);
       if (config.soundSettings) {
         setSoundSettings({
           highlight: { ...defaultSoundConfig, ...config.soundSettings.highlight },
           contractAlert: { ...defaultSoundConfig, ...config.soundSettings.contractAlert },
           keywordAlert: { ...defaultSoundConfig, ...config.soundSettings.keywordAlert },
+          premiumAlert: { ...defaultSoundConfig, ...config.soundSettings.premiumAlert },
         });
       }
       setChannelSounds(config.channelSounds ?? {});
@@ -245,12 +468,22 @@ export default function GlobalSettings() {
       setMentionsRoleEnabled(config.mentionsRoleEnabled ?? true);
       setMentionsHereEnabled(config.mentionsHereEnabled ?? false);
       setMentionsEveryoneEnabled(config.mentionsEveryoneEnabled ?? false);
+      setMentionsBotsEnabled(config.mentionsBotsEnabled ?? true);
       setBadgeClickAction(config.badgeClickAction ?? 'discord');
+      setNotificationClickAction(config.notificationClickAction ?? 'trenchcord');
       setChattingEnabled(config.chattingEnabled ?? false);
+      setDmReadSyncEnabled(config.dmReadSyncEnabled ?? false);
       setMessageDisplay(config.messageDisplay ?? 'default');
       setCompactModeAvatars(config.compactModeAvatars ?? true);
+      setCompactModeNameOnce(config.compactModeNameOnce ?? false);
       setRoleColors(config.roleColors ?? true);
       setMobileZoomScale(config.mobileZoomScale ?? 1);
+      setMobileRoomBar(config.mobileRoomBar ?? true);
+      setServerIconBadge(config.serverIconBadge ?? true);
+      setServerIconBadgeMobile(config.serverIconBadgeMobile ?? true);
+      setShowEphemeralMessages(config.showEphemeralMessages ?? true);
+      setFeedHotkeys(config.feedHotkeys ?? {});
+      setFocusHotkey(config.focusHotkey ?? null);
       setSplitLayout(config.splitLayout === 'grid' ? 'grid' : 'row');
       setProxyUrl(config.discordProxyUrl ?? '');
       const t = config.trading;
@@ -272,6 +505,7 @@ export default function GlobalSettings() {
       setTradingOpenSiteOnBuy(t?.openSiteOnBuy ?? false);
       setTradingBuySitePlatform(t?.buySitePlatform ?? 'default');
       setTradingBuySiteUrl(t?.buySiteUrl ?? '');
+      setSnipingEnabled(config.sniping?.enabled ?? false);
     }
   }, [config]);
 
@@ -287,6 +521,11 @@ export default function GlobalSettings() {
 
     return (
       !arraysEqual(globalUsers, config.globalHighlightedUsers) ||
+      !arraysEqual(dmExcludedUsers, config.dmExcludedUsers ?? []) ||
+      telegramDmsInAllDms !== (config.telegramDmsInAllDms ?? true) ||
+      !arraysEqual(tgDmExcludedUsers, config.tgDmExcludedUsers ?? []) ||
+      !arraysEqual(dmHiddenConversations, config.dmHiddenConversations ?? []) ||
+      !arraysEqual(tgDmHiddenConversations, config.tgDmHiddenConversations ?? []) ||
       contractDetection !== config.contractDetection ||
       !objEqual(guildColors, config.guildColors ?? {}) ||
       !objEqual(dmColors, config.dmColors ?? {}) ||
@@ -294,14 +533,15 @@ export default function GlobalSettings() {
       !arraysEqual(enabledGuilds, config.enabledGuilds ?? []) ||
       evmAddressColor !== (config.evmAddressColor ?? '#fee75c') ||
       solAddressColor !== (config.solAddressColor ?? '#14f195') ||
-      openInDiscordApp !== (config.openInDiscordApp ?? false) ||
-      openInTelegramApp !== (config.openInTelegramApp ?? false) ||
+      openInDiscordApp !== (config.openInDiscordApp ?? true) ||
+      openInTelegramApp !== (config.openInTelegramApp ?? true) ||
       messageSounds !== (config.messageSounds ?? false) ||
       JSON.stringify(soundSettings) !== JSON.stringify(config.soundSettings ? {
         highlight: { ...defaultSoundConfig, ...config.soundSettings.highlight },
         contractAlert: { ...defaultSoundConfig, ...config.soundSettings.contractAlert },
         keywordAlert: { ...defaultSoundConfig, ...config.soundSettings.keywordAlert },
-      } : { highlight: defaultSoundConfig, contractAlert: defaultSoundConfig, keywordAlert: defaultSoundConfig }) ||
+        premiumAlert: { ...defaultSoundConfig, ...config.soundSettings.premiumAlert },
+      } : { highlight: defaultSoundConfig, contractAlert: defaultSoundConfig, keywordAlert: defaultSoundConfig, premiumAlert: defaultSoundConfig }) ||
       JSON.stringify(channelSounds) !== JSON.stringify(config.channelSounds ?? {}) ||
       pushoverEnabled !== (config.pushover?.enabled ?? false) ||
       pushoverAppToken !== (config.pushover?.appToken ?? '') ||
@@ -324,12 +564,26 @@ export default function GlobalSettings() {
       mentionsRoleEnabled !== (config.mentionsRoleEnabled ?? true) ||
       mentionsHereEnabled !== (config.mentionsHereEnabled ?? false) ||
       mentionsEveryoneEnabled !== (config.mentionsEveryoneEnabled ?? false) ||
+      mentionsBotsEnabled !== (config.mentionsBotsEnabled ?? true) ||
       badgeClickAction !== (config.badgeClickAction ?? 'discord') ||
+      notificationClickAction !== (config.notificationClickAction ?? 'trenchcord') ||
       chattingEnabled !== (config.chattingEnabled ?? false) ||
+      dmReadSyncEnabled !== (config.dmReadSyncEnabled ?? false) ||
       messageDisplay !== (config.messageDisplay ?? 'default') ||
       compactModeAvatars !== (config.compactModeAvatars ?? true) ||
+      compactModeNameOnce !== (config.compactModeNameOnce ?? false) ||
       roleColors !== (config.roleColors ?? true) ||
       mobileZoomScale !== (config.mobileZoomScale ?? 1) ||
+      mobileRoomBar !== (config.mobileRoomBar ?? true) ||
+      serverIconBadge !== (config.serverIconBadge ?? true) ||
+      serverIconBadgeMobile !== (config.serverIconBadgeMobile ?? true) ||
+      showEphemeralMessages !== (config.showEphemeralMessages ?? true) ||
+      // Per-key compare: the backend stores unset hotkeys as null, the local
+      // draft may omit them entirely — both mean "no hotkey".
+      (['contracts', 'mentions', 'keywords', 'snipes', 'alerts'] as const).some(
+        (k) => (feedHotkeys[k] ?? null) !== (config.feedHotkeys?.[k] ?? null),
+      ) ||
+      focusHotkey !== (config.focusHotkey ?? null) ||
       splitLayout !== (config.splitLayout === 'grid' ? 'grid' : 'row') ||
       tradingEnabled !== (config.trading?.enabled ?? false) ||
       tradingRegion !== (config.trading?.region ?? 'us') ||
@@ -350,12 +604,13 @@ export default function GlobalSettings() {
       tradingShowContractPill !== (config.trading?.showContractPill ?? true) ||
       tradingOpenSiteOnBuy !== (config.trading?.openSiteOnBuy ?? false) ||
       tradingBuySitePlatform !== (config.trading?.buySitePlatform ?? 'default') ||
-      tradingBuySiteUrl !== (config.trading?.buySiteUrl ?? '')
+      tradingBuySiteUrl !== (config.trading?.buySiteUrl ?? '') ||
+      snipingEnabled !== (config.sniping?.enabled ?? false)
     );
-  }, [config, globalUsers, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, evmAddressColor, solAddressColor,
+  }, [config, snipingEnabled, globalUsers, dmExcludedUsers, telegramDmsInAllDms, tgDmExcludedUsers, dmHiddenConversations, tgDmHiddenConversations, contractDetection, guildColors, dmColors, telegramColors, enabledGuilds, evmAddressColor, solAddressColor,
     openInDiscordApp, openInTelegramApp, messageSounds, soundSettings, channelSounds, pushoverEnabled, pushoverAppToken, pushoverUserKey, pushoverPriority, pushoverSound, pushoverTriggers, pushoverFilters,
     solPlatform, evmPlatform, customSolUrl, customEvmUrl, contractClickAction, showFullContractAddress, autoOpenHighlightedContracts,
-    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, badgeClickAction, chattingEnabled, messageDisplay, compactModeAvatars, roleColors, mobileZoomScale, splitLayout,
+    globalKeywordPatterns, keywordAlertsEnabled, desktopNotifications, mentionsUserEnabled, mentionsRoleEnabled, mentionsHereEnabled, mentionsEveryoneEnabled, mentionsBotsEnabled, badgeClickAction, notificationClickAction, chattingEnabled, dmReadSyncEnabled, messageDisplay, compactModeAvatars, compactModeNameOnce, roleColors, mobileZoomScale, mobileRoomBar, serverIconBadge, serverIconBadgeMobile, showEphemeralMessages, splitLayout, feedHotkeys, focusHotkey,
     tradingEnabled, tradingRegion, tradingWallets, tradingActiveWalletIds, tradingWalletAmountMode, tradingPresets, tradingSlippage, tradingTip, tradingPriorityFee, tradingAntimev, tradingRequireDoubleClick, tradingButtonSize, tradingButtonBgColor, tradingButtonTextColor,
     tradingShowContractPill, tradingOpenSiteOnBuy, tradingBuySitePlatform, tradingBuySiteUrl]);
 
@@ -381,6 +636,11 @@ export default function GlobalSettings() {
     try {
       await updateConfig({
         globalHighlightedUsers: globalUsers,
+        dmExcludedUsers,
+        telegramDmsInAllDms,
+        tgDmExcludedUsers,
+        dmHiddenConversations,
+        tgDmHiddenConversations,
         contractDetection,
         guildColors,
         dmColors,
@@ -405,13 +665,23 @@ export default function GlobalSettings() {
         mentionsRoleEnabled,
         mentionsHereEnabled,
         mentionsEveryoneEnabled,
+        mentionsBotsEnabled,
         badgeClickAction,
+        notificationClickAction,
         chattingEnabled,
+        dmReadSyncEnabled,
         messageDisplay,
         compactModeAvatars,
+        compactModeNameOnce,
         roleColors,
         mobileZoomScale,
+        mobileRoomBar,
+        serverIconBadge,
+        serverIconBadgeMobile,
+        showEphemeralMessages,
         splitLayout,
+        feedHotkeys,
+        focusHotkey,
         trading: {
           enabled: tradingEnabled,
           region: tradingRegion,
@@ -432,6 +702,9 @@ export default function GlobalSettings() {
           buySitePlatform: tradingBuySitePlatform,
           buySiteUrl: tradingBuySiteUrl.trim(),
         },
+        // Configs are managed on the Snipes page and save straight to the
+        // store; settings only owns the global on/off switch.
+        ...(config ? { sniping: { ...(config.sniping ?? EMPTY_SNIPING), enabled: snipingEnabled } } : {}),
       });
     } finally {
       setSaving(false);
@@ -488,27 +761,33 @@ export default function GlobalSettings() {
     }
   };
 
-  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Same decision as the TokenSetup import: on iOS a backup's Telegram session
+  // must not silently race the computer's copy (AUTH_KEY_DUPLICATED kills
+  // both). Holds the parsed file while the user picks fresh-login vs move.
+  const [pendingImportData, setPendingImportData] = useState<Record<string, any> | null>(null);
+
+  const runImport = async (data: Record<string, any>, telegramSessions?: 'reuse' | 'fresh') => {
     setImporting(true);
     setImportError(null);
     setImportSuccess(false);
     try {
-      const text = await file.text();
-      const data = JSON.parse(text);
-      if (!data.config || typeof data.config !== 'object') {
-        throw new Error('Invalid settings file: missing config.');
+      let config = data.config;
+      if (telegramSessions === 'fresh') {
+        config = { ...config };
+        delete config.telegramSessions;
       }
       const res = await authedFetch(`${apiBase}/config/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config: data.config, rooms: data.rooms }),
+        body: JSON.stringify({ config, rooms: data.rooms }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'Import failed');
       }
+      // The import replaced every room under a fresh id; re-apply the server's
+      // (remapped) pane layout instead of keeping panes aimed at dead ids.
+      rehydrateLayout();
       await fetchConfig();
       await fetchRooms();
       setImportSuccess(true);
@@ -517,6 +796,29 @@ export default function GlobalSettings() {
       setImportError(err.message || 'Failed to import settings.');
     } finally {
       setImporting(false);
+      setPendingImportData(null);
+    }
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportError(null);
+    setImportSuccess(false);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data.config || typeof data.config !== 'object') {
+        throw new Error('Invalid settings file: missing config.');
+      }
+      if (isIOSApp() && backupTelegramSessionCount(data) > 0) {
+        setPendingImportData(data);
+        return;
+      }
+      await runImport(data);
+    } catch (err: any) {
+      setImportError(err.message || 'Failed to import settings.');
+    } finally {
       if (importFileRef.current) importFileRef.current.value = '';
     }
   };
@@ -533,6 +835,54 @@ export default function GlobalSettings() {
     setGlobalUsers((prev) => prev.filter((u) => u !== userId));
   };
 
+  const addDmExcludedUser = () => {
+    const entry = newDmExcludedUser.trim();
+    if (entry && !dmExcludedUsers.includes(entry)) {
+      setDmExcludedUsers((prev) => [...prev, entry]);
+      setNewDmExcludedUser('');
+    }
+  };
+
+  const removeDmExcludedUser = (entry: string) => {
+    setDmExcludedUsers((prev) => prev.filter((u) => u !== entry));
+  };
+
+  const addTgDmExcludedUser = () => {
+    const entry = newTgDmExcludedUser.trim();
+    if (entry && !tgDmExcludedUsers.includes(entry)) {
+      setTgDmExcludedUsers((prev) => [...prev, entry]);
+      setNewTgDmExcludedUser('');
+    }
+  };
+
+  const removeTgDmExcludedUser = (entry: string) => {
+    setTgDmExcludedUsers((prev) => prev.filter((u) => u !== entry));
+  };
+
+  const addDmHiddenConversation = () => {
+    const entry = newDmHiddenConversation.trim();
+    if (entry && !dmHiddenConversations.includes(entry)) {
+      setDmHiddenConversations((prev) => [...prev, entry]);
+      setNewDmHiddenConversation('');
+    }
+  };
+
+  const removeDmHiddenConversation = (entry: string) => {
+    setDmHiddenConversations((prev) => prev.filter((u) => u !== entry));
+  };
+
+  const addTgDmHiddenConversation = () => {
+    const entry = newTgDmHiddenConversation.trim();
+    if (entry && !tgDmHiddenConversations.includes(entry)) {
+      setTgDmHiddenConversations((prev) => [...prev, entry]);
+      setNewTgDmHiddenConversation('');
+    }
+  };
+
+  const removeTgDmHiddenConversation = (entry: string) => {
+    setTgDmHiddenConversations((prev) => prev.filter((u) => u !== entry));
+  };
+
   const addKeyword = () => {
     if (!newKeywordPattern.trim()) return;
     setGlobalKeywordPatterns((prev) => [
@@ -543,57 +893,200 @@ export default function GlobalSettings() {
     setNewKeywordLabel('');
   };
 
+  // Enabling desktop notifications needs the browser's permission first; used
+  // by the Sounds section and the search results' inline switch alike.
+  const handleDesktopNotificationsToggle = async (v: boolean) => {
+    if (v) {
+      const perm = await requestNotificationPermission();
+      if (perm === 'denied') {
+        alert('Notification permission was denied. Please allow notifications for this site in your browser settings, then try again.');
+        return;
+      }
+    }
+    setDesktopNotifications(v);
+  };
+
+  // Wires each SearchToggleKey to its draft state so search results can flip
+  // the setting in place. Changes go through the same Save bar as the section
+  // controls — except autoUpdate, which applies immediately over IPC.
+  const searchToggles: Record<SearchToggleKey, { value: boolean; onChange: (v: boolean) => void }> = {
+    roleColors: { value: roleColors, onChange: setRoleColors },
+    // The card edits the desktop or phone variant depending on layout; mirror that.
+    serverIconBadge: compact
+      ? { value: serverIconBadgeMobile, onChange: setServerIconBadgeMobile }
+      : { value: serverIconBadge, onChange: setServerIconBadge },
+    showEphemeralMessages: { value: showEphemeralMessages, onChange: setShowEphemeralMessages },
+    contractDetection: { value: contractDetection, onChange: setContractDetection },
+    openInDiscordApp: { value: openInDiscordApp, onChange: setOpenInDiscordApp },
+    openInTelegramApp: { value: openInTelegramApp, onChange: setOpenInTelegramApp },
+    chattingEnabled: { value: chattingEnabled, onChange: setChattingEnabled },
+    dmReadSyncEnabled: { value: dmReadSyncEnabled, onChange: setDmReadSyncEnabled },
+    autoUpdate: {
+      value: autoUpdateEnabled,
+      onChange: (v) => {
+        setAutoUpdateEnabled(v);
+        window.trenchcord?.setAutoUpdate?.(v);
+      },
+    },
+    mobileRoomBar: { value: mobileRoomBar, onChange: setMobileRoomBar },
+    telegramDmsInAllDms: { value: telegramDmsInAllDms, onChange: setTelegramDmsInAllDms },
+    showFullContractAddress: { value: showFullContractAddress, onChange: setShowFullContractAddress },
+    autoOpenHighlightedContracts: { value: autoOpenHighlightedContracts, onChange: setAutoOpenHighlightedContracts },
+    tradingEnabled: { value: tradingEnabled, onChange: setTradingEnabled },
+    snipingEnabled: { value: snipingEnabled, onChange: setSnipingEnabled },
+    tradingAntimev: { value: tradingAntimev, onChange: setTradingAntimev },
+    tradingShowContractPill: { value: tradingShowContractPill, onChange: setTradingShowContractPill },
+    tradingOpenSiteOnBuy: { value: tradingOpenSiteOnBuy, onChange: setTradingOpenSiteOnBuy },
+    tradingRequireDoubleClick: { value: tradingRequireDoubleClick, onChange: setTradingRequireDoubleClick },
+    desktopNotifications: { value: desktopNotifications, onChange: handleDesktopNotificationsToggle },
+    messageSounds: { value: messageSounds, onChange: setMessageSounds },
+    pushoverEnabled: { value: pushoverEnabled, onChange: setPushoverEnabled },
+    keywordAlertsEnabled: { value: keywordAlertsEnabled, onChange: setKeywordAlertsEnabled },
+    mentionsUser: { value: mentionsUserEnabled, onChange: setMentionsUserEnabled },
+    mentionsRole: { value: mentionsRoleEnabled, onChange: setMentionsRoleEnabled },
+    mentionsHere: { value: mentionsHereEnabled, onChange: setMentionsHereEnabled },
+    mentionsEveryone: { value: mentionsEveryoneEnabled, onChange: setMentionsEveryoneEnabled },
+    mentionsBots: { value: mentionsBotsEnabled, onChange: setMentionsBotsEnabled },
+  };
+
+  const trimmedSettingsSearch = settingsSearch.trim();
+  const settingsSearchResults = useMemo(() => {
+    const q = trimmedSettingsSearch.toLowerCase();
+    if (!q) return [];
+    const ctx: SettingSearchCtx = {
+      compact,
+      ios: isIOSApp(),
+      hosted: isHostedMode,
+      focusShortcut: !!window.trenchcord?.setFocusShortcut,
+      autoUpdate: autoUpdateSupported,
+    };
+    const words = q.split(/\s+/);
+    return SETTINGS_INDEX.filter((entry) => {
+      if (entry.when && !entry.when(ctx)) return false;
+      const hay = `${entry.label} ${entry.keywords ?? ''} ${SECTION_META.get(entry.section)?.label ?? ''}`.toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+  }, [trimmedSettingsSearch, compact, autoUpdateSupported]);
+
+  const jumpToSetting = (entry: SettingSearchEntry) => {
+    setSettingsSearch('');
+    setMobileRoot(false);
+    setSection(entry.section);
+    setPendingSettingAnchor(entry.anchor ?? entry.label);
+  };
+
+  useEffect(() => {
+    if (!pendingSettingAnchor) return;
+    // Give the section a frame to render before looking for the heading.
+    const timer = window.setTimeout(() => {
+      setPendingSettingAnchor(null);
+      const root = settingsContentRef.current;
+      if (!root) return;
+      const heading = Array.from(root.querySelectorAll('h3, h4'))
+        .find((h) => h.textContent?.trim() === pendingSettingAnchor);
+      if (!heading) return;
+      // Most settings live in a bg-discord-sidebar card; section-level h3
+      // headings stand alone, so those flash the heading itself.
+      const card = heading.closest<HTMLElement>('.bg-discord-sidebar');
+      const target = card ?? (heading as HTMLElement);
+      target.scrollIntoView({ behavior: 'smooth', block: card ? 'center' : 'start' });
+      target.classList.add('setting-flash');
+      window.setTimeout(() => target.classList.remove('setting-flash'), 1600);
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [pendingSettingAnchor]);
+
+  const settingsSearchList = (
+    <div className="space-y-1.5">
+      {settingsSearchResults.length === 0 ? (
+        <p className="text-sm text-discord-text-muted text-center py-8">
+          No settings match “{trimmedSettingsSearch}”.
+        </p>
+      ) : (
+        settingsSearchResults.map((entry) => {
+          const meta = SECTION_META.get(entry.section);
+          const Icon = meta?.icon ?? Settings2;
+          const toggle = entry.toggle ? searchToggles[entry.toggle] : null;
+          return (
+            <div
+              key={`${entry.section}:${entry.label}`}
+              onClick={() => jumpToSetting(entry)}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-discord-sidebar hover:bg-discord-hover/70 cursor-pointer transition-colors"
+            >
+              <Icon size={16} className="text-discord-text-muted shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs sm:text-sm compact:text-sm text-white truncate">{entry.label}</p>
+                <p className="text-[11px] text-discord-text-muted truncate">{meta?.label}</p>
+              </div>
+              {toggle ? (
+                <div
+                  className={`w-10 h-5 compact:w-11 compact:h-6 rounded-full transition-colors relative shrink-0 ${toggle.value ? 'bg-discord-green' : 'bg-discord-input'}`}
+                  onClick={(e) => { e.stopPropagation(); toggle.onChange(!toggle.value); }}
+                  title={toggle.value ? 'Turn off' : 'Turn on'}
+                >
+                  <div className={`absolute top-0.5 w-4 h-4 compact:w-5 compact:h-5 bg-white rounded-full transition-transform ${toggle.value ? 'translate-x-5 compact:translate-x-[22px]' : 'translate-x-0.5'}`} />
+                </div>
+              ) : (
+                <ChevronRight size={16} className="text-discord-channel-icon shrink-0" />
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+
   const Toggle = ({ value, onChange, label }: { value: boolean; onChange: (v: boolean) => void; label: string }) => (
     <label className="flex items-start gap-3 cursor-pointer">
       <div
-        className={`w-10 h-5 rounded-full transition-colors relative shrink-0 mt-0.5 ${value ? 'bg-discord-green' : 'bg-discord-input'}`}
+        className={`w-10 h-5 compact:w-11 compact:h-6 rounded-full transition-colors relative shrink-0 mt-0.5 ${value ? 'bg-discord-green' : 'bg-discord-input'}`}
         onClick={() => onChange(!value)}
       >
-        <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${value ? 'translate-x-5' : 'translate-x-0.5'}`} />
+        <div className={`absolute top-0.5 w-4 h-4 compact:w-5 compact:h-5 bg-white rounded-full transition-transform ${value ? 'translate-x-5 compact:translate-x-[22px]' : 'translate-x-0.5'}`} />
       </div>
-      <span className="text-xs sm:text-sm text-discord-text leading-snug">{label}</span>
+      <span className="text-xs sm:text-sm compact:text-sm text-discord-text leading-snug">{label}</span>
     </label>
   );
 
   return (
     <div className="flex-1 flex flex-col md:flex-row h-full w-full min-w-0 bg-discord-dark">
-      {/* Mobile header + horizontal nav */}
+      {/* Mobile header: drill-down navigation bar */}
       <div className="md:hidden shrink-0 border-b border-discord-divider bg-discord-sidebar/50">
-        <div className="px-3 pt-3 pb-2 flex items-center gap-2">
-          {sidebarCollapsed && (
-            <button
-              onClick={toggleSidebar}
-              className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-white transition-colors"
-              title="Show sidebar"
-            >
-              <PanelLeftOpen size={16} />
-            </button>
+        <div className="px-2 py-2 flex items-center gap-1 min-h-[48px]">
+          {mobileRoot ? (
+            <>
+              {/* One back button, and it returns to where the user came from:
+                  the open drawer. A separate sidebar toggle next to a back
+                  arrow reads as two competing ways out. */}
+              <button
+                onClick={() => guardNavigation(() => {
+                  // The drawer should look like it never left — no slide-in.
+                  requestInstantDrawerOpen();
+                  setActiveView('chat');
+                  setSidebarCollapsed(false);
+                })}
+                className="p-2 rounded text-discord-text-muted hover:text-white transition-colors"
+                title="Back"
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <h2 className="text-base font-semibold text-white pl-1">Settings</h2>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setMobileRoot(true)}
+                className="p-2 -mr-1 rounded text-discord-text-muted hover:text-white transition-colors flex items-center"
+                title="All settings"
+              >
+                <ChevronLeft size={22} />
+              </button>
+              <h2 className="text-base font-semibold text-white">
+                {SECTIONS.find((s) => s.id === section)?.label ?? 'Settings'}
+              </h2>
+            </>
           )}
-          <button
-            onClick={() => guardNavigation(() => setActiveView('chat'))}
-            className="p-1 rounded hover:bg-discord-hover/50 text-discord-text-muted hover:text-white transition-colors"
-            title="Back to chat"
-          >
-            <ArrowLeft size={16} />
-          </button>
-          <h2 className="text-sm font-semibold text-white uppercase tracking-wide">Settings</h2>
         </div>
-        <nav className="flex overflow-x-auto px-2 pb-2 gap-1 scrollbar-none">
-          {SECTIONS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => { if (id !== section) setSection(id); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${
-                section === id
-                  ? 'bg-discord-blurple text-white'
-                  : 'bg-discord-dark/50 text-discord-text-muted hover:text-discord-text'
-              }`}
-            >
-              <Icon size={13} className="shrink-0" />
-              {label}
-            </button>
-          ))}
-        </nav>
       </div>
 
       {/* Desktop sidebar nav */}
@@ -617,11 +1110,37 @@ export default function GlobalSettings() {
           </button>
           <h2 className="text-sm font-semibold text-white uppercase tracking-wide">Settings</h2>
         </div>
+        <div className="px-2 pb-2">
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-discord-text-muted pointer-events-none" />
+            <input
+              type="text"
+              value={settingsSearch}
+              onChange={(e) => setSettingsSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Escape') setSettingsSearch(''); }}
+              placeholder="Search settings"
+              className="w-full bg-discord-dark rounded pl-8 pr-7 py-1.5 text-sm text-discord-text outline-none focus:ring-1 focus:ring-discord-blurple placeholder:text-discord-text-muted"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
+            />
+            {settingsSearch && (
+              <button
+                onClick={() => setSettingsSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-discord-text-muted hover:text-white transition-colors"
+                title="Clear search"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+        </div>
         <nav className="flex-1 px-2 pb-4 space-y-0.5">
           {SECTIONS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => { if (id !== section) setSection(id); }}
+              onClick={() => { setSettingsSearch(''); if (id !== section) setSection(id); }}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded text-sm text-left transition-colors ${
                 section === id
                   ? 'bg-discord-hover text-white'
@@ -637,14 +1156,65 @@ export default function GlobalSettings() {
 
       {/* Content area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <div className="flex-1 overflow-y-auto overflow-x-hidden">
-          <div className="w-full max-w-2xl mx-auto px-3 sm:px-6 md:px-8 py-3 sm:py-6 space-y-5 sm:space-y-6" data-form-type="other" data-lpignore="true" data-1p-ignore>
+        <div ref={settingsContentRef} className="flex-1 overflow-y-auto overflow-x-hidden">
+          {compact && mobileRoot ? (
+            /* iOS-Settings-style root list: one inset-grouped card of rows. */
+            <nav className="px-4 py-4 animate-page-back">
+              <div className="relative mb-3">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-discord-text-muted pointer-events-none" />
+                <input
+                  type="text"
+                  value={settingsSearch}
+                  onChange={(e) => setSettingsSearch(e.target.value)}
+                  placeholder="Search settings"
+                  className="w-full bg-discord-sidebar rounded-lg pl-9 pr-9 py-2.5 text-[15px] text-discord-text outline-none placeholder:text-discord-text-muted"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
+                />
+                {settingsSearch && (
+                  <button
+                    onClick={() => setSettingsSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-discord-text-muted"
+                    title="Clear search"
+                  >
+                    <X size={15} />
+                  </button>
+                )}
+              </div>
+              {trimmedSettingsSearch ? settingsSearchList : (
+              <div className="rounded-xl overflow-hidden bg-discord-sidebar divide-y divide-discord-darker/40">
+                {SECTIONS.map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    onClick={() => { setSection(id); setMobileRoot(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left"
+                  >
+                    <span className="w-8 h-8 rounded-lg bg-discord-dark flex items-center justify-center text-discord-text-muted shrink-0">
+                      <Icon size={17} />
+                    </span>
+                    <span className="flex-1 text-[15px] text-discord-text truncate">{label}</span>
+                    <ChevronRight size={17} className="text-discord-channel-icon shrink-0" />
+                  </button>
+                ))}
+              </div>
+              )}
+            </nav>
+          ) : trimmedSettingsSearch ? (
+            /* Search results page (desktop) — replaces the section until the
+               query is cleared or a result is clicked. */
+            <div className="w-full max-w-2xl mx-auto px-3 sm:px-6 md:px-8 py-3 sm:py-6">
+              {settingsSearchList}
+            </div>
+          ) : (
+          <div key={section} className={`w-full max-w-2xl mx-auto px-3 sm:px-6 md:px-8 py-3 sm:py-6 space-y-5 sm:space-y-6${compact ? ' animate-page-in' : ''}`} data-form-type="other" data-lpignore="true" data-1p-ignore>
 
             {section === 'tokens' && (
               <>
                 <div>
                   <h3 className="text-base sm:text-base sm:text-lg font-semibold text-white mb-1">Discord Tokens</h3>
-                  <p className="text-xs sm:text-sm text-discord-text-muted mb-3 sm:mb-4">
+                  <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3 sm:mb-4">
                     Manage your Discord authentication tokens. Multiple tokens allow monitoring across different accounts.
                   </p>
 
@@ -657,7 +1227,7 @@ export default function GlobalSettings() {
                         >
                           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
                             <Key size={14} className={`shrink-0 ${t.invalid ? 'text-discord-red' : 'text-discord-blurple'}`} />
-                            <span className="text-xs sm:text-sm text-discord-text font-mono tracking-wider truncate">{t.masked}</span>
+                            <span className="text-xs sm:text-sm compact:text-sm text-discord-text font-mono tracking-wider truncate">{t.masked}</span>
                             <span className={`text-[10px] px-1 sm:px-1.5 py-0.5 rounded font-semibold shrink-0 ${t.invalid ? 'bg-discord-red/20 text-discord-red' : 'bg-discord-blurple/20 text-discord-blurple'}`}>
                               #{t.index + 1}
                             </span>
@@ -703,7 +1273,7 @@ export default function GlobalSettings() {
                         }}
                         placeholder="Paste Discord token..."
                         name="trenchcord-token-field"
-                        className="w-full bg-discord-sidebar border-none rounded px-2 sm:px-3 py-2 pr-8 sm:pr-9 text-xs sm:text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple font-mono"
+                        className="w-full bg-discord-sidebar border-none rounded px-2 sm:px-3 py-2 pr-8 sm:pr-9 text-xs sm:text-sm compact:text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple font-mono"
                         disabled={addingToken}
                         autoComplete="one-time-code"
                         data-1p-ignore
@@ -740,11 +1310,12 @@ export default function GlobalSettings() {
                   )}
                 </div>
 
-                {/* Connection / Proxy (desktop only) */}
-                {!isHostedMode && (
+                {/* Connection / Proxy (desktop only — the iOS backend cannot
+                    load undici, so a proxy can never work there) */}
+                {!isHostedMode && !isIOSApp() && (
                   <div className="mt-8 pt-6 border-t border-discord-divider">
                     <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Connection</h3>
-                    <p className="text-xs sm:text-sm text-discord-text-muted mb-3 sm:mb-4">
+                    <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3 sm:mb-4">
                       If Discord won't load on a VPN, route the connection through an HTTP/HTTPS proxy.
                       Leave blank to connect directly. SOCKS proxies are not supported.
                     </p>
@@ -754,7 +1325,7 @@ export default function GlobalSettings() {
                         value={proxyUrl}
                         onChange={(e) => { setProxyUrl(e.target.value); setProxySaved(false); }}
                         placeholder="http://user:pass@host:port"
-                        className="flex-1 bg-discord-sidebar border-none rounded px-2 sm:px-3 py-2 text-xs sm:text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple font-mono"
+                        className="flex-1 bg-discord-sidebar border-none rounded px-2 sm:px-3 py-2 text-xs sm:text-sm compact:text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple font-mono"
                         disabled={proxySaving}
                         spellCheck={false}
                         autoComplete="off"
@@ -784,50 +1355,90 @@ export default function GlobalSettings() {
                 {/* Telegram Section */}
                 <div className="mt-8 pt-6 border-t border-discord-divider">
                   <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Telegram</h3>
-                  <p className="text-xs sm:text-sm text-discord-text-muted mb-3 sm:mb-4">
-                    Connect your Telegram account to combine TG chats with Discord channels in your rooms.
+                  <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3 sm:mb-4">
+                    Connect Telegram accounts to combine TG chats with Discord channels in your rooms.
+                    Multiple accounts let you follow chats across different logins.
                   </p>
 
-                  {authStatus?.telegramConnected ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2 px-3 py-2.5 bg-discord-sidebar rounded">
-                        <div className="w-2 h-2 rounded-full bg-discord-green" />
-                        <span className="text-sm text-discord-text">Telegram connected</span>
-                      </div>
-                      <button
-                        onClick={async () => {
-                          await telegramDisconnect();
-                        }}
-                        className="px-4 py-2 bg-discord-red/20 hover:bg-discord-red/30 text-discord-red rounded text-sm font-medium transition-colors"
-                      >
-                        Disconnect Telegram
-                      </button>
-                    </div>
-                  ) : authStatus?.telegramConfigured ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2 px-3 py-2.5 bg-discord-sidebar rounded">
-                        <div className="w-2 h-2 rounded-full bg-yellow-500" />
-                        <span className="text-sm text-discord-text">Telegram configured but not connected</span>
-                      </div>
-                      <button
-                        onClick={async () => {
-                          await telegramDisconnect();
-                        }}
-                        className="px-4 py-2 bg-discord-red/20 hover:bg-discord-red/30 text-discord-red rounded text-sm font-medium transition-colors"
-                      >
-                        Remove Telegram Session
-                      </button>
-                    </div>
-                  ) : (
-                    <div>
-                      {showTelegramSetup ? (
-                        <TelegramSetup onClose={() => setShowTelegramSetup(false)} />
-                      ) : (
-                        <button
-                          onClick={() => setShowTelegramSetup(true)}
-                          className="px-4 py-2.5 bg-[#2AABEE] hover:bg-[#229ED9] rounded text-sm font-medium text-white transition-colors"
+                  {telegramAccounts.length > 0 && (
+                    <div className="space-y-1.5 mb-4">
+                      {telegramAccounts.map((account) => (
+                        <div
+                          key={account.index}
+                          className={`flex items-center justify-between gap-2 px-2 sm:px-3 py-2 sm:py-2.5 rounded ${account.invalid ? 'bg-discord-red/10 ring-1 ring-discord-red/40' : 'bg-discord-sidebar'}`}
                         >
-                          Connect Telegram
+                          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                            <div
+                              className={`w-2 h-2 rounded-full shrink-0 ${
+                                account.invalid ? 'bg-discord-red' : account.connected ? 'bg-discord-green' : 'bg-yellow-500'
+                              }`}
+                            />
+                            <span className="text-xs sm:text-sm compact:text-sm text-discord-text truncate">
+                              {account.username
+                                ? `@${account.username}`
+                                : account.firstName || `Account #${account.index + 1}`}
+                            </span>
+                            <span className={`text-[10px] px-1 sm:px-1.5 py-0.5 rounded font-semibold shrink-0 ${account.invalid ? 'bg-discord-red/20 text-discord-red' : 'bg-[#2AABEE]/20 text-[#2AABEE]'}`}>
+                              #{account.index + 1}
+                            </span>
+                            {account.invalid && (
+                              <span className="flex items-center gap-1 text-[10px] px-1 sm:px-1.5 py-0.5 rounded bg-discord-red/20 text-discord-red font-semibold shrink-0">
+                                <AlertTriangle size={11} />
+                                Session expired
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={async () => {
+                              const label = account.username ? `@${account.username}` : `account #${account.index + 1}`;
+                              if (!confirm(`Remove ${label}? This logs the session out of Telegram.`)) return;
+                              setTelegramError('');
+                              const result = await telegramRemoveAccount(account.index);
+                              if (!result.success) setTelegramError(result.error ?? 'Failed to remove account');
+                            }}
+                            className="text-discord-text-muted hover:text-discord-red shrink-0"
+                            title="Remove account"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {telegramAccounts.length === 0 && !showTelegramSetup && (
+                    <p className="text-sm text-discord-text-muted text-center py-3 mb-4 bg-discord-sidebar/50 rounded">
+                      No Telegram accounts connected.
+                    </p>
+                  )}
+
+                  {telegramError && (
+                    <p className="text-xs text-discord-red mb-2">{telegramError}</p>
+                  )}
+
+                  {showTelegramSetup ? (
+                    <TelegramSetup
+                      hasApiCredentials={!!authStatus?.telegramHasApiCredentials}
+                      onClose={() => { setShowTelegramSetup(false); fetchTelegramAccounts(); }}
+                    />
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => { setTelegramError(''); setShowTelegramSetup(true); }}
+                        className="px-4 py-2.5 bg-[#2AABEE] hover:bg-[#229ED9] rounded text-sm font-medium text-white transition-colors"
+                      >
+                        {telegramAccounts.length > 0 ? 'Add Account' : 'Connect Telegram'}
+                      </button>
+                      {telegramAccounts.length > 0 && (
+                        <button
+                          onClick={async () => {
+                            if (!confirm('Disconnect all Telegram accounts? This logs them out of Telegram.')) return;
+                            setTelegramError('');
+                            const result = await telegramDisconnect();
+                            if (!result.success) setTelegramError(result.error ?? 'Failed to disconnect');
+                          }}
+                          className="px-4 py-2.5 bg-discord-red/20 hover:bg-discord-red/30 text-discord-red rounded text-sm font-medium transition-colors"
+                        >
+                          Disconnect All
                         </button>
                       )}
                     </div>
@@ -843,8 +1454,8 @@ export default function GlobalSettings() {
 
                   <div className="space-y-5">
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Message Display</h4>
-                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Message Display</h4>
+                      <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
                         Choose how messages are displayed in chat.
                       </p>
                       <div className="flex gap-1.5">
@@ -870,19 +1481,31 @@ export default function GlobalSettings() {
                         {messageDisplay === 'compact' && 'Compact mode shows timestamps on the left with inline usernames for a denser chat view.'}
                       </p>
                       {messageDisplay === 'compact' && (
-                        <div className="mt-3 pt-3 border-t border-discord-divider">
+                        <div className="mt-3 pt-3 border-t border-discord-divider space-y-3">
                           <Toggle
                             value={compactModeAvatars}
                             onChange={setCompactModeAvatars}
                             label="Show avatars in compact mode"
                           />
+                          <div>
+                            <Toggle
+                              value={compactModeNameOnce}
+                              onChange={setCompactModeNameOnce}
+                              label="Show name only once per group"
+                            />
+                            <p className="text-[11px] text-discord-text-muted mt-1">
+                              When someone sends several messages in a row, only the first one shows their name — the rest show just the message.
+                            </p>
+                          </div>
                         </div>
                       )}
                     </div>
 
+                    {/* Split panes don't exist on iOS (single pane, see ChatView) */}
+                    {!isIOSApp() && (
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Split Screen Layout</h4>
-                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Split Screen Layout</h4>
+                      <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
                         Use the <strong className="text-discord-text">+</strong> button in a chat header to add up to 4 panes, and the layout button next to Help in the sidebar to resize and drag them. Choose how panes are arranged:
                       </p>
                       <div className="flex flex-wrap gap-1.5">
@@ -904,9 +1527,10 @@ export default function GlobalSettings() {
                         ))}
                       </div>
                     </div>
+                    )}
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Role Colors</h4>
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Role Colors</h4>
                       <Toggle
                         value={roleColors}
                         onChange={setRoleColors}
@@ -915,8 +1539,163 @@ export default function GlobalSettings() {
                     </div>
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Mobile Zoom Scale</h4>
-                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Source Badge</h4>
+                      <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
+                        The badge next to each message showing where it came from. Show the server's icon
+                        with the channel name instead of "Server / #channel" to keep it short. Hover the badge
+                        to see the server name.{' '}
+                        {compact
+                          ? 'This setting only applies on the phone layout.'
+                          : 'This setting only applies on the desktop layout — phones have their own (on by default).'}
+                      </p>
+                      <Toggle
+                        value={compact ? serverIconBadgeMobile : serverIconBadge}
+                        onChange={compact ? setServerIconBadgeMobile : setServerIconBadge}
+                        label="Show the server icon instead of the server name"
+                      />
+                    </div>
+
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Ephemeral Messages</h4>
+                      <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
+                        Bot replies Discord shows only to your account (e.g. "This message is too old
+                        to delete."). When shown, they carry an "Only you can see this" note like in
+                        Discord; turn this off to keep them out of your feeds entirely.
+                      </p>
+                      <Toggle
+                        value={showEphemeralMessages}
+                        onChange={setShowEphemeralMessages}
+                        label="Show ephemeral messages"
+                      />
+                    </div>
+
+                    {/* Feed hotkeys — physical-keyboard feature, hidden on phones */}
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg compact:hidden">
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Feed Hotkeys</h4>
+                      <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
+                        Press the key anywhere (outside a text field) to jump to that feed — same as room
+                        hotkeys, which are set per room and win if a key is used for both.
+                      </p>
+                      <div className="space-y-2">
+                        {([
+                          ['contracts', 'Contract Feed'],
+                          ['mentions', 'Mentions'],
+                          ['keywords', 'Keywords'],
+                          ['snipes', 'Snipes'],
+                          ['alerts', 'Alerts'],
+                          ['dms', 'All DMs'],
+                        ] as [keyof FeedHotkeys, string][])
+                          .map(([feed, label]) => (
+                          <div key={feed} className="flex items-center gap-3">
+                            <span className="text-sm text-discord-text w-28 shrink-0">{label}</span>
+                            <input
+                              type="text"
+                              readOnly
+                              value={feedHotkeys[feed] ? feedHotkeys[feed]!.toUpperCase() : ''}
+                              onKeyDown={(e) => {
+                                e.preventDefault();
+                                if (['Backspace', 'Delete', 'Escape'].includes(e.key)) {
+                                  setFeedHotkeys((p) => ({ ...p, [feed]: null }));
+                                  return;
+                                }
+                                if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                                  const key = e.key.toLowerCase();
+                                  setFeedHotkeys((p) => ({ ...p, [feed]: key }));
+                                }
+                              }}
+                              placeholder="Press a key"
+                              className="w-24 bg-discord-dark border-none rounded px-3 py-1.5 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple text-center cursor-pointer caret-transparent"
+                            />
+                            {feedHotkeys[feed] && (
+                              <button
+                                onClick={() => setFeedHotkeys((p) => ({ ...p, [feed]: null }))}
+                                className="text-[11px] text-discord-text-muted hover:text-white"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* OS-wide bring-to-front shortcut — desktop app only */}
+                    {window.trenchcord?.setFocusShortcut && (
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg compact:hidden">
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Bring Trenchcord To Front</h4>
+                      <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
+                        A system-wide shortcut that works even while another app (like Discord) is
+                        focused — press it to jump straight back to Trenchcord. Must include
+                        Ctrl/Cmd or Alt so it doesn't clash with normal typing.
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="text"
+                          readOnly
+                          value={focusHotkey ? focusHotkey.replace('CommandOrControl', 'Ctrl/Cmd') : ''}
+                          onKeyDown={(e) => {
+                            e.preventDefault();
+                            if (['Backspace', 'Delete', 'Escape'].includes(e.key)) { setFocusHotkey(null); return; }
+                            // Ignore presses of a modifier alone.
+                            if (['Control', 'Meta', 'Alt', 'Shift'].includes(e.key)) return;
+                            const mods: string[] = [];
+                            if (e.ctrlKey || e.metaKey) mods.push('CommandOrControl');
+                            if (e.altKey) mods.push('Alt');
+                            if (e.shiftKey) mods.push('Shift');
+                            // Require a real modifier: a bare key (or Shift+key) registered
+                            // globally would swallow normal typing in every app.
+                            if (!mods.includes('CommandOrControl') && !mods.includes('Alt')) return;
+                            const isFn = /^F([1-9]|1[0-9]|2[0-4])$/.test(e.key);
+                            if (e.key.length !== 1 && !isFn) return;
+                            const keyName = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+                            setFocusHotkey([...mods, keyName].join('+'));
+                          }}
+                          placeholder="Press a key combo"
+                          className="w-48 bg-discord-dark border-none rounded px-3 py-1.5 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple text-center cursor-pointer caret-transparent"
+                        />
+                        {focusHotkey && (
+                          <button
+                            onClick={() => setFocusHotkey(null)}
+                            className="text-[11px] text-discord-text-muted hover:text-white"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-discord-text-muted mt-1.5">
+                        Example: Ctrl/Cmd+Shift+T. Takes effect after saving.
+                      </p>
+                    </div>
+                    )}
+
+                    {/* Auto-update opt-in — Windows desktop app only */}
+                    {autoUpdateSupported && (
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Automatic Updates</h4>
+                      <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
+                        Off by default. When on, the app checks GitHub Releases at launch, downloads new
+                        versions, and asks before installing. When off, it never contacts GitHub for
+                        updates — nothing is downloaded without you turning this on. You can always
+                        update manually from the releases page. Applies immediately, no save needed.
+                      </p>
+                      <Toggle
+                        value={autoUpdateEnabled}
+                        onChange={(v) => {
+                          setAutoUpdateEnabled(v);
+                          window.trenchcord?.setAutoUpdate?.(v);
+                        }}
+                        label="Automatically download updates (Windows)"
+                      />
+                    </div>
+                    )}
+
+                    {/* The iOS app has real phone sizing (compact mode) and CSS
+                        zoom would break its safe-area handling, so the setting
+                        is web-mobile only there. */}
+                    {!isIOSApp() && (
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Mobile Zoom Scale</h4>
+                      <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
                         Adjust the zoom level on mobile devices to make everything larger or smaller.
                       </p>
                       <div className="flex items-center gap-3">
@@ -942,9 +1721,26 @@ export default function GlobalSettings() {
                         <span className="text-[10px] text-discord-text-muted">150%</span>
                       </div>
                     </div>
+                    )}
+
+                    {/* iOS app only — the bar itself never renders elsewhere */}
+                    {isIOSApp() && (
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Bottom Room Bar</h4>
+                      <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
+                        Quick room switcher along the bottom of the chat, so you don't need the
+                        sidebar for every hop. Only appears with two or more rooms.
+                      </p>
+                      <Toggle
+                        value={mobileRoomBar}
+                        onChange={setMobileRoomBar}
+                        label="Show the room bar"
+                      />
+                    </div>
+                    )}
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Contract Detection</h4>
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Contract Detection</h4>
                       <Toggle
                         value={contractDetection}
                         onChange={setContractDetection}
@@ -953,7 +1749,7 @@ export default function GlobalSettings() {
                     </div>
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Open in Discord App</h4>
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Open in Discord App</h4>
                       <Toggle
                         value={openInDiscordApp}
                         onChange={setOpenInDiscordApp}
@@ -962,7 +1758,7 @@ export default function GlobalSettings() {
                     </div>
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Open in Telegram App</h4>
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Open in Telegram App</h4>
                       <Toggle
                         value={openInTelegramApp}
                         onChange={setOpenInTelegramApp}
@@ -971,8 +1767,8 @@ export default function GlobalSettings() {
                     </div>
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Badge Click Action</h4>
-                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Badge Click Action</h4>
+                      <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
                         What happens when you click a keyword match or contract badge on a message.
                       </p>
                       <div className="flex flex-wrap gap-1.5">
@@ -1002,7 +1798,37 @@ export default function GlobalSettings() {
                     </div>
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Chat / Send Messages</h4>
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Notification Click</h4>
+                      <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
+                        Where clicking a notification toast (highlighted user, keyword, contract) takes you.
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {([
+                          ['trenchcord', 'In Trenchcord'],
+                          ['discord', 'In Discord / Telegram'],
+                        ] as [NotificationClickAction, string][]).map(([action, label]) => (
+                          <button
+                            key={action}
+                            onClick={() => setNotificationClickAction(action)}
+                            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                              notificationClickAction === action
+                                ? 'bg-discord-blurple text-white'
+                                : 'bg-discord-dark text-discord-text-muted hover:text-discord-text'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-discord-text-muted mt-2">
+                        {notificationClickAction === 'trenchcord'
+                          ? 'Jumps to the room the message arrived in.'
+                          : 'Opens the original message in Discord (or Telegram), honoring the open-in-app toggles above.'}
+                      </p>
+                    </div>
+
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Chat / Send Messages</h4>
                       <Toggle
                         value={chattingEnabled}
                         onChange={setChattingEnabled}
@@ -1017,6 +1843,21 @@ export default function GlobalSettings() {
                         </p>
                       </div>
                     </div>
+
+                    <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">DM Read Sync</h4>
+                      <Toggle
+                        value={dmReadSyncEnabled}
+                        onChange={setDmReadSyncEnabled}
+                        label="Mark DMs read in Discord when viewed here"
+                      />
+                      <p className="text-[11px] sm:text-xs text-discord-text-muted mt-2 leading-relaxed">
+                        Viewing a DM in Trenchcord marks that conversation read on your Discord account, so the
+                        unread badge clears in the official Discord apps too — the same request the Discord client
+                        sends when you open a chat. Only the DM you're looking at is ever marked, never servers or
+                        channels. Badges syncing the other way (reading in Discord clears Trenchcord) is always on.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </>
@@ -1029,8 +1870,8 @@ export default function GlobalSettings() {
 
                   <div className="space-y-5">
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Contract Click Action</h4>
-                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Contract Click Action</h4>
+                      <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
                         What happens when you click a contract address in chat.
                       </p>
                       <div className="flex flex-wrap gap-1.5">
@@ -1055,7 +1896,7 @@ export default function GlobalSettings() {
                     </div>
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Display Full Contract Address</h4>
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Display Full Contract Address</h4>
                       <Toggle
                         value={showFullContractAddress}
                         onChange={setShowFullContractAddress}
@@ -1064,15 +1905,15 @@ export default function GlobalSettings() {
                     </div>
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Trading Platform</h4>
-                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Trading Platform</h4>
+                      <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
                         Choose which trading platform opens when you click a contract address.
                       </p>
                       <div className="space-y-3">
                         <div className="px-3 py-2.5 bg-discord-dark rounded">
                           <label className="text-[11px] text-discord-text-muted mb-1.5 block">SOL Platform</label>
                           <div className="flex flex-wrap gap-1.5">
-                            {(['axiom', 'padre', 'bloom', 'gmgn', 'custom'] as SolPlatform[]).map((p) => (
+                            {(['axiom', 'padre', 'bloom', 'gmgn', 'fomo', 'custom'] as SolPlatform[]).map((p) => (
                               <button
                                 key={p}
                                 onClick={() => setSolPlatform(p)}
@@ -1082,7 +1923,7 @@ export default function GlobalSettings() {
                                     : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'
                                 }`}
                               >
-                                {p === 'axiom' ? 'Axiom' : p === 'padre' ? 'Padre' : p === 'bloom' ? 'Bloom' : p === 'gmgn' ? 'GMGN' : 'Custom'}
+                                {p === 'axiom' ? 'Axiom' : p === 'padre' ? 'Padre' : p === 'bloom' ? 'Bloom' : p === 'gmgn' ? 'GMGN' : p === 'fomo' ? 'Fomo' : 'Custom'}
                               </button>
                             ))}
                           </div>
@@ -1099,7 +1940,7 @@ export default function GlobalSettings() {
                         <div className="px-3 py-2.5 bg-discord-dark rounded">
                           <label className="text-[11px] text-discord-text-muted mb-1.5 block">EVM Platform</label>
                           <div className="flex flex-wrap gap-1.5">
-                            {(['gmgn', 'bloom', 'custom'] as EvmPlatform[]).map((p) => (
+                            {(['gmgn', 'bloom', 'fomo', 'custom'] as EvmPlatform[]).map((p) => (
                               <button
                                 key={p}
                                 onClick={() => setEvmPlatform(p)}
@@ -1109,7 +1950,7 @@ export default function GlobalSettings() {
                                     : 'bg-discord-sidebar text-discord-text-muted hover:text-discord-text'
                                 }`}
                               >
-                                {p === 'gmgn' ? 'GMGN' : p === 'bloom' ? 'Bloom' : 'Custom'}
+                                {p === 'gmgn' ? 'GMGN' : p === 'bloom' ? 'Bloom' : p === 'fomo' ? 'Fomo' : 'Custom'}
                               </button>
                             ))}
                           </div>
@@ -1127,7 +1968,7 @@ export default function GlobalSettings() {
                     </div>
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Auto-Open Highlighted Contracts</h4>
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Auto-Open Highlighted Contracts</h4>
                       <Toggle
                         value={autoOpenHighlightedContracts}
                         onChange={setAutoOpenHighlightedContracts}
@@ -1136,8 +1977,8 @@ export default function GlobalSettings() {
                     </div>
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Address Colors</h4>
-                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Address Colors</h4>
+                      <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
                         Customize highlight colors for detected contract addresses by chain type.
                       </p>
                       <div className="space-y-3">
@@ -1148,7 +1989,7 @@ export default function GlobalSettings() {
                             defaultColor="#fee75c"
                             showTextInput
                           />
-                          <span className="text-xs sm:text-sm text-discord-text flex-1">EVM (0x...)</span>
+                          <span className="text-xs sm:text-sm compact:text-sm text-discord-text flex-1">EVM (0x...)</span>
                           {evmAddressColor !== '#fee75c' && (
                             <button onClick={() => setEvmAddressColor('#fee75c')} className="text-[11px] text-discord-text-muted hover:text-white shrink-0">Reset</button>
                           )}
@@ -1160,7 +2001,7 @@ export default function GlobalSettings() {
                             defaultColor="#14f195"
                             showTextInput
                           />
-                          <span className="text-xs sm:text-sm text-discord-text flex-1">SOL</span>
+                          <span className="text-xs sm:text-sm compact:text-sm text-discord-text flex-1">SOL</span>
                           {solAddressColor !== '#14f195' && (
                             <button onClick={() => setSolAddressColor('#14f195')} className="text-[11px] text-discord-text-muted hover:text-white shrink-0">Reset</button>
                           )}
@@ -1175,20 +2016,20 @@ export default function GlobalSettings() {
             {section === 'trading' && (
               <div>
                 <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Trading</h3>
-                <p className="text-xs sm:text-sm text-discord-text-muted mb-4">
+                <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-4">
                   Buy Solana tokens straight from a message, without leaving Trenchcord.
                 </p>
 
                 {isHostedMode ? (
                   <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
                     <p className="text-sm text-discord-text">
-                      Trading is only available in the desktop app, where your API token stays on your own machine.
+                      Trading is only available in the desktop and iPhone apps, where your API token stays on your own device.
                     </p>
                   </div>
                 ) : (
                 <div className="space-y-4">
                   <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-2">
-                    <h4 className="text-xs sm:text-sm font-semibold text-white">About Slotshark</h4>
+                    <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white">About Slotshark</h4>
                     <p className="text-sm text-discord-text leading-snug">
                       Trenchcord routes buys through{' '}
                       <a href="https://slotshark.xyz/?ref=1q79wsl2" target="_blank" rel="noopener noreferrer" className="text-discord-text-link hover:underline">Slotshark</a>
@@ -1224,7 +2065,7 @@ export default function GlobalSettings() {
                         <span className="shrink-0 w-5 h-5 rounded-full bg-discord-blurple text-white text-xs font-bold flex items-center justify-center mt-0.5">2</span>
                         <p className="text-sm text-discord-text">
                           Create or import a wallet under{' '}
-                          <a href="https://slotshark.xyz/dashboard?tab=wallets" target="_blank" rel="noopener noreferrer" className="text-discord-text-link hover:underline">Wallet Management</a>
+                          <a href="https://slotshark.xyz/dashboard?tab=wallets&ref=1q79wsl2" target="_blank" rel="noopener noreferrer" className="text-discord-text-link hover:underline">Wallet Management</a>
                           , and fund it.
                         </p>
                       </div>
@@ -1245,7 +2086,7 @@ export default function GlobalSettings() {
                   </details>
 
                   <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                    <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Enable Trading</h4>
+                    <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Enable Trading</h4>
                     <Toggle
                       value={tradingEnabled}
                       onChange={setTradingEnabled}
@@ -1264,8 +2105,37 @@ export default function GlobalSettings() {
                     )}
                   </div>
 
+                  <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
+                    <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Enable Sniping</h4>
+                    <Toggle
+                      value={snipingEnabled}
+                      onChange={setSnipingEnabled}
+                      label="Auto-buy contracts matching your snipe configs"
+                    />
+                    <p className="text-xs text-discord-yellow mt-2 flex items-start gap-1.5">
+                      <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                      <span>
+                        Snipes execute real swaps with real SOL, without a click or a confirmation. There is no undo.
+                      </span>
+                    </p>
+                    {snipingEnabled && (!tradingEnabled || !tradingStatus?.configured) && (
+                      <p className="text-xs text-discord-yellow mt-2 flex items-start gap-1.5">
+                        <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                        <span>
+                          Sniping stays inactive until Trading is enabled
+                          {!tradingStatus?.configured ? ' and a Slotshark API token is saved' : ''} above.
+                        </span>
+                      </p>
+                    )}
+                    <p className="text-[11px] text-discord-text-muted mt-2">
+                      Snipe configs are created and managed on the <span className="text-discord-text">Snipes</span> feed
+                      page (sidebar). Snipes buy through Slotshark using the token, region, and wallet-amount mode from
+                      this page.
+                    </p>
+                  </div>
+
                   <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-3">
-                    <h4 className="text-xs sm:text-sm font-semibold text-white">API Token</h4>
+                    <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white">API Token</h4>
                     {tradingStatus?.configured && (
                       <div className="flex items-center gap-2 px-3 py-2 bg-discord-dark rounded">
                         <Key size={14} className="text-discord-text-muted shrink-0" />
@@ -1331,7 +2201,7 @@ export default function GlobalSettings() {
                   </div>
 
                   <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                    <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Server Region</h4>
+                    <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Server Region</h4>
                     <div className="flex gap-2">
                       {([['us', 'US'], ['eu', 'EU']] as [SlotsharkRegion, string][]).map(([region, label]) => (
                         <button
@@ -1353,7 +2223,7 @@ export default function GlobalSettings() {
                   </div>
 
                   <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-3">
-                    <h4 className="text-xs sm:text-sm font-semibold text-white">Wallets</h4>
+                    <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white">Wallets</h4>
                     {tradingWallets.length === 0 && (
                       <p className="text-xs text-discord-text-muted">
                         No wallets yet. Add the public key of a wallet you created in the Slotshark dashboard.
@@ -1513,7 +2383,7 @@ export default function GlobalSettings() {
                   </div>
 
                   <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                    <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Buy Amounts (SOL)</h4>
+                    <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Buy Amounts (SOL)</h4>
                     <div className="grid grid-cols-5 gap-2">
                       {tradingPresets.map((value, i) => (
                         <input
@@ -1538,7 +2408,7 @@ export default function GlobalSettings() {
                   </div>
 
                   <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-4">
-                    <h4 className="text-xs sm:text-sm font-semibold text-white">Execution</h4>
+                    <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white">Execution</h4>
 
                     <div>
                       <label className="text-[11px] text-discord-text-muted mb-1 block">Slippage</label>
@@ -1613,7 +2483,7 @@ export default function GlobalSettings() {
                   </div>
 
                   <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-4">
-                    <h4 className="text-xs sm:text-sm font-semibold text-white">Button Appearance</h4>
+                    <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white">Button Appearance</h4>
 
                     <div>
                       <label className="text-[11px] text-discord-text-muted mb-1 block">Size</label>
@@ -1642,7 +2512,7 @@ export default function GlobalSettings() {
                           defaultColor={DEFAULT_TRADE_BG}
                           showTextInput
                         />
-                        <span className="text-xs sm:text-sm text-discord-text flex-1">Button background</span>
+                        <span className="text-xs sm:text-sm compact:text-sm text-discord-text flex-1">Button background</span>
                         {tradingButtonBgColor !== DEFAULT_TRADE_BG && (
                           <button onClick={() => setTradingButtonBgColor(DEFAULT_TRADE_BG)} className="text-[11px] text-discord-text-muted hover:text-white shrink-0">Reset</button>
                         )}
@@ -1654,7 +2524,7 @@ export default function GlobalSettings() {
                           defaultColor={DEFAULT_TRADE_FG}
                           showTextInput
                         />
-                        <span className="text-xs sm:text-sm text-discord-text flex-1">Button text</span>
+                        <span className="text-xs sm:text-sm compact:text-sm text-discord-text flex-1">Button text</span>
                         {tradingButtonTextColor !== DEFAULT_TRADE_FG && (
                           <button onClick={() => setTradingButtonTextColor(DEFAULT_TRADE_FG)} className="text-[11px] text-discord-text-muted hover:text-white shrink-0">Reset</button>
                         )}
@@ -1699,7 +2569,7 @@ export default function GlobalSettings() {
                   </div>
 
                   <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                    <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Open Chart on Buy</h4>
+                    <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Open Chart on Buy</h4>
                     <Toggle
                       value={tradingOpenSiteOnBuy}
                       onChange={setTradingOpenSiteOnBuy}
@@ -1715,7 +2585,7 @@ export default function GlobalSettings() {
                       <div className="mt-3 px-3 py-2.5 bg-discord-dark rounded">
                         <label className="text-[11px] text-discord-text-muted mb-1.5 block">Site</label>
                         <div className="flex flex-wrap gap-1.5">
-                          {(['default', 'axiom', 'padre', 'bloom', 'gmgn', 'custom'] as BuySitePlatform[]).map((p) => (
+                          {(['default', 'axiom', 'padre', 'bloom', 'gmgn', 'fomo', 'custom'] as BuySitePlatform[]).map((p) => (
                             <button
                               key={p}
                               onClick={() => setTradingBuySitePlatform(p)}
@@ -1727,7 +2597,7 @@ export default function GlobalSettings() {
                             >
                               {p === 'default'
                                 ? 'Same as contract links'
-                                : p === 'axiom' ? 'Axiom' : p === 'padre' ? 'Padre' : p === 'bloom' ? 'Bloom' : p === 'gmgn' ? 'GMGN' : 'Custom'}
+                                : p === 'axiom' ? 'Axiom' : p === 'padre' ? 'Padre' : p === 'bloom' ? 'Bloom' : p === 'gmgn' ? 'GMGN' : p === 'fomo' ? 'Fomo' : 'Custom'}
                             </button>
                           ))}
                         </div>
@@ -1752,7 +2622,7 @@ export default function GlobalSettings() {
                   </div>
 
                   <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                    <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Misclick Protection</h4>
+                    <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Misclick Protection</h4>
                     <Toggle
                       value={tradingRequireDoubleClick}
                       onChange={setTradingRequireDoubleClick}
@@ -1775,19 +2645,10 @@ export default function GlobalSettings() {
 
                   <div className="space-y-5">
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Desktop Notifications</h4>
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Desktop Notifications</h4>
                       <Toggle
                         value={desktopNotifications}
-                        onChange={async (v) => {
-                          if (v) {
-                            const perm = await requestNotificationPermission();
-                            if (perm === 'denied') {
-                              alert('Notification permission was denied. Please allow notifications for this site in your browser settings, then try again.');
-                              return;
-                            }
-                          }
-                          setDesktopNotifications(v);
-                        }}
+                        onChange={handleDesktopNotificationsToggle}
                         label="Show browser notifications for highlighted users and keyword matches (when tab is not focused)"
                       />
                     </div>
@@ -1830,6 +2691,7 @@ export default function GlobalSettings() {
                             ['highlight', 'Highlighted User'],
                             ['contractAlert', 'Contract Alert'],
                             ['keywordAlert', 'Keyword Match'],
+                            ['premiumAlert', 'Cloud Alert (price / X / Telegram)'],
                           ] as [SoundType, string][]).map(([type, label]) => {
                             const sc = soundSettings[type];
                             return (
@@ -1837,7 +2699,7 @@ export default function GlobalSettings() {
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-1.5 sm:gap-2">
                                     <Volume2 size={14} className="text-discord-text-muted shrink-0" />
-                                    <span className="text-xs sm:text-sm text-discord-text font-medium">{label}</span>
+                                    <span className="text-xs sm:text-sm compact:text-sm text-discord-text font-medium">{label}</span>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <button
@@ -1986,7 +2848,7 @@ export default function GlobalSettings() {
                     </div>
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Channel Sounds</h4>
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Channel Sounds</h4>
                       <p className="text-xs text-discord-text-muted mb-3">
                         Play a notification sound for every message in specific channels, even when no highlight or keyword matches.
                       </p>
@@ -2128,7 +2990,7 @@ export default function GlobalSettings() {
                                         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
                                           <Volume2 size={14} className="text-discord-text-muted shrink-0" />
                                           {isTg && <Send size={12} className="text-[#2AABEE] shrink-0" />}
-                                          <span className="text-xs sm:text-sm text-discord-text font-medium truncate">{label}</span>
+                                          <span className="text-xs sm:text-sm compact:text-sm text-discord-text font-medium truncate">{label}</span>
                                           {isTg
                                             ? <span className="text-[10px] text-[#2AABEE] hidden sm:inline">Telegram</span>
                                             : chInfo?.guildName && <span className="text-[10px] text-discord-text-muted hidden sm:inline">{chInfo.guildName}</span>
@@ -2338,7 +3200,31 @@ export default function GlobalSettings() {
                         <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg space-y-3">
                           <h4 className="text-sm font-semibold text-white">Credentials</h4>
                           <div className="px-3 py-2 bg-discord-dark rounded">
-                            <label className="text-[11px] text-discord-text-muted mb-1 block">Application API Token</label>
+                            <div className="relative flex items-center gap-1.5 mb-1">
+                              <label className="text-[11px] text-discord-text-muted block">Application API Token</label>
+                              <button
+                                onClick={() => setAppTokenHelpOpen((v) => !v)}
+                                className={`transition-colors ${appTokenHelpOpen ? 'text-white' : 'text-discord-text-muted hover:text-white'}`}
+                                title="What is this?"
+                              >
+                                <HelpCircle size={12} />
+                              </button>
+                              {appTokenHelpOpen && (
+                                <div className="absolute left-0 top-5 z-20 w-72 max-w-[80vw] p-3 bg-discord-darker rounded-md shadow-[0_8px_16px_rgba(0,0,0,0.24)] text-xs text-discord-text space-y-1.5">
+                                  <p>
+                                    The token identifying your own Pushover application — Trenchcord sends its
+                                    notifications through it.
+                                  </p>
+                                  <p>
+                                    Create a new application at{' '}
+                                    <a href="https://pushover.net/apps/build" target="_blank" rel="noopener noreferrer" className="text-discord-text-link hover:underline">pushover.net/apps/build</a>
+                                    {' '}— name it anything (e.g. "Trenchcord"), type: Application, description and
+                                    URL are optional. Then copy the <span className="font-semibold text-white">API Token/Key</span>{' '}
+                                    from your newly created application page and paste it here.
+                                  </p>
+                                </div>
+                              )}
+                            </div>
                             <input
                               type="password"
                               value={pushoverAppToken}
@@ -2574,7 +3460,7 @@ export default function GlobalSettings() {
 
                   <div className="space-y-5">
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Keyword Alerts</h4>
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Keyword Alerts</h4>
                       <Toggle
                         value={keywordAlertsEnabled}
                         onChange={setKeywordAlertsEnabled}
@@ -2583,7 +3469,7 @@ export default function GlobalSettings() {
                     </div>
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Global Keyword Patterns</h4>
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Global Keyword Patterns</h4>
                       <p className="text-sm text-discord-text-muted mb-2">
                         Add patterns to match against messages globally. Use <strong className="text-discord-text">Contains</strong> for substring matches, <strong className="text-discord-text">Exact</strong> for whole-word matches, or <strong className="text-discord-text">Regex</strong> for advanced patterns.
                       </p>
@@ -2658,7 +3544,7 @@ export default function GlobalSettings() {
                               {kw.matchMode === 'exact' && (
                                 <span className="text-[10px] px-1 sm:px-1.5 py-0.5 rounded bg-discord-blurple/20 text-discord-blurple font-semibold shrink-0">EXACT</span>
                               )}
-                              <span className="text-xs sm:text-sm text-discord-text font-mono truncate">{kw.pattern}</span>
+                              <span className="text-xs sm:text-sm compact:text-sm text-discord-text font-mono truncate">{kw.pattern}</span>
                               {kw.label && (
                                 <span className="text-[10px] sm:text-[11px] text-discord-text-muted hidden sm:inline">({kw.label})</span>
                               )}
@@ -2707,6 +3593,239 @@ export default function GlobalSettings() {
                       onChange={setMentionsEveryoneEnabled}
                       label="@everyone — when @everyone is used in a channel you monitor"
                     />
+                    <Toggle
+                      value={mentionsBotsEnabled}
+                      onChange={setMentionsBotsEnabled}
+                      label="Mentions from bots — include pings and replies from bots (Rick etc.); turn off to keep them out of Mentions"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {section === 'dms' && (
+              <>
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Direct Messages</h3>
+                  <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3 sm:mb-4">
+                    Every incoming Discord and Telegram DM collects into the <strong className="text-discord-text">All DMs</strong> feed.
+                    Exclude users to keep their DMs out of the feed.
+                    Their individual DM conversations stay available in the sidebar either way —
+                    to remove a conversation from the sidebar too, use <strong className="text-discord-text">Hidden Conversations</strong> below.
+                  </p>
+
+                  <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg mb-4 sm:mb-6">
+                    <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Telegram DMs</h4>
+                    <Toggle
+                      value={telegramDmsInAllDms}
+                      onChange={setTelegramDmsInAllDms}
+                      label="Collect Telegram DMs into the All DMs feed"
+                    />
+                    <p className="text-[11px] sm:text-xs text-discord-text-muted mt-2 leading-relaxed">
+                      Turn off to keep every Telegram DM out of All DMs — for keeping only specific
+                      senders out (spammy bots), leave this on and exclude them below instead. Individual
+                      Telegram conversations in the sidebar are unaffected.
+                    </p>
+                  </div>
+
+                  <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-1">Discord Excluded Users</h4>
+                  <p className="text-[11px] sm:text-xs text-discord-text-muted mb-2 sm:mb-3">
+                    By Discord user ID or username.
+                  </p>
+                  <div className="flex gap-2 mb-4">
+                    <input
+                      type="text"
+                      value={newDmExcludedUser}
+                      onChange={(e) => setNewDmExcludedUser(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addDmExcludedUser()}
+                      placeholder="User ID or username"
+                      className="flex-1 bg-discord-sidebar border-none rounded px-3 py-2 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple"
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
+                    />
+                    <button
+                      onClick={addDmExcludedUser}
+                      className="px-3 py-2 bg-discord-blurple hover:bg-discord-blurple-hover rounded text-sm text-white transition-colors"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
+                  <div className="space-y-1 mb-4 sm:mb-6">
+                    {dmExcludedUsers.length === 0 && (
+                      <p className="text-sm text-discord-text-muted text-center py-4">
+                        No excluded users — every Discord DM lands in All DMs.
+                      </p>
+                    )}
+                    {dmExcludedUsers.map((entry) => (
+                      <div key={entry} className="flex items-center justify-between gap-2 px-2 sm:px-3 py-2 bg-discord-sidebar rounded">
+                        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                          <span className="text-xs sm:text-sm compact:text-sm text-discord-text font-mono truncate">{entry}</span>
+                          {userNameMap.has(entry) && (
+                            <span className="text-[10px] sm:text-[11px] text-discord-text-muted shrink-0">{userNameMap.get(entry)}</span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => removeDmExcludedUser(entry)}
+                          className="text-discord-text-muted hover:text-discord-red shrink-0"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-1">Telegram Excluded Users</h4>
+                  <p className="text-[11px] sm:text-xs text-discord-text-muted mb-2 sm:mb-3">
+                    By Telegram user ID or @username.
+                  </p>
+                  <div className="flex gap-2 mb-4">
+                    <input
+                      type="text"
+                      value={newTgDmExcludedUser}
+                      onChange={(e) => setNewTgDmExcludedUser(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addTgDmExcludedUser()}
+                      placeholder="User ID or @username"
+                      className="flex-1 bg-discord-sidebar border-none rounded px-3 py-2 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple"
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
+                    />
+                    <button
+                      onClick={addTgDmExcludedUser}
+                      className="px-3 py-2 bg-discord-blurple hover:bg-discord-blurple-hover rounded text-sm text-white transition-colors"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
+                  <div className="space-y-1 mb-4 sm:mb-6">
+                    {tgDmExcludedUsers.length === 0 && (
+                      <p className="text-sm text-discord-text-muted text-center py-4">
+                        No excluded users — every Telegram DM lands in All DMs.
+                      </p>
+                    )}
+                    {tgDmExcludedUsers.map((entry) => (
+                      <div key={entry} className="flex items-center justify-between gap-2 px-2 sm:px-3 py-2 bg-discord-sidebar rounded">
+                        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                          <span className="text-xs sm:text-sm compact:text-sm text-discord-text font-mono truncate">{entry}</span>
+                          {userNameMap.has(entry) && (
+                            <span className="text-[10px] sm:text-[11px] text-discord-text-muted shrink-0">{userNameMap.get(entry)}</span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => removeTgDmExcludedUser(entry)}
+                          className="text-discord-text-muted hover:text-discord-red shrink-0"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Hidden Conversations</h3>
+                  <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3 sm:mb-4">
+                    Hide an account's DM conversation everywhere: it disappears from the sidebar's{' '}
+                    <strong className="text-discord-text">Direct Messages</strong> and{' '}
+                    <strong className="text-discord-text">Telegram DMs</strong> lists and from All DMs.
+                    A Discord group chat is hidden when any member is listed.
+                  </p>
+
+                  <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-1">Hidden Conversations (Discord)</h4>
+                  <p className="text-[11px] sm:text-xs text-discord-text-muted mb-2 sm:mb-3">
+                    By Discord user ID or username.
+                  </p>
+                  <div className="flex gap-2 mb-4">
+                    <input
+                      type="text"
+                      value={newDmHiddenConversation}
+                      onChange={(e) => setNewDmHiddenConversation(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addDmHiddenConversation()}
+                      placeholder="User ID or username"
+                      className="flex-1 bg-discord-sidebar border-none rounded px-3 py-2 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple"
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
+                    />
+                    <button
+                      onClick={addDmHiddenConversation}
+                      className="px-3 py-2 bg-discord-blurple hover:bg-discord-blurple-hover rounded text-sm text-white transition-colors"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
+                  <div className="space-y-1 mb-4 sm:mb-6">
+                    {dmHiddenConversations.length === 0 && (
+                      <p className="text-sm text-discord-text-muted text-center py-4">
+                        No hidden conversations — every Discord DM shows in the sidebar.
+                      </p>
+                    )}
+                    {dmHiddenConversations.map((entry) => (
+                      <div key={entry} className="flex items-center justify-between gap-2 px-2 sm:px-3 py-2 bg-discord-sidebar rounded">
+                        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                          <span className="text-xs sm:text-sm compact:text-sm text-discord-text font-mono truncate">{entry}</span>
+                          {userNameMap.has(entry) && (
+                            <span className="text-[10px] sm:text-[11px] text-discord-text-muted shrink-0">{userNameMap.get(entry)}</span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => removeDmHiddenConversation(entry)}
+                          className="text-discord-text-muted hover:text-discord-red shrink-0"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-1">Hidden Conversations (Telegram)</h4>
+                  <p className="text-[11px] sm:text-xs text-discord-text-muted mb-2 sm:mb-3">
+                    By Telegram user ID or @username.
+                  </p>
+                  <div className="flex gap-2 mb-4">
+                    <input
+                      type="text"
+                      value={newTgDmHiddenConversation}
+                      onChange={(e) => setNewTgDmHiddenConversation(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addTgDmHiddenConversation()}
+                      placeholder="User ID or @username"
+                      className="flex-1 bg-discord-sidebar border-none rounded px-3 py-2 text-sm text-discord-text outline-none focus:ring-2 focus:ring-discord-blurple"
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
+                    />
+                    <button
+                      onClick={addTgDmHiddenConversation}
+                      className="px-3 py-2 bg-discord-blurple hover:bg-discord-blurple-hover rounded text-sm text-white transition-colors"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    {tgDmHiddenConversations.length === 0 && (
+                      <p className="text-sm text-discord-text-muted text-center py-4">
+                        No hidden conversations — every Telegram DM shows in the sidebar.
+                      </p>
+                    )}
+                    {tgDmHiddenConversations.map((entry) => (
+                      <div key={entry} className="flex items-center justify-between gap-2 px-2 sm:px-3 py-2 bg-discord-sidebar rounded">
+                        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                          <span className="text-xs sm:text-sm compact:text-sm text-discord-text font-mono truncate">{entry}</span>
+                          {userNameMap.has(entry) && (
+                            <span className="text-[10px] sm:text-[11px] text-discord-text-muted shrink-0">{userNameMap.get(entry)}</span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => removeTgDmHiddenConversation(entry)}
+                          className="text-discord-text-muted hover:text-discord-red shrink-0"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </>
@@ -2716,7 +3835,7 @@ export default function GlobalSettings() {
               <>
                 <div>
                   <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Global Highlighted Users</h3>
-                  <p className="text-xs sm:text-sm text-discord-text-muted mb-3 sm:mb-4">
+                  <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3 sm:mb-4">
                     These users will be highlighted in all rooms. Use Discord user IDs or Telegram @usernames.
                   </p>
                   <div className="flex gap-2 mb-4">
@@ -2751,7 +3870,7 @@ export default function GlobalSettings() {
                       <div key={uid} className="flex items-center justify-between gap-2 px-2 sm:px-3 py-2 bg-discord-sidebar rounded">
                         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
                           {isTgUser && <Send size={12} className="text-[#2AABEE] shrink-0" />}
-                          <span className={`text-xs sm:text-sm truncate ${isTgUser ? 'text-[#2AABEE]' : 'text-discord-text font-mono'}`}>{uid}</span>
+                          <span className={`text-xs sm:text-sm compact:text-sm truncate ${isTgUser ? 'text-[#2AABEE]' : 'text-discord-text font-mono'}`}>{uid}</span>
                           {!isTgUser && userNameMap.has(uid) && (
                             <span className="text-[10px] sm:text-[11px] text-discord-text-muted shrink-0">{userNameMap.get(uid)}</span>
                           )}
@@ -2766,6 +3885,177 @@ export default function GlobalSettings() {
                       );
                     })}
                   </div>
+                </div>
+
+                {/* Live-managed like hidden users: renames are saved the moment
+                    they're made in chat, so this list edits the config directly
+                    instead of going through the Save bar. */}
+                <div className="mt-8 pt-6 border-t border-discord-divider">
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Custom Renames</h3>
+                  <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3 sm:mb-4">
+                    Names you've given users by clicking their name in chat → Rename User.
+                    They replace the platform name everywhere in Trenchcord. Remove one to go
+                    back to the user's real name.
+                  </p>
+                  <div className="space-y-1">
+                    {Object.keys(config?.customUserNames ?? {}).length === 0 && (
+                      <p className="text-sm text-discord-text-muted text-center py-4">
+                        No custom renames yet.
+                      </p>
+                    )}
+                    {Object.entries(config?.customUserNames ?? {}).map(([uid, name]) => (
+                      <div key={uid} className="flex items-center justify-between gap-2 px-2 sm:px-3 py-2 bg-discord-sidebar rounded">
+                        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                          <span className="text-xs sm:text-sm compact:text-sm text-discord-text truncate">{name}</span>
+                          {userNameMap.has(uid) && userNameMap.get(uid) !== name && (
+                            <span className="text-[10px] sm:text-[11px] text-discord-text-muted shrink-0 truncate">was {userNameMap.get(uid)}</span>
+                          )}
+                          <span className="text-[10px] sm:text-[11px] text-discord-text-muted/60 font-mono shrink-0 hidden sm:inline">{uid}</span>
+                        </div>
+                        <button
+                          onClick={() => renameUser(uid, null)}
+                          className="text-discord-text-muted hover:text-discord-red shrink-0"
+                          title="Remove rename"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {section === 'account' && (
+              <>
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Account & Subscription</h3>
+                  <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3 sm:mb-4">
+                    Link this device to your Trenchcord account and manage your subscription. Your Discord and
+                    Telegram data always stays on this machine.
+                  </p>
+
+                  <div className="bg-discord-sidebar rounded-lg p-4 mb-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm text-white font-medium">
+                          {subscriptionStatus?.linked
+                            ? subscriptionStatus.active
+                              ? 'Subscription active'
+                              : 'Subscription inactive'
+                            : 'Not linked'}
+                        </p>
+                        <p className="text-xs text-discord-text-muted mt-0.5">
+                          {subscriptionStatus?.linked
+                            ? subscriptionStatus.entitledUntil
+                              ? `${subscriptionStatus.active && !subscriptionStatus.inGrace ? 'Active until' : 'Expired'} ${new Date(subscriptionStatus.entitledUntil).toLocaleDateString()}`
+                              : 'No subscription found for this account.'
+                            : 'Link this device to your account to activate your subscription.'}
+                          {subscriptionStatus?.inGrace && ' — running on the offline grace period.'}
+                        </p>
+                      </div>
+                      <BadgeCheck
+                        size={22}
+                        className={subscriptionStatus?.active ? 'text-discord-green shrink-0' : 'text-discord-text-muted shrink-0'}
+                      />
+                    </div>
+                  </div>
+
+                  {!subscriptionStatus?.linked && !cloudPairing && (
+                    <button
+                      onClick={async () => {
+                        setCloudBusy(true);
+                        setCloudError(null);
+                        const result = await startCloudLink();
+                        setCloudBusy(false);
+                        if (result.success && result.code) {
+                          // No auto window.open — the "Open dashboard" link
+                          // below covers it without yanking the user away.
+                          setCloudPairing({ code: result.code, approveUrl: result.approveUrl });
+                        } else {
+                          setCloudError(result.error ?? 'Could not reach the account server.');
+                        }
+                      }}
+                      disabled={cloudBusy}
+                      className="flex items-center gap-2 px-3 py-2 bg-discord-blurple hover:bg-discord-blurple-hover rounded text-sm text-white transition-colors disabled:opacity-50"
+                    >
+                      {cloudBusy ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
+                      Link this device
+                    </button>
+                  )}
+
+                  {!subscriptionStatus?.linked && cloudPairing && (
+                    <div className="bg-discord-sidebar rounded-lg p-4 text-center space-y-2">
+                      <p className="text-xs text-discord-text-muted">
+                        {isIOSApp()
+                          ? 'Open your Trenchcord account on your computer and approve this code:'
+                          : 'Approve this code on the dashboard:'}
+                      </p>
+                      <p className="font-mono text-xl tracking-widest text-white">{cloudPairing.code}</p>
+                      {cloudPairing.approveUrl && (
+                        <a
+                          href={cloudPairing.approveUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 text-sm text-discord-blurple hover:underline"
+                        >
+                          <ExternalLink size={13} /> Open dashboard
+                        </a>
+                      )}
+                      <p className="text-xs text-discord-text-muted flex items-center justify-center gap-1.5">
+                        <Loader2 size={11} className="animate-spin" /> Waiting for approval…
+                      </p>
+                    </div>
+                  )}
+
+                  {subscriptionStatus?.linked && (
+                    <div className="flex flex-wrap gap-2">
+                      {/* Blank on iOS: the backend withholds the URL there so no
+                          route to billing is rendered (backend/src/platform.ts). */}
+                      {subscriptionStatus.dashboardUrl && (
+                        <a
+                          href={subscriptionStatus.dashboardUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-2 px-3 py-2 bg-discord-blurple hover:bg-discord-blurple-hover rounded text-sm text-white transition-colors"
+                        >
+                          <ExternalLink size={14} /> Open web dashboard
+                        </a>
+                      )}
+                      <button
+                        onClick={async () => {
+                          setCloudBusy(true);
+                          await refreshCloudSubscription();
+                          setCloudBusy(false);
+                        }}
+                        disabled={cloudBusy}
+                        className="flex items-center gap-2 px-3 py-2 bg-discord-sidebar hover:bg-white/5 rounded text-sm text-discord-text transition-colors disabled:opacity-50"
+                      >
+                        {cloudBusy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                        Refresh status
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm('Unlink this device from your account? You can re-link it any time.')) {
+                            unlinkCloud();
+                          }
+                        }}
+                        className="flex items-center gap-2 px-3 py-2 bg-discord-sidebar hover:bg-discord-red/20 rounded text-sm text-discord-red transition-colors"
+                      >
+                        <Trash2 size={14} /> Unlink device
+                      </button>
+                    </div>
+                  )}
+
+                  {cloudError && (
+                    <p className="mt-3 flex items-center gap-1.5 text-sm text-discord-red">
+                      <AlertTriangle size={14} /> {cloudError}
+                    </p>
+                  )}
+
+                  {/* The dashboard, in-app: extend subscription, devices,
+                      connected accounts (read-only), payment history. */}
+                  {subscriptionStatus?.linked && !isHostedMode && <AccountPanel />}
                 </div>
               </>
             )}
@@ -2913,6 +4203,23 @@ export default function GlobalSettings() {
                       </div>
                     </details>
 
+                    {/* Role Highlighting & Muting */}
+                    <details className="group bg-discord-sidebar rounded-lg">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
+                        <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        <span className="text-sm font-semibold text-white">Role Highlighting & Muting</span>
+                      </summary>
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 text-sm text-discord-text">
+                        <p className="text-discord-text-muted">Highlight or mute entire Discord server roles instead of managing users one by one.</p>
+                        <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Highlight by Role:</span> <span className="text-discord-text-muted">Right-click a username &gt; "Highlight by Role" and pick one of their roles. Messages from anyone holding that role light up and alert, just like highlighted users. Saved per room.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Custom Colors:</span> <span className="text-discord-text-muted">In room config &gt; Roles tab, give each highlighted role its own color. If a user has their own highlight color, it takes priority over the role color.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Mute by Role:</span> <span className="text-discord-text-muted">Right-click a username &gt; "Mute by Role" to hide messages from everyone holding that role. Applies server-wide, immediately.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Manage:</span> <span className="text-discord-text-muted">Room config &gt; Roles tab lists highlighted and muted roles with a searchable list of all server roles. Muted roles also appear in the hidden-users panel in the channel header.</span></p>
+                        </div>
+                      </div>
+                    </details>
+
                     {/* Keyword Alerts */}
                     <details className="group bg-discord-sidebar rounded-lg">
                       <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
@@ -2968,11 +4275,12 @@ export default function GlobalSettings() {
                       </summary>
                       <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 text-sm text-discord-text">
                         <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
-                          <p className="text-xs text-discord-text-muted">Three independent sound channels with individual volume controls:</p>
+                          <p className="text-xs text-discord-text-muted">Independent sound channels with individual volume controls:</p>
                           <p className="text-xs"><span className="text-discord-blurple font-semibold">Highlighted User:</span> <span className="text-discord-text-muted">Plays when a highlighted user sends a message.</span></p>
                           <p className="text-xs"><span className="text-discord-blurple font-semibold">Contract Alert:</span> <span className="text-discord-text-muted">Plays when a contract address is detected.</span></p>
                           <p className="text-xs"><span className="text-discord-blurple font-semibold">Keyword Match:</span> <span className="text-discord-text-muted">Plays when a keyword pattern matches.</span></p>
-                          <p className="text-xs text-discord-text-muted">Upload custom sounds (MP3, WAV, OGG) or use built-in tones. Configure in Settings &gt; Sounds.</p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Alert Fired:</span> <span className="text-discord-text-muted">Plays when a premium Alert (price / X / Telegram) fires.</span></p>
+                          <p className="text-xs text-discord-text-muted">Upload custom sounds (MP3, WAV, OGG) or use built-in tones, plus optional per-room and per-channel sounds. Configure in Settings &gt; Sounds.</p>
                         </div>
                         <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
                           <p className="font-medium text-white text-xs mb-1">Desktop Notifications</p>
@@ -3023,48 +4331,221 @@ export default function GlobalSettings() {
                         </div>
                       </div>
                     </details>
-                  </div>
 
-                  <div className="mt-8 pt-6 border-t border-discord-divider">
-                    <h4 className="text-sm font-semibold text-white mb-1">Backup & Restore</h4>
-                    <p className="text-xs text-discord-text-muted mb-4">
-                      Export your settings and rooms to a file, or import from a previous backup.{' '}
-                      {isHostedMode
-                        ? 'Sensitive keys (Discord tokens, Telegram credentials, Pushover keys) are never included in exports.'
-                        : 'This includes your Discord tokens and Telegram credentials (API ID, hash, and session), so keep the file somewhere safe. Pushover keys are not included.'}
-                    </p>
-                    <div className="flex flex-wrap gap-3">
-                      <button
-                        onClick={handleExport}
-                        disabled={exporting}
-                        className="flex items-center gap-2 px-4 py-2 bg-discord-blurple hover:bg-discord-blurple-hover disabled:opacity-50 text-white text-sm font-medium rounded transition-colors"
-                      >
-                        <Download size={15} />
-                        {exporting ? 'Exporting...' : 'Export Settings'}
-                      </button>
-                      <button
-                        onClick={() => importFileRef.current?.click()}
-                        disabled={importing}
-                        className="flex items-center gap-2 px-4 py-2 bg-discord-sidebar hover:bg-discord-hover text-discord-text hover:text-white text-sm font-medium rounded border border-discord-divider transition-colors"
-                      >
-                        <Upload size={15} />
-                        {importing ? 'Importing...' : 'Import Settings'}
-                      </button>
-                      <input
-                        ref={importFileRef}
-                        type="file"
-                        accept=".json"
-                        onChange={handleImportFile}
-                        className="hidden"
-                      />
-                    </div>
-                    {importError && (
-                      <p className="mt-3 text-xs text-discord-red">{importError}</p>
-                    )}
-                    {importSuccess && (
-                      <p className="mt-3 text-xs text-discord-green">Settings imported successfully.</p>
-                    )}
+                    {/* Telegram */}
+                    <details className="group bg-discord-sidebar rounded-lg">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
+                        <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        <span className="text-sm font-semibold text-white">Telegram Channels</span>
+                      </summary>
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 text-sm text-discord-text">
+                        <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
+                          <p className="text-xs text-discord-text-muted">Connect a Telegram account in Settings &gt; Tokens and add Telegram channels or groups into your rooms right next to Discord channels — contract detection, highlighting, keywords, sounds, and snipes all work the same on Telegram messages.</p>
+                          <p className="text-xs text-discord-text-muted">Assign colors to Telegram chats in Settings &gt; Guilds so mixed rooms stay readable.</p>
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Split screen */}
+                    <details className="group bg-discord-sidebar rounded-lg">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
+                        <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        <span className="text-sm font-semibold text-white">Split Screen</span>
+                      </summary>
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 text-sm text-discord-text">
+                        <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Add a pane:</span> <span className="text-discord-text-muted">Click the <strong className="text-discord-text">+</strong> in a pane header to open another room side by side — up to 4 panes.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Layout:</span> <span className="text-discord-text-muted">Choose columns or a 2×2 grid in Settings &gt; General.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Lock:</span> <span className="text-discord-text-muted">The lock icon pins a pane to its room, so hotkeys and the switcher only affect the others.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Switch rooms:</span> <span className="text-discord-text-muted">The pane title is a room switcher — feeds (Contracts, Mentions, Keywords, Snipes, Alerts) can be opened in a pane too.</span></p>
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Pop-out windows */}
+                    <details className="group bg-discord-sidebar rounded-lg">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
+                        <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        <span className="text-sm font-semibold text-white">Pop-out Windows</span>
+                      </summary>
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 text-sm text-discord-text">
+                        <div className="px-3 py-2 bg-discord-dark rounded">
+                          <p className="text-xs text-discord-text-muted">Click the pop-out icon in a pane header to move that room (or feed) into its own window — drag it to a second monitor and it keeps streaming live, independently of the main window.</p>
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Feeds */}
+                    <details className="group bg-discord-sidebar rounded-lg">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
+                        <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        <span className="text-sm font-semibold text-white">Built-in Feeds</span>
+                      </summary>
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 text-sm text-discord-text">
+                        <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Contracts:</span> <span className="text-discord-text-muted">Every detected contract with who posted it, where, and the message — searchable, filterable by chain.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Mentions:</span> <span className="text-discord-text-muted">Messages that @you, your roles, @here or @everyone (each type can be toggled in Settings &gt; Mentions).</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Keywords:</span> <span className="text-discord-text-muted">Every keyword-matched message with its matched-keyword badge.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Snipes:</span> <span className="text-discord-text-muted">Every message that triggered a snipe, with a colored outcome badge — plus your snipe configs at the top.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Alerts:</span> <span className="text-discord-text-muted">Your cloud alerts and their fired history.</span></p>
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Trading */}
+                    <details className="group bg-discord-sidebar rounded-lg">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
+                        <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        <span className="text-sm font-semibold text-white">Trading (Slotshark)</span>
+                      </summary>
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 text-sm text-discord-text">
+                        <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
+                          <p className="text-xs text-discord-text-muted">Connect a Slotshark API token in Settings &gt; Trading and one-click buy buttons appear under every message with a Solana contract, using your preset amounts, wallets, slippage, tip, and priority fee.</p>
+                          <p className="text-xs text-discord-text-muted">Multiple wallets are supported — buy per wallet or split the amount — with an optional double-click safety and a sell flow from the same buttons.</p>
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Sniping */}
+                    <details className="group bg-discord-sidebar rounded-lg">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
+                        <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        <span className="text-sm font-semibold text-white">Auto-Sniping</span>
+                      </summary>
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 text-sm text-discord-text">
+                        <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Enable:</span> <span className="text-discord-text-muted">Turn on Sniping in Settings &gt; Trading (Trading + a Slotshark token required).</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Configs:</span> <span className="text-discord-text-muted">Created on the <strong className="text-discord-text">Snipes</strong> feed page: pick a room, follow specific callers or the whole room, set the SOL amount and wallets.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Extras:</span> <span className="text-discord-text-muted">Keyword → contract maps, market-cap bounds, re-snipe policies (never / cooldown / up to X times), automatic limit sells, and an optional Pushover ping per snipe.</span></p>
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Alerts */}
+                    <details className="group bg-discord-sidebar rounded-lg">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
+                        <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        <span className="text-sm font-semibold text-white">Alerts (Trenchcord Cloud)</span>
+                      </summary>
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 text-sm text-discord-text">
+                        <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
+                          <p className="text-xs text-discord-text-muted">Alerts that fire even while your PC is off, because they run on Trenchcord Cloud (requires an active subscription) — managed on the <strong className="text-discord-text">Alerts</strong> page (sidebar).</p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Price:</span> <span className="text-discord-text-muted">CEX coins, DEX tokens (by market cap), stocks, and metals — goes over/under or ±% moves.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">X accounts:</span> <span className="text-discord-text-muted">New posts, keywords, replies, interactions with a post, new follows.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Telegram channels:</span> <span className="text-discord-text-muted">Any post or keyword in a public channel — your own Telegram login is never used.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Delivery:</span> <span className="text-discord-text-muted">Pushover, Telegram DM, or Discord DM to your phone, plus in-app toasts and the Alerts feed. Priorities and sounds are fully customizable in the page's Sound settings.</span></p>
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Hotkeys */}
+                    <details className="group bg-discord-sidebar rounded-lg">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
+                        <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        <span className="text-sm font-semibold text-white">Hotkeys</span>
+                      </summary>
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 text-sm text-discord-text">
+                        <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Room hotkeys:</span> <span className="text-discord-text-muted">Assign a single key to a room in its config — press it to jump there.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Feed hotkeys:</span> <span className="text-discord-text-muted">Same for the Contract feed, Mentions, Keywords, Snipes, and Alerts, in Settings &gt; General.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Bring to front:</span> <span className="text-discord-text-muted">An OS-wide shortcut (Settings &gt; General) that raises Trenchcord from anywhere — even while you're in Discord.</span></p>
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Rich Discord content */}
+                    <details className="group bg-discord-sidebar rounded-lg">
+                      <summary className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 cursor-pointer select-none">
+                        <svg className="w-4 h-4 text-discord-text-muted transition-transform group-open:rotate-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        <span className="text-sm font-semibold text-white">Threads, Polls & Rich Content</span>
+                      </summary>
+                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 text-sm text-discord-text">
+                        <div className="px-3 py-2 bg-discord-dark rounded space-y-1.5">
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Threads & forums:</span> <span className="text-discord-text-muted">Messages in threads and forum posts under monitored channels arrive labeled <strong className="text-discord-text">parent › thread-title</strong>.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Polls:</span> <span className="text-discord-text-muted">Native Discord polls render with options and live vote percentages.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Bot panels & forwards:</span> <span className="text-discord-text-muted">New-style bot messages (layout containers, galleries, buttons) and forwarded messages render fully — contract detection, keywords, and snipes see their text too.</span></p>
+                          <p className="text-xs"><span className="text-discord-blurple font-semibold">Stickers & GIFs:</span> <span className="text-discord-text-muted">Stickers display (including animated), Tenor/Giphy links autoplay as looping clips, and videos play inline.</span></p>
+                        </div>
+                      </div>
+                    </details>
                   </div>
+                </div>
+              </>
+            )}
+
+            {section === 'backup' && (
+              <>
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-1">Backup & Restore</h3>
+                  <p className="text-sm text-discord-text-muted mb-6">
+                    Export your settings and rooms to a file, or import from a previous backup.{' '}
+                    {isHostedMode
+                      ? 'Sensitive keys (Discord tokens, Telegram credentials, Pushover keys) are never included in exports.'
+                      : 'This includes your Discord tokens and Telegram credentials (API ID, hash, and session), so keep the file somewhere safe. Pushover keys are not included.'}
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={handleExport}
+                      disabled={exporting}
+                      className="flex items-center gap-2 px-4 py-2 bg-discord-blurple hover:bg-discord-blurple-hover disabled:opacity-50 text-white text-sm font-medium rounded transition-colors"
+                    >
+                      <Download size={15} />
+                      {exporting ? 'Exporting...' : 'Export Settings'}
+                    </button>
+                    <button
+                      onClick={() => importFileRef.current?.click()}
+                      disabled={importing}
+                      className="flex items-center gap-2 px-4 py-2 bg-discord-sidebar hover:bg-discord-hover text-discord-text hover:text-white text-sm font-medium rounded border border-discord-divider transition-colors"
+                    >
+                      <Upload size={15} />
+                      {importing ? 'Importing...' : 'Import Settings'}
+                    </button>
+                    <input
+                      ref={importFileRef}
+                      type="file"
+                      accept=".json"
+                      onChange={handleImportFile}
+                      className="hidden"
+                    />
+                  </div>
+                  {pendingImportData && (
+                    <div className="mt-4 p-3 bg-[#2AABEE]/10 border border-[#2AABEE]/20 rounded space-y-3">
+                      <p className="text-xs sm:text-sm compact:text-sm text-discord-text leading-relaxed">
+                        This backup includes your <strong>Telegram login</strong>. A Telegram session
+                        only works on one device at a time — if this device and your computer both
+                        use it, Telegram logs <strong>both</strong> out.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => void runImport(pendingImportData, 'fresh')}
+                          disabled={importing}
+                          className="px-3 py-2 bg-discord-blurple hover:bg-discord-blurple-hover disabled:opacity-50 text-white text-xs sm:text-sm compact:text-sm font-medium rounded transition-colors"
+                        >
+                          Import without it — I'll log in here (recommended)
+                        </button>
+                        <button
+                          onClick={() => void runImport(pendingImportData, 'reuse')}
+                          disabled={importing}
+                          className="px-3 py-2 bg-discord-sidebar hover:bg-discord-hover disabled:opacity-50 text-discord-text text-xs sm:text-sm compact:text-sm font-medium rounded border border-discord-divider transition-colors"
+                        >
+                          Move the session here
+                        </button>
+                        <button
+                          onClick={() => setPendingImportData(null)}
+                          disabled={importing}
+                          className="px-3 py-2 text-discord-text-muted hover:text-discord-text text-xs sm:text-sm compact:text-sm transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {importError && (
+                    <p className="mt-3 text-xs text-discord-red">{importError}</p>
+                  )}
+                  {importSuccess && (
+                    <p className="mt-3 text-xs text-discord-green">Settings imported successfully.</p>
+                  )}
                 </div>
               </>
             )}
@@ -3076,8 +4557,8 @@ export default function GlobalSettings() {
 
                   <div className="space-y-5">
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Enabled Guilds</h4>
-                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Enabled Guilds</h4>
+                      <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
                         Only enabled guilds will appear in the channel picker when creating rooms. All guilds are off by default.
                       </p>
                       <div className="relative mb-3">
@@ -3111,7 +4592,7 @@ export default function GlobalSettings() {
                                     enabled ? prev.filter((id) => id !== guild.id) : [...prev, guild.id]
                                   );
                                 }}
-                                className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 rounded text-xs sm:text-sm text-left transition-colors ${
+                                className={`w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 rounded text-xs sm:text-sm compact:text-sm text-left transition-colors ${
                                   enabled
                                     ? 'bg-discord-green/10 text-discord-text'
                                     : 'bg-discord-dark/50 text-discord-text-muted'
@@ -3148,8 +4629,8 @@ export default function GlobalSettings() {
                     </div>
 
                     <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                      <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">Guild Message Colors</h4>
-                      <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                      <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">Guild Message Colors</h4>
+                      <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
                         Set a background color for messages from each enabled guild to visually distinguish them in mixed rooms.
                       </p>
                       <div className="space-y-2">
@@ -3160,7 +4641,7 @@ export default function GlobalSettings() {
                               onChange={(c) => setGuildColors((prev) => ({ ...prev, [guild.id]: c }))}
                               defaultColor="#313338"
                             />
-                            <span className="text-xs sm:text-sm text-discord-text flex-1 truncate">{guild.name}</span>
+                            <span className="text-xs sm:text-sm compact:text-sm text-discord-text flex-1 truncate">{guild.name}</span>
                             {guildColors[guild.id] && (
                               <button
                                 onClick={() => setGuildColors((prev) => { const { [guild.id]: _, ...rest } = prev; return rest; })}
@@ -3184,8 +4665,8 @@ export default function GlobalSettings() {
                       if (dmChannelIdsInRooms.length === 0) return null;
                       return (
                         <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                          <h4 className="text-xs sm:text-sm font-semibold text-white mb-2">DM Message Colors</h4>
-                          <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                          <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2">DM Message Colors</h4>
+                          <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
                             Set a background color for messages from each DM that is added to a room.
                           </p>
                           <div className="space-y-2">
@@ -3201,7 +4682,7 @@ export default function GlobalSettings() {
                                     onChange={(c) => setDmColors((prev) => ({ ...prev, [channelId]: c }))}
                                     defaultColor="#313338"
                                   />
-                                  <span className="text-xs sm:text-sm text-discord-text flex-1 truncate">{dmName}</span>
+                                  <span className="text-xs sm:text-sm compact:text-sm text-discord-text flex-1 truncate">{dmName}</span>
                                   {dmColors[channelId] && (
                                     <button
                                       onClick={() => setDmColors((prev) => { const { [channelId]: _, ...rest } = prev; return rest; })}
@@ -3225,11 +4706,11 @@ export default function GlobalSettings() {
                       if (tgChannelIdsInRooms.length === 0) return null;
                       return (
                         <div className="p-3 sm:p-4 bg-discord-sidebar rounded-lg">
-                          <h4 className="text-xs sm:text-sm font-semibold text-white mb-2 flex items-center gap-1.5">
+                          <h4 className="text-xs sm:text-sm compact:text-sm font-semibold text-white mb-2 flex items-center gap-1.5">
                             <Send size={14} className="text-[#2AABEE]" />
                             Telegram Chat Colors
                           </h4>
-                          <p className="text-xs sm:text-sm text-discord-text-muted mb-3">
+                          <p className="text-xs sm:text-sm compact:text-sm text-discord-text-muted mb-3">
                             Set a background color for messages from each Telegram chat that is added to a room.
                           </p>
                           <div className="space-y-2">
@@ -3243,7 +4724,7 @@ export default function GlobalSettings() {
                                     onChange={(c) => setTelegramColors((prev) => ({ ...prev, [channelId]: c }))}
                                     defaultColor="#313338"
                                   />
-                                  <span className="text-xs sm:text-sm text-discord-text flex-1 truncate">{chatName}</span>
+                                  <span className="text-xs sm:text-sm compact:text-sm text-discord-text flex-1 truncate">{chatName}</span>
                                   {telegramColors[channelId] && (
                                     <button
                                       onClick={() => setTelegramColors((prev) => { const { [channelId]: _, ...rest } = prev; return rest; })}
@@ -3264,10 +4745,11 @@ export default function GlobalSettings() {
               </>
             )}
           </div>
+          )}
         </div>
 
         {/* Save bar */}
-        <div className={`border-t px-3 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-3 shrink-0 transition-colors ${
+        <div className={`border-t px-3 sm:px-8 py-2.5 sm:py-3 compact:pb-[calc(0.625rem+var(--safe-bottom))] flex items-center justify-between gap-2 sm:gap-3 shrink-0 transition-colors ${
           hasUnsavedChanges ? 'border-discord-yellow/30 bg-discord-yellow/5' : 'border-discord-divider bg-discord-dark'
         }`}>
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -3282,7 +4764,7 @@ export default function GlobalSettings() {
             {hasUnsavedChanges && (
               <button
                 onClick={() => { if (config) fetchConfig(); }}
-                className="px-3 sm:px-4 py-1.5 sm:py-2 rounded text-xs sm:text-sm text-discord-text-muted hover:text-white font-medium transition-colors"
+                className="px-3 sm:px-4 py-1.5 sm:py-2 rounded text-xs sm:text-sm compact:text-sm text-discord-text-muted hover:text-white font-medium transition-colors"
               >
                 Reset
               </button>
@@ -3290,7 +4772,7 @@ export default function GlobalSettings() {
             <button
               onClick={handleSave}
               disabled={saving || !hasUnsavedChanges}
-              className={`px-4 sm:px-5 py-1.5 sm:py-2 rounded text-xs sm:text-sm text-white font-medium transition-colors ${
+              className={`px-4 sm:px-5 py-1.5 sm:py-2 rounded text-xs sm:text-sm compact:text-sm text-white font-medium transition-colors ${
                 hasUnsavedChanges
                   ? 'bg-discord-green hover:bg-discord-green/80'
                   : 'bg-discord-blurple hover:bg-discord-blurple-hover disabled:opacity-50 disabled:cursor-not-allowed'

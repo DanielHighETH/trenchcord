@@ -1,4 +1,5 @@
 import type { AppConfig, Room } from '../discord/types.js';
+import type { CategoryMatch } from '../discord/roomCategories.js';
 import type { ContractEntry } from '../utils/contractLog.js';
 
 export interface StorageProvider {
@@ -14,9 +15,11 @@ export interface StorageProvider {
   updateRoom(userId: string, roomId: string, data: Partial<Room>): Promise<Room | null>;
   deleteRoom(userId: string, roomId: string): Promise<boolean>;
 
-  getRoomsForChannel(userId: string, channelId: string): Promise<Room[]>;
-  isChannelSubscribed(userId: string, channelId: string): Promise<boolean>;
-  isUserHighlighted(userId: string, discordUserId: string, roomId?: string, username?: string | null): Promise<boolean>;
+  /** `category` lets rooms that watch a whole category match too; pass the
+   * category the channel sits under, or null when it has none. */
+  getRoomsForChannel(userId: string, channelId: string, category?: CategoryMatch | null): Promise<Room[]>;
+  isChannelSubscribed(userId: string, channelId: string, category?: CategoryMatch | null): Promise<boolean>;
+  isUserHighlighted(userId: string, discordUserId: string, roomId?: string, username?: string | null, roleIds?: string[]): Promise<boolean>;
 
   getContracts(userId: string, limit?: number, since?: string): Promise<ContractEntry[]>;
   logContract(userId: string, entry: ContractEntry): Promise<void>;

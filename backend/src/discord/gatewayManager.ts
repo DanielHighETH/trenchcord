@@ -2,10 +2,11 @@ import { EventEmitter } from 'events';
 import { DiscordGateway } from './gateway.js';
 import type { GatewayAuthFailure } from './gateway.js';
 import type { ProxyBundle } from './proxy.js';
-import type { GuildInfo, DMChannel, DiscordMessage, DiscordUser } from './types.js';
+import type { GuildInfo, DMChannel, DiscordMessage, DiscordUser, DiscordCommandOption } from './types.js';
 
 const DEDUP_WINDOW_MS = 10_000;
 const DEDUP_MAX_SIZE = 5_000;
+const CHANNEL_CHANGE_DEBOUNCE_MS = 2_000;
 
 export class GatewayManager extends EventEmitter {
   private gateways: DiscordGateway[] = [];
@@ -15,6 +16,7 @@ export class GatewayManager extends EventEmitter {
   private readyCount = 0;
   private readyResolve: (() => void) | null = null;
   private readyPromise: Promise<void>;
+  private channelChangeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(tokens: string[], proxy: ProxyBundle | null = null) {
     super();
@@ -32,10 +34,13 @@ export class GatewayManager extends EventEmitter {
   }
 
   private wireEvents(gw: DiscordGateway): void {
-    gw.on('message', (rawMsg: DiscordMessage & { _channelName: string; _guildName: string | null }) => {
+    gw.on('message', (rawMsg: DiscordMessage & { _channelName: string; _guildName: string | null; _accountName?: string | null }) => {
       const now = Date.now();
       if (this.recentMessageIds.has(rawMsg.id)) return;
       this.recentMessageIds.set(rawMsg.id, now);
+      // Which logged-in account this message arrived on — for DMs across
+      // several tokens, that account is the DM's receiver.
+      rawMsg._accountName = gw.getSelfUserName();
       this.emit('message', rawMsg);
     });
 
@@ -53,7 +58,25 @@ export class GatewayManager extends EventEmitter {
       if (failure.invalid) this.invalidTokenIndices.add(failure.tokenIndex);
       this.emit('auth_failed', failure);
     });
+    gw.on('guildChannelsUpdated', ({ guildId }: { guildId: string }) => this.queueChannelsChanged(guildId));
     gw.on('reactionUpdate', (data) => this.emit('reactionUpdate', data));
+    gw.on('pollVoteUpdate', (data) => this.emit('pollVoteUpdate', data));
+    gw.on('messageAck', (data) => this.emit('messageAck', data));
+  }
+
+  /**
+   * Coalesce a burst of channel edits (a category being reordered fires one
+   * event per channel, once per connected account) into a single notification
+   * per guild.
+   */
+  private queueChannelsChanged(guildId: string): void {
+    if (this.channelChangeTimers.has(guildId)) return;
+    const timer = setTimeout(() => {
+      this.channelChangeTimers.delete(guildId);
+      this.emit('guildChannelsUpdated', { guildId });
+    }, CHANNEL_CHANGE_DEBOUNCE_MS);
+    timer.unref?.();
+    this.channelChangeTimers.set(guildId, timer);
   }
 
   waitUntilReady(timeoutMs = 15_000): Promise<void> {
@@ -75,8 +98,17 @@ export class GatewayManager extends EventEmitter {
       clearInterval(this.dedupeTimer);
       this.dedupeTimer = null;
     }
+    for (const timer of this.channelChangeTimers.values()) clearTimeout(timer);
+    this.channelChangeTimers.clear();
     for (const gw of this.gateways) {
       gw.disconnect();
+    }
+  }
+
+  /** Immediate liveness check on every connection — see DiscordGateway.probeNow. */
+  probeNow(): void {
+    for (const gw of this.gateways) {
+      gw.probeNow();
     }
   }
 
@@ -135,6 +167,22 @@ export class GatewayManager extends EventEmitter {
     return null;
   }
 
+  getThreadParent(channelId: string): string | null {
+    for (const gw of this.gateways) {
+      const parentId = gw.getThreadParent(channelId);
+      if (parentId) return parentId;
+    }
+    return null;
+  }
+
+  getChannelCategory(channelId: string): string | null {
+    for (const gw of this.gateways) {
+      const categoryId = gw.getChannelCategory(channelId);
+      if (categoryId) return categoryId;
+    }
+    return null;
+  }
+
   getGuildName(guildId: string): string | null {
     for (const gw of this.gateways) {
       const name = gw.getGuildName(guildId);
@@ -157,6 +205,27 @@ export class GatewayManager extends EventEmitter {
       if (color) return color;
     }
     return null;
+  }
+
+  getMemberRoles(roleIds: string[] | undefined): { id: string; name: string }[] | undefined {
+    for (const gw of this.gateways) {
+      const roles = gw.getMemberRoles(roleIds);
+      if (roles) return roles;
+    }
+    return undefined;
+  }
+
+  getGuildRoles(guildId: string): { id: string; name: string; color: string | null }[] {
+    for (const gw of this.gateways) {
+      const roles = gw.getGuildRoles(guildId);
+      if (roles.length > 0) return roles;
+    }
+    return [];
+  }
+
+  /** How many Discord accounts (tokens) this manager runs. */
+  getAccountCount(): number {
+    return this.gateways.length;
   }
 
   getSelfUserIds(): Set<string> {
@@ -202,6 +271,18 @@ export class GatewayManager extends EventEmitter {
     return [];
   }
 
+  async ackChannelMessage(channelId: string, messageId: string): Promise<boolean> {
+    for (const gw of this.gateways) {
+      if (gw.getGuildForChannel(channelId) || gw.getDMChannels().some((dm) => dm.id === channelId)) {
+        return gw.ackChannelMessage(channelId, messageId);
+      }
+    }
+    if (this.gateways.length > 0) {
+      return this.gateways[0].ackChannelMessage(channelId, messageId);
+    }
+    return false;
+  }
+
   async fetchReactionUsers(channelId: string, messageId: string, emoji: string, limit = 100): Promise<DiscordUser[]> {
     for (const gw of this.gateways) {
       if (gw.getGuildForChannel(channelId) || gw.getDMChannels().some((dm) => dm.id === channelId)) {
@@ -212,5 +293,17 @@ export class GatewayManager extends EventEmitter {
       return this.gateways[0].fetchReactionUsers(channelId, messageId, emoji, limit);
     }
     return [];
+  }
+
+  async fetchMessageInteractionData(channelId: string, messageId: string): Promise<DiscordCommandOption[] | null> {
+    for (const gw of this.gateways) {
+      if (gw.getGuildForChannel(channelId) || gw.getDMChannels().some((dm) => dm.id === channelId)) {
+        return gw.fetchMessageInteractionData(channelId, messageId);
+      }
+    }
+    if (this.gateways.length > 0) {
+      return this.gateways[0].fetchMessageInteractionData(channelId, messageId);
+    }
+    return null;
   }
 }

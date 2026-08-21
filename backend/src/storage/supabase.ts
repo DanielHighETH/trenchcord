@@ -2,13 +2,15 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import { encryptToken, decryptToken, maskToken } from '../auth/encryption.js';
 import type { StorageProvider } from './interface.js';
-import type { AppConfig, Room, ChannelRef } from '../discord/types.js';
+import type { AppConfig, Room, ChannelRef, CategoryRef } from '../discord/types.js';
+import { roomWatchesChannel, type CategoryMatch } from '../discord/roomCategories.js';
 import type { ContractEntry } from '../utils/contractLog.js';
 
 const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   globalHighlightedUsers: [],
   contractDetection: true,
   guildColors: {},
+  channelColors: {},
   dmColors: {},
   enabledGuilds: [],
   evmAddressColor: '#fee75c',
@@ -16,11 +18,13 @@ const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   openInDiscordApp: false,
   openInTelegramApp: false,
   hiddenUsers: {},
+  hiddenRoles: {},
   messageSounds: false,
   soundSettings: {
     highlight: { enabled: true, volume: 80, useCustom: false },
     contractAlert: { enabled: true, volume: 80, useCustom: false },
     keywordAlert: { enabled: true, volume: 80, useCustom: false },
+    premiumAlert: { enabled: true, volume: 80, useCustom: false },
   },
   channelSounds: {},
   pushover: {
@@ -45,11 +49,15 @@ const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
   mentionsRoleEnabled: true,
   mentionsHereEnabled: false,
   mentionsEveryoneEnabled: false,
+  mentionsBotsEnabled: true,
   badgeClickAction: 'discord',
+  notificationClickAction: 'trenchcord',
   userNameCache: {},
   chattingEnabled: false,
+  dmReadSyncEnabled: false,
   messageDisplay: 'default',
   compactModeAvatars: true,
+  compactModeNameOnce: false,
   roleColors: true,
   mobileZoomScale: 1,
   splitLayout: 'row',
@@ -77,6 +85,12 @@ const DEFAULT_SETTINGS: Omit<AppConfig, 'discordTokens' | 'rooms'> = {
     openSiteOnBuy: false,
     buySitePlatform: 'default',
     buySiteUrl: '',
+  },
+  // Hosted mode never snipes (the engine bails on isHostedMode), but the
+  // config shape still carries the key.
+  sniping: {
+    enabled: false,
+    configs: [],
   },
 };
 
@@ -111,6 +125,7 @@ function dbRoomToAppRoom(
     keywordPatterns: row.keyword_patterns ?? [],
     highlightMode: row.highlight_mode ?? 'background',
     highlightedUserColors: row.highlighted_user_colors ?? {},
+    categories: (row.categories ?? []) as CategoryRef[],
   };
 }
 
@@ -365,6 +380,7 @@ export class SupabaseStorageProvider implements StorageProvider {
       keyword_patterns: data.keywordPatterns ?? [],
       highlight_mode: data.highlightMode ?? 'background',
       highlighted_user_colors: data.highlightedUserColors ?? {},
+      categories: data.categories ?? [],
     });
     throwIfError(roomResult, 'Failed to create room');
 
@@ -400,6 +416,7 @@ export class SupabaseStorageProvider implements StorageProvider {
     if (data.keywordPatterns !== undefined) updateFields.keyword_patterns = data.keywordPatterns;
     if (data.highlightMode !== undefined) updateFields.highlight_mode = data.highlightMode;
     if (data.highlightedUserColors !== undefined) updateFields.highlighted_user_colors = data.highlightedUserColors;
+    if (data.categories !== undefined) updateFields.categories = data.categories;
 
     if (Object.keys(updateFields).length > 0) {
       await this.supabase.from('rooms').update(updateFields).eq('id', roomId).eq('user_id', userId);
@@ -439,31 +456,34 @@ export class SupabaseStorageProvider implements StorageProvider {
 
   // ---- Room queries ----
 
-  async getRoomsForChannel(userId: string, channelId: string): Promise<Room[]> {
+  async getRoomsForChannel(userId: string, channelId: string, category?: CategoryMatch | null): Promise<Room[]> {
     const rooms = await this.getRooms(userId);
-    return rooms.filter((r) => r.channels.some((ch) => ch.channelId === channelId));
+    return rooms.filter((r) => roomWatchesChannel(r, channelId, category));
   }
 
-  async isChannelSubscribed(userId: string, channelId: string): Promise<boolean> {
+  async isChannelSubscribed(userId: string, channelId: string, category?: CategoryMatch | null): Promise<boolean> {
     const rooms = await this.getRooms(userId);
-    return rooms.some((r) => r.channels.some((ch) => ch.channelId === channelId));
+    return rooms.some((r) => roomWatchesChannel(r, channelId, category));
   }
 
-  async isUserHighlighted(userId: string, discordUserId: string, roomId?: string, username?: string | null): Promise<boolean> {
+  async isUserHighlighted(userId: string, discordUserId: string, roomId?: string, username?: string | null, roleIds?: string[]): Promise<boolean> {
     const matchesList = (list: string[]) =>
       list.includes(discordUserId) ||
       (username ? list.some((e) => e.startsWith('@') && e.slice(1).toLowerCase() === username.toLowerCase()) : false);
+    const matchesRoom = (r: Room) =>
+      matchesList(r.highlightedUsers) ||
+      !!(roleIds?.length && r.highlightedRoles?.some((hr) => roleIds.includes(hr.roleId)));
 
     const config = await this.getConfig(userId);
     if (matchesList(config.globalHighlightedUsers)) return true;
 
     if (roomId) {
       const room = await this.getRoom(userId, roomId);
-      return room ? matchesList(room.highlightedUsers) : false;
+      return room ? matchesRoom(room) : false;
     }
 
     const rooms = await this.getRooms(userId);
-    return rooms.some((r) => matchesList(r.highlightedUsers));
+    return rooms.some(matchesRoom);
   }
 
   // ---- Contracts ----

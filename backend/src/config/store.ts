@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { AppConfig, Room } from '../discord/types.js';
+import { roomWatchesChannel, type CategoryMatch } from '../discord/roomCategories.js';
 import { v4 as uuidv4 } from 'uuid';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -20,6 +21,7 @@ const DEFAULT_CONFIG: AppConfig = {
   globalHighlightedUsers: [],
   contractDetection: true,
   guildColors: {},
+  channelColors: {},
   dmColors: {},
   telegramColors: {},
   enabledGuilds: [],
@@ -28,11 +30,18 @@ const DEFAULT_CONFIG: AppConfig = {
   openInDiscordApp: false,
   openInTelegramApp: false,
   hiddenUsers: {},
+  hiddenRoles: {},
+  dmExcludedUsers: [],
+  telegramDmsInAllDms: true,
+  tgDmExcludedUsers: [],
+  dmHiddenConversations: [],
+  tgDmHiddenConversations: [],
   messageSounds: false,
   soundSettings: {
     highlight: { ...DEFAULT_SOUND_CONFIG },
     contractAlert: { ...DEFAULT_SOUND_CONFIG },
     keywordAlert: { ...DEFAULT_SOUND_CONFIG },
+    premiumAlert: { ...DEFAULT_SOUND_CONFIG },
   },
   channelSounds: {},
   pushover: {
@@ -57,11 +66,15 @@ const DEFAULT_CONFIG: AppConfig = {
   mentionsRoleEnabled: true,
   mentionsHereEnabled: false,
   mentionsEveryoneEnabled: false,
+  mentionsBotsEnabled: true,
   badgeClickAction: 'discord',
+  notificationClickAction: 'trenchcord',
   userNameCache: {},
   chattingEnabled: false,
+  dmReadSyncEnabled: false,
   messageDisplay: 'default',
   compactModeAvatars: true,
+  compactModeNameOnce: false,
   roleColors: true,
   mobileZoomScale: 1,
   splitLayout: 'row',
@@ -89,6 +102,10 @@ const DEFAULT_CONFIG: AppConfig = {
     buySitePlatform: 'default',
     buySiteUrl: '',
   },
+  sniping: {
+    enabled: false,
+    configs: [],
+  },
 };
 
 class ConfigStore {
@@ -113,7 +130,7 @@ class ConfigStore {
         if (!parsed.soundSettings) {
           parsed.soundSettings = { ...DEFAULT_CONFIG.soundSettings };
         } else {
-          for (const key of ['highlight', 'contractAlert', 'keywordAlert'] as const) {
+          for (const key of ['highlight', 'contractAlert', 'keywordAlert', 'premiumAlert'] as const) {
             parsed.soundSettings[key] = { ...DEFAULT_SOUND_CONFIG, ...parsed.soundSettings[key] };
           }
         }
@@ -132,6 +149,8 @@ class ConfigStore {
         if (!Array.isArray(parsed.trading.presetAmounts)) {
           parsed.trading.presetAmounts = [...DEFAULT_CONFIG.trading.presetAmounts];
         }
+        parsed.sniping = { ...DEFAULT_CONFIG.sniping, ...(parsed.sniping ?? {}) };
+        if (!Array.isArray(parsed.sniping.configs)) parsed.sniping.configs = [];
         return parsed;
       }
     } catch (err) {
@@ -186,7 +205,7 @@ class ConfigStore {
     return this.config;
   }
 
-  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'dmColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'hiddenUsers' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'badgeClickAction' | 'chattingEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'roleColors' | 'mobileZoomScale' | 'splitLayout' | 'paneRoomIds' | 'paneLocks' | 'gridMirror' | 'seenAnnouncements' | 'telegramApiId' | 'telegramApiHash' | 'telegramSessions' | 'discordProxyUrl' | 'trading' | 'slotsharkApiToken'>>): AppConfig {
+  updateConfig(partial: Partial<Pick<AppConfig, 'globalHighlightedUsers' | 'contractDetection' | 'guildColors' | 'channelColors' | 'dmColors' | 'enabledGuilds' | 'evmAddressColor' | 'solAddressColor' | 'openInDiscordApp' | 'openInTelegramApp' | 'serverIconBadge' | 'serverIconBadgeMobile' | 'showEphemeralMessages' | 'customUserNames' | 'hiddenUsers' | 'hiddenRoles' | 'dmExcludedUsers' | 'telegramDmsInAllDms' | 'tgDmExcludedUsers' | 'dmHiddenConversations' | 'tgDmHiddenConversations' | 'messageSounds' | 'soundSettings' | 'channelSounds' | 'pushover' | 'contractLinkTemplates' | 'contractClickAction' | 'showFullContractAddress' | 'autoOpenHighlightedContracts' | 'globalKeywordPatterns' | 'keywordAlertsEnabled' | 'desktopNotifications' | 'mentionsUserEnabled' | 'mentionsRoleEnabled' | 'mentionsHereEnabled' | 'mentionsEveryoneEnabled' | 'mentionsBotsEnabled' | 'badgeClickAction' | 'notificationClickAction' | 'chattingEnabled' | 'dmReadSyncEnabled' | 'messageDisplay' | 'compactModeAvatars' | 'compactModeNameOnce' | 'roleColors' | 'mobileZoomScale' | 'splitLayout' | 'paneRoomIds' | 'paneLocks' | 'gridMirror' | 'seenAnnouncements' | 'onboardingComplete' | 'telegramApiId' | 'telegramApiHash' | 'telegramSessions' | 'discordProxyUrl' | 'trading' | 'sniping' | 'feedHotkeys' | 'focusHotkey' | 'slotsharkApiToken' | 'cloudDeviceToken'>>): AppConfig {
     Object.assign(this.config, partial);
     this.save();
     return this.config;
@@ -223,25 +242,28 @@ class ConfigStore {
     return true;
   }
 
-  isChannelSubscribed(channelId: string): boolean {
-    return this.config.rooms.some((r) => r.channels.some((c) => c.channelId === channelId));
+  isChannelSubscribed(channelId: string, category?: CategoryMatch | null): boolean {
+    return this.config.rooms.some((r) => roomWatchesChannel(r, channelId, category));
   }
 
-  getRoomsForChannel(channelId: string): Room[] {
-    return this.config.rooms.filter((r) => r.channels.some((c) => c.channelId === channelId));
+  getRoomsForChannel(channelId: string, category?: CategoryMatch | null): Room[] {
+    return this.config.rooms.filter((r) => roomWatchesChannel(r, channelId, category));
   }
 
-  isUserHighlighted(userId: string, roomId?: string, username?: string | null): boolean {
+  isUserHighlighted(userId: string, roomId?: string, username?: string | null, roleIds?: string[]): boolean {
     const matchesList = (list: string[]) =>
       list.includes(userId) ||
       (username ? list.some((e) => e.startsWith('@') && e.slice(1).toLowerCase() === username.toLowerCase()) : false);
+    const matchesRoom = (r: Room) =>
+      matchesList(r.highlightedUsers) ||
+      !!(roleIds?.length && r.highlightedRoles?.some((hr) => roleIds.includes(hr.roleId)));
 
     if (matchesList(this.config.globalHighlightedUsers)) return true;
     if (roomId) {
       const room = this.getRoom(roomId);
-      return room ? matchesList(room.highlightedUsers) : false;
+      return room ? matchesRoom(room) : false;
     }
-    return this.config.rooms.some((r) => matchesList(r.highlightedUsers));
+    return this.config.rooms.some(matchesRoom);
   }
 
   getTokens(): string[] {

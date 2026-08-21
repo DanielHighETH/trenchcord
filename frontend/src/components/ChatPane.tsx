@@ -1,10 +1,26 @@
-import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { useAppStore } from '../stores/appStore';
+import { useEffect, useRef, useCallback, useState, useMemo, type ReactNode } from 'react';
+import { useAppStore, backendFetch } from '../stores/appStore';
 import Message from './Message';
 import ChatInput from './ChatInput';
-import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown, PanelLeftOpen, Send, AtSign, GripVertical, Plus, Rows2, Columns2, ArrowLeft, ArrowRight, Lock, Unlock, ExternalLink } from 'lucide-react';
+import AlertsPage from './AlertsPage';
+import SnipesPanel from './SnipesPanel';
+import ConfirmModal from './ConfirmModal';
+import { isIOSApp, isCompactLayout, useCompactLayout } from '../utils/platform';
+import { messageFallbackText } from '../utils/addressDetect';
+import { dmListMatches } from '../utils/dmFilters';
+import { usePullToRefresh } from '../hooks/usePullToRefresh';
+import { Hash, MessageCircle, Settings, ArrowDown, Filter, EyeOff, X, Trash2, Eye, Search, ChevronUp, ChevronDown, PanelLeftOpen, Send, AtSign, Tag, Crosshair, BellRing, GripVertical, Plus, Rows2, Columns2, ArrowLeft, ArrowRight, Lock, Unlock, ExternalLink, MoreVertical, Check, Shield, RefreshCw, Volume2, VolumeX, MessagesSquare, Eraser } from 'lucide-react';
 
 const MAX_PANES = 4;
+
+// Virtual feed rooms: live like rooms in `messages`, but have no Room config.
+const FEED_VIEWS = {
+  mentions: { title: 'Mentions', icon: AtSign, empty: 'No mentions yet.' },
+  keywords: { title: 'Keywords', icon: Tag, empty: 'No keyword matches yet.' },
+  snipes: { title: 'Snipes', icon: Crosshair, empty: 'No snipes yet.' },
+  alerts: { title: 'Alerts', icon: BellRing, empty: 'No alerts yet.' },
+  dms: { title: 'All DMs', icon: MessagesSquare, empty: 'No direct messages yet.' },
+} as const;
 
 const SCROLL_THRESHOLD = 150;
 const WINDOW_INITIAL = 200;
@@ -29,6 +45,97 @@ function Tip({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
+/**
+ * Onboarding shown in an empty Snipes feed while the Slotshark/trading/sniping
+ * chain isn't fully set up -- a blank "No snipes yet." tells a new user
+ * nothing about why nothing will ever appear.
+ */
+function SnipesSetupGuide({ hasToken, tradingOn, snipingEnabled, openSettings }: {
+  hasToken: boolean;
+  tradingOn: boolean;
+  snipingEnabled: boolean;
+  openSettings: (section: string) => void;
+}) {
+  const steps: { done: boolean; title: string; body: ReactNode; action?: { label: string; section: string } }[] = [
+    {
+      done: hasToken,
+      title: 'Create a Slotshark account',
+      body: (
+        <>
+          Sniping buys through Slotshark, a Solana trading API. Register at{' '}
+          <a
+            href="https://slotshark.xyz/?ref=1q79wsl2"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-discord-text-link hover:underline inline-flex items-center gap-0.5"
+          >
+            slotshark.xyz <ExternalLink size={10} />
+          </a>
+          .
+        </>
+      ),
+    },
+    {
+      done: hasToken,
+      title: 'Get your API token and a wallet',
+      body: 'In the Slotshark dashboard, create a trading wallet, deposit some SOL into it, and copy your API token.',
+    },
+    {
+      done: hasToken && tradingOn,
+      title: 'Connect it to Trenchcord',
+      body: 'Paste the API token in Settings → Trading, add your wallet address, and enable Trading. The token never leaves your machine except to call Slotshark.',
+      action: { label: 'Open Trading Settings', section: 'trading' },
+    },
+    {
+      done: snipingEnabled,
+      title: 'Enable Sniping',
+      body: 'Turn on Sniping under Settings → Trading, right below Enable Trading. Snipe configs are then created right here, at the top of this feed.',
+      action: { label: 'Open Trading Settings', section: 'trading' },
+    },
+  ];
+  return (
+    <div className="flex items-center justify-center h-full p-4">
+      <div className="max-w-md w-full bg-discord-sidebar rounded-lg p-4 sm:p-5">
+        <div className="flex items-center gap-2 mb-1">
+          <Crosshair size={18} className="text-discord-blurple" />
+          <h3 className="text-white font-semibold text-sm">Set up sniping</h3>
+        </div>
+        <p className="text-xs text-discord-text-muted mb-4">
+          Sniped messages will show up in this feed. Trenchcord can't snipe yet — finish these steps first:
+        </p>
+        <div className="space-y-3">
+          {steps.map((s, i) => (
+            <div key={i} className="flex gap-2.5">
+              <span
+                className={`w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-[11px] font-semibold ${
+                  s.done ? 'bg-discord-green/20 text-discord-green' : 'bg-discord-dark text-discord-text-muted'
+                }`}
+              >
+                {s.done ? <Check size={12} strokeWidth={3} /> : i + 1}
+              </span>
+              <div className="min-w-0">
+                <p className={`text-sm font-medium ${s.done ? 'text-discord-text-muted' : 'text-white'}`}>{s.title}</p>
+                <p className="text-xs text-discord-text-muted mt-0.5">{s.body}</p>
+                {s.action && !s.done && (
+                  <button
+                    onClick={() => openSettings(s.action!.section)}
+                    className="mt-1.5 px-2.5 py-1 rounded bg-discord-blurple hover:bg-discord-blurple/80 text-white text-xs font-medium transition-colors"
+                  >
+                    {s.action.label}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-discord-text-muted mt-4">
+          Snipes execute real swaps with real SOL, automatically and without confirmation.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 interface ChatPaneProps {
   roomId: string;
   paneIndex: number;
@@ -44,6 +151,22 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const rooms = useAppStore((s) => s.rooms);
   const messages = useAppStore((s) => s.messages);
   const config = useAppStore((s) => s.config);
+  const tradingStatus = useAppStore((s) => s.tradingStatus);
+  const fetchTradingStatus = useAppStore((s) => s.fetchTradingStatus);
+  const setActiveView = useAppStore((s) => s.setActiveView);
+
+  // Snipes feed: know whether the Slotshark chain is configured so an empty
+  // feed can show setup steps instead of a dead-end blank state.
+  useEffect(() => {
+    if (roomId === 'snipes' && !tradingStatus) void fetchTradingStatus();
+  }, [roomId, tradingStatus, fetchTradingStatus]);
+  // Guide disappears once the chain is fully enabled — from there the
+  // Snipe-configs panel at the top of the feed takes over.
+  const snipeGuideNeeded =
+    roomId === 'snipes' &&
+    (tradingStatus?.configured !== true ||
+      config?.trading?.enabled !== true ||
+      config?.sniping?.enabled !== true);
   const openConfigModal = useAppStore((s) => s.openConfigModal);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -64,9 +187,17 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const updateRoom = useAppStore((s) => s.updateRoom);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
+  const soundsMuted = useAppStore((s) => s.soundsMuted);
+  const toggleSoundsMuted = useAppStore((s) => s.toggleSoundsMuted);
   const dmChannels = useAppStore((s) => s.dmChannels);
   const hideUser = useAppStore((s) => s.hideUser);
   const unhideUser = useAppStore((s) => s.unhideUser);
+  const hideRole = useAppStore((s) => s.hideRole);
+  const unhideRole = useAppStore((s) => s.unhideRole);
+  const renameUser = useAppStore((s) => s.renameUser);
+  const clearRoomMessages = useAppStore((s) => s.clearRoomMessages);
+  const dismissRoomMessage = useAppStore((s) => s.dismissRoomMessage);
+  const guilds = useAppStore((s) => s.guilds);
   const setPaneRoom = useAppStore((s) => s.setPaneRoom);
   const swapPanes = useAppStore((s) => s.swapPanes);
   const addPane = useAppStore((s) => s.addPane);
@@ -77,7 +208,11 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const isGrid = useAppStore((s) => s.config?.splitLayout === 'grid');
   const setActivePane = useAppStore((s) => s.setActivePane);
   const togglePaneLock = useAppStore((s) => s.togglePaneLock);
-  const locked = useAppStore((s) => s.paneLocks[paneIndex] ?? false);
+  // Pane locking is a split-layout concept; the phone has one pane and no
+  // unlock affordance, so a lock imported from a desktop backup is ignored
+  // there rather than trapping the user on one room.
+  const rawLocked = useAppStore((s) => s.paneLocks[paneIndex] ?? false);
+  const locked = rawLocked && !isCompactLayout();
   const [dragOver, setDragOver] = useState(false);
 
   // Focus filter is local to each pane so split panes stay independent.
@@ -91,18 +226,63 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [quickReplyChannelId, setQuickReplyChannelId] = useState<string | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  // Compact phones collapse the header icon cluster into this overflow menu.
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const compact = useCompactLayout();
+  // Phone and desktop keep separate badge-style settings; icon badges are on
+  // by default on both.
+  const serverIconBadge = compact
+    ? (config?.serverIconBadgeMobile ?? true)
+    : (config?.serverIconBadge ?? true);
+  const guildIcons = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    for (const g of guilds) map[g.id] = g.icon;
+    return map;
+  }, [guilds]);
 
   const chattingEnabled = config?.chattingEnabled ?? false;
 
   const isDMView = roomId.startsWith('dm:');
   const isTgDMView = roomId.startsWith('tg-dm:');
-  const isMentionsView = roomId === 'mentions';
+  const feedView = FEED_VIEWS[roomId as keyof typeof FEED_VIEWS];
   const isAnyDMView = isDMView || isTgDMView;
   const dmChannelId = isDMView ? roomId.slice(3) : isTgDMView ? roomId.slice(6) : null;
   const activeDM = isDMView ? dmChannels.find((dm) => dm.id === dmChannelId) : null;
 
-  const activeRoom = isAnyDMView || isMentionsView ? undefined : rooms.find((r) => r.id === roomId);
+  const activeRoom = isAnyDMView || feedView ? undefined : rooms.find((r) => r.id === roomId);
+
+  // Pull-to-refresh (iOS app, regular chat rooms only): pulling down past the
+  // top of the list re-probes the backend's sockets and refetches history.
+  const fetchHistory = useAppStore((s) => s.fetchHistory);
+  const pullIndicatorRef = useRef<HTMLDivElement>(null);
+  // The pane header is a second pull surface: in a room full of messages the
+  // list gesture correctly scrolls history instead, so the header is the spot
+  // that always refreshes.
+  const pullHeaderRef = useRef<HTMLDivElement>(null);
+  const pullEnabled = isIOSApp() && !isPopout && !!activeRoom;
+  const handlePullRefresh = useCallback(async () => {
+    // iOS froze the backend along with the app, which silently kills its
+    // Discord/Telegram sockets — probe them first so the history fetch
+    // actually returns fresh messages, not the pre-freeze state.
+    try {
+      await backendFetch('/system/resume', { method: 'POST' });
+    } catch {
+      // Backend still thawing — the history fetch below retries the point.
+    }
+    await fetchHistory();
+  }, [fetchHistory]);
+  const pullRefreshing = usePullToRefresh(scrollContainerRef, pullIndicatorRef, pullEnabled, handlePullRefresh, pullHeaderRef);
+
   const allRoomMessages = messages[roomId] ?? [];
+
+  // Clearing only makes sense where nothing refetches the messages: the live
+  // feeds and DM conversations. A normal room reloads its channels' history on
+  // the next fetch, so emptying it would undo itself.
+  const clearableFeed = roomId === 'mentions' || roomId === 'keywords' || roomId === 'dms' || isAnyDMView;
+  // Triage feeds, where single entries are worth dismissing one at a time. A
+  // conversation isn't one — pulling a message out of its middle just confuses.
+  const dismissableFeed = roomId === 'mentions' || roomId === 'keywords';
   const embedDisabledChannels = new Set(
     activeRoom?.channels.filter((c) => c.disableEmbeds).map((c) => c.channelId)
   );
@@ -113,7 +293,67 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
   const hiddenUsers = config?.hiddenUsers ?? {};
   const isUserHidden = (msg: typeof allRoomMessages[0]) => {
     const key = `${msg.guildId ?? 'null'}:${msg.channelId}`;
-    return hiddenUsers[key]?.some((e) => e.userId === msg.author.id) ?? false;
+    const hidden = hiddenUsers[key];
+    if (!hidden || hidden.length === 0) return false;
+    if (hidden.some((e) => e.userId === msg.author.id)) return true;
+    // Bot replies to a hidden user (e.g. Rick scanning their token) are noise
+    // from the same source, so they follow the hidden user out of the feed.
+    const refAuthorId = msg.referencedMessage?.authorId;
+    return !!(msg.author.isBot && refAuthorId && hidden.some((e) => e.userId === refAuthorId));
+  };
+
+  const hiddenRoles = config?.hiddenRoles ?? {};
+  // Users seen holding a muted role in the loaded window, keyed guildId:userId.
+  // Matching by author (not just per-message roles) also catches their
+  // REST-fetched history messages, which carry no member/role data.
+  const roleHiddenUserIds = new Set<string>();
+  if (Object.keys(hiddenRoles).length > 0) {
+    for (const msg of allRoomMessages) {
+      if (!msg.guildId || !msg.author.roles) continue;
+      const muted = hiddenRoles[msg.guildId];
+      if (muted && muted.length > 0 && msg.author.roles.some((r) => muted.some((m) => m.roleId === r.id))) {
+        roleHiddenUserIds.add(`${msg.guildId}:${msg.author.id}`);
+      }
+    }
+  }
+  const isRoleHidden = (msg: typeof allRoomMessages[0]) => {
+    if (!msg.guildId || roleHiddenUserIds.size === 0) return false;
+    if (roleHiddenUserIds.has(`${msg.guildId}:${msg.author.id}`)) return true;
+    // Same rule as hidden users: bot replies to a role-muted member follow
+    // that member out of the feed.
+    const refAuthorId = msg.referencedMessage?.authorId;
+    return !!(msg.author.isBot && refAuthorId && roleHiddenUserIds.has(`${msg.guildId}:${refAuthorId}`));
+  };
+
+  // All DMs exclusions: the backend keeps new DMs in excluded and hidden
+  // conversations out of the feed; filtering here too hides their
+  // already-stored history. Entries match by user ID or username/display name
+  // (leading @ and case ignored), same as the backend — against the author
+  // *and* the conversation partner, so entries also catch your own half of a
+  // conversation, where the author is you. Telegram messages check the
+  // Telegram lists (and the feed-wide Telegram switch), Discord messages the
+  // Discord ones.
+  const dmExcludedUsers = roomId === 'dms' ? (config?.dmExcludedUsers ?? []) : [];
+  const tgDmExcludedUsers = roomId === 'dms' ? (config?.tgDmExcludedUsers ?? []) : [];
+  const dmHiddenConversations = roomId === 'dms' ? (config?.dmHiddenConversations ?? []) : [];
+  const tgDmHiddenConversations = roomId === 'dms' ? (config?.tgDmHiddenConversations ?? []) : [];
+  const hideTelegramDms = roomId === 'dms' && (config?.telegramDmsInAllDms ?? true) === false;
+  const dmRecipientsById = new Map(dmChannels.map((ch) => [ch.id, ch.recipients]));
+  const isDmExcluded = (msg: typeof allRoomMessages[0]) => {
+    const fromTelegram = msg.source === 'telegram';
+    if (fromTelegram && hideTelegramDms) return true;
+    const author = { id: msg.author.id, names: [msg.author.username, msg.author.displayName] };
+    if (fromTelegram) {
+      // The chat is the conversation partner whichever side wrote.
+      const chat = { id: msg.channelId, names: [msg.chatUsername, msg.channelName] };
+      return dmListMatches(tgDmExcludedUsers, [author, chat]) || dmListMatches(tgDmHiddenConversations, [author, chat]);
+    }
+    const recipients = (dmRecipientsById.get(msg.channelId) ?? []).map((r) => ({ id: r.id, names: [r.username, r.global_name] }));
+    // Feed exclusion in a group DM matches only by author — excluding one
+    // member doesn't silence the whole group. A hidden conversation goes by
+    // any participant.
+    const excludedPeople = recipients.length === 1 ? [author, ...recipients] : [author];
+    return dmListMatches(dmExcludedUsers, excludedPeople) || dmListMatches(dmHiddenConversations, [author, ...recipients]);
   };
 
   const afterFilter = isFilterActive
@@ -124,7 +364,13 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
       )
     : allRoomMessages;
 
-  const afterHidden = afterFilter.filter((msg) => !isUserHidden(msg));
+  // Ephemeral messages (visible only to the logged-in account) can be switched
+  // off globally; filtering at render keeps already-stored ones toggleable.
+  const showEphemeral = config?.showEphemeralMessages ?? true;
+
+  const afterHidden = afterFilter.filter(
+    (msg) => !isUserHidden(msg) && !isRoleHidden(msg) && !isDmExcluded(msg) && (showEphemeral || !msg.isEphemeral)
+  );
 
   const afterFocus = focusFilter
     ? afterHidden.filter((msg) => msg.guildId === focusFilter.guildId && msg.channelId === focusFilter.channelId)
@@ -138,7 +384,9 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
       if (
         msg.content.toLowerCase().includes(trimmedSearch) ||
         msg.author.displayName.toLowerCase().includes(trimmedSearch) ||
-        msg.author.username.toLowerCase().includes(trimmedSearch)
+        msg.author.username.toLowerCase().includes(trimmedSearch) ||
+        // v2/forwarded messages carry their text outside `content`.
+        messageFallbackText(msg).toLowerCase().includes(trimmedSearch)
       ) {
         matches.push(msg);
       }
@@ -184,6 +432,21 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
       })
     : [];
 
+  // Muted roles for every guild this room watches (server-wide, so deduped by
+  // guild rather than listed per channel).
+  const roomMutedRoles = activeRoom
+    ? [...new Map(activeRoom.channels.filter((ch) => ch.guildId).map((ch) => [ch.guildId!, ch.guildName ?? null])).entries()].flatMap(
+        ([gId, gName]) =>
+          (hiddenRoles[gId] ?? []).map((entry) => ({
+            guildId: gId,
+            guildName: gName,
+            roleId: entry.roleId,
+            roleName: entry.roleName,
+          }))
+      )
+    : [];
+  const hiddenCount = channelHiddenUsers.length + roomMutedRoles.length;
+
   const toggleFilter = () => {
     if (activeRoom) {
       updateRoom(activeRoom.id, { filterEnabled: !activeRoom.filterEnabled });
@@ -201,6 +464,15 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
       updates.highlightedUserColors = rest;
     }
     await updateRoom(activeRoom.id, updates);
+  }, [activeRoom, updateRoom]);
+
+  const toggleHighlightRole = useCallback(async (guildId: string, roleId: string, roleName: string) => {
+    if (!activeRoom) return;
+    const current = activeRoom.highlightedRoles ?? [];
+    const highlightedRoles = current.some((r) => r.roleId === roleId)
+      ? current.filter((r) => r.roleId !== roleId)
+      : [...current, { roleId, roleName, guildId }];
+    await updateRoom(activeRoom.id, { highlightedRoles });
   }, [activeRoom, updateRoom]);
 
   const handleQuickReply = useCallback((channelId: string) => {
@@ -450,23 +722,40 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
 
   // Options for the per-pane room switcher dropdown.
   const switcherOptions = useMemo(() => {
-    const opts: { id: string; label: string; kind: 'mentions' | 'room' | 'dm' | 'tg' }[] = [];
+    const opts: { id: string; label: string; kind: 'mentions' | 'keywords' | 'snipes' | 'alerts' | 'dms' | 'room' | 'dm' | 'tg' }[] = [];
     opts.push({ id: 'mentions', label: 'Mentions', kind: 'mentions' });
+    opts.push({ id: 'keywords', label: 'Keywords', kind: 'keywords' });
+    opts.push({ id: 'snipes', label: 'Snipes', kind: 'snipes' });
+    opts.push({ id: 'alerts', label: 'Alerts', kind: 'alerts' });
+    opts.push({ id: 'dms', label: 'All DMs', kind: 'dms' });
     for (const r of rooms) opts.push({ id: r.id, label: r.name, kind: 'room' });
     const dmLookup = new Map(dmChannels.map((dm) => [dm.id, dm]));
+    // Hidden conversations stay out of the switcher, same as the sidebar.
+    const hiddenDm = config?.dmHiddenConversations ?? [];
+    const hiddenTg = config?.tgDmHiddenConversations ?? [];
     for (const key of Object.keys(messages)) {
       if ((messages[key]?.length ?? 0) === 0) continue;
       if (key.startsWith('dm:')) {
         const dm = dmLookup.get(key.slice(3));
-        const label = dm ? dm.recipients.map((r) => r.global_name || r.username || 'Unknown').join(', ') : (messages[key][0]?.author.displayName ?? 'DM');
+        const first = messages[key][0];
+        if (dmListMatches(hiddenDm, [
+          ...(dm?.recipients ?? []).map((r) => ({ id: r.id, names: [r.username, r.global_name] })),
+          ...(first ? [{ id: first.author.id, names: [first.author.username, first.author.displayName] }] : []),
+        ])) continue;
+        const label = dm ? dm.recipients.map((r) => r.global_name || r.username || 'Unknown').join(', ') : (first?.author.displayName ?? 'DM');
         opts.push({ id: key, label, kind: 'dm' });
       } else if (key.startsWith('tg-dm:')) {
+        const last = messages[key][messages[key].length - 1];
+        if (dmListMatches(hiddenTg, [
+          { id: key.slice(6), names: [last?.chatUsername, last?.channelName] },
+          ...(last ? [{ id: last.author.id, names: [last.author.username, last.author.displayName] }] : []),
+        ])) continue;
         const label = messages[key][0]?.channelName ?? messages[key][0]?.author.displayName ?? 'Telegram Chat';
         opts.push({ id: key, label, kind: 'tg' });
       }
     }
     return opts;
-  }, [rooms, dmChannels, messages]);
+  }, [rooms, dmChannels, messages, config?.dmHiddenConversations, config?.tgDmHiddenConversations]);
 
   const dmRecipientNames = activeDM
     ? activeDM.recipients.map((r) => r.global_name || r.username || 'Unknown').join(', ')
@@ -474,17 +763,25 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
       ? (allRoomMessages[0]?.channelName ?? allRoomMessages[0]?.author.displayName ?? 'Telegram Chat')
       : null;
 
-  const headerTitle = isMentionsView
-    ? 'Mentions'
+  const headerTitle = feedView
+    ? feedView.title
     : isAnyDMView
       ? (dmRecipientNames ?? 'Direct Message')
       : (activeRoom?.name ?? 'Unknown');
 
-  const HeaderIcon = isMentionsView ? AtSign : isTgDMView ? Send : isDMView ? MessageCircle : Hash;
+  const clearLabel = isAnyDMView
+    ? 'Clear this conversation'
+    : roomId === 'dms'
+      ? 'Clear All DMs'
+      : `Clear all ${headerTitle.toLowerCase()}`;
+
+  const HeaderIcon = feedView ? feedView.icon : isTgDMView ? Send : isDMView ? MessageCircle : Hash;
   const headerIconClass = isTgDMView ? 'text-[#2AABEE]' : 'text-discord-channel-icon';
 
   const canDrag = editMode && paneCount > 1 && !locked;
-  const canPopOut = variant === 'grid' && !poppedOutRoomIds.includes(roomId);
+  // Popouts are separate OS windows opened by the Electron main process; iOS has
+  // no equivalent, and the button would silently do nothing there.
+  const canPopOut = variant === 'grid' && !isIOSApp() && !poppedOutRoomIds.includes(roomId);
 
   const handleDrop = (e: React.DragEvent) => {
     if (!editMode || locked) return;
@@ -499,7 +796,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
     }
   };
 
-  const unknownPane = !activeRoom && !activeDM && !isTgDMView && !isMentionsView;
+  const unknownPane = !activeRoom && !activeDM && !isTgDMView && !feedView;
 
   const ringClass = editMode ? 'ring-1 ring-inset ring-discord-blurple/30' : '';
 
@@ -517,15 +814,16 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
           <span className="text-sm font-semibold text-white bg-discord-blurple/80 px-3 py-1.5 rounded">Drop here</span>
         </div>
       )}
-      {/* Channel header */}
-      <div className="h-12 px-2 sm:px-4 flex items-center shadow-[0_1px_0_rgba(0,0,0,0.2),0_1.5px_0_rgba(0,0,0,0.05),0_2px_0_rgba(0,0,0,0.05)] border-b border-discord-dark/60 shrink-0 bg-transparent z-10 gap-1">
+      {/* Channel header — also the always-available pull-to-refresh handle on
+          iOS (ref only feeds usePullToRefresh; taps and buttons unaffected). */}
+      <div ref={pullHeaderRef} className="h-12 compact:h-[52px] px-2 sm:px-4 flex items-center shadow-[0_1px_0_rgba(0,0,0,0.2),0_1.5px_0_rgba(0,0,0,0.05),0_2px_0_rgba(0,0,0,0.05)] border-b border-discord-dark/60 shrink-0 bg-transparent z-10 gap-1">
         {!isPopout && sidebarCollapsed && paneIndex === 0 && (
           <button
             onClick={toggleSidebar}
-            className="p-1.5 -ml-0.5 mr-0.5 rounded text-discord-channel-icon hover:text-discord-header-primary hover:bg-discord-hover transition-colors shrink-0"
+            className="p-1.5 compact:p-2.5 -ml-0.5 mr-0.5 rounded text-discord-channel-icon hover:text-discord-header-primary hover:bg-discord-hover transition-colors shrink-0"
             title="Show sidebar"
           >
-            <PanelLeftOpen size={18} />
+            <PanelLeftOpen size={18} className="compact:w-5 compact:h-5" />
           </button>
         )}
 
@@ -544,7 +842,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
         <div className="relative min-w-0 flex items-center">
           <button
             onClick={() => { if (!locked) setSwitcherOpen((v) => !v); }}
-            className="flex items-center gap-1.5 min-w-0 rounded px-1 py-0.5 hover:bg-discord-hover/50 transition-colors"
+            className="flex items-center gap-1.5 min-w-0 rounded px-1 py-0.5 compact:py-2 hover:bg-discord-hover/50 transition-colors"
             title={locked ? 'Pane locked - unlock to change room' : 'Switch pane content'}
           >
             <HeaderIcon size={20} className={`${headerIconClass} shrink-0`} />
@@ -556,18 +854,22 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
           {switcherOpen && !locked && (
             <>
               <div className="fixed inset-0 z-20" onClick={() => setSwitcherOpen(false)} />
-              <div className="absolute top-full left-0 mt-1 z-30 w-56 max-h-[60vh] overflow-y-auto bg-discord-sidebar border border-discord-dark rounded-md shadow-xl py-1">
+              <div className="absolute top-full left-0 mt-1 z-30 w-56 max-w-[calc(100vw-1rem)] max-h-[60dvh] overflow-y-auto bg-discord-sidebar border border-discord-dark rounded-md shadow-xl py-1 animate-pop-in origin-top-left">
                 {switcherOptions.map((opt) => (
                   <button
                     key={opt.id}
                     onClick={() => { setPaneRoom(paneIndex, opt.id); setSwitcherOpen(false); }}
-                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm truncate transition-colors ${
+                    className={`w-full flex items-center gap-2 px-3 py-1.5 compact:py-2.5 compact:text-[15px] text-left text-sm truncate transition-colors ${
                       opt.id === roomId
                         ? 'bg-discord-hover-light text-discord-header-primary'
                         : 'text-discord-channel-icon hover:bg-discord-hover hover:text-discord-header-secondary'
                     }`}
                   >
                     {opt.kind === 'mentions' ? <AtSign size={16} className="shrink-0 opacity-70" />
+                      : opt.kind === 'keywords' ? <Tag size={16} className="shrink-0 opacity-70" />
+                      : opt.kind === 'snipes' ? <Crosshair size={16} className="shrink-0 opacity-70" />
+                      : opt.kind === 'alerts' ? <BellRing size={16} className="shrink-0 opacity-70" />
+                      : opt.kind === 'dms' ? <MessagesSquare size={16} className="shrink-0 opacity-70" />
                       : opt.kind === 'tg' ? <Send size={16} className="shrink-0 text-[#2AABEE]" />
                       : opt.kind === 'dm' ? <MessageCircle size={16} className="shrink-0 opacity-70" />
                       : <Hash size={16} className="shrink-0 opacity-70" />}
@@ -579,12 +881,32 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
           )}
         </div>
 
-        {!isAnyDMView && !isMentionsView && activeRoom && (
+        {!isAnyDMView && !feedView && activeRoom && (
           <span className="ml-2 text-xs sm:text-sm text-discord-header-secondary truncate hidden lg:inline">
             {activeRoom.channels.length} channel{activeRoom.channels.length !== 1 ? 's' : ''}
           </span>
         )}
         <div className="ml-auto flex items-center gap-1 shrink-0">
+          {clearableFeed && !compact && allRoomMessages.length > 0 && (
+            <Tip label={clearLabel}>
+              <button
+                onClick={() => setClearConfirmOpen(true)}
+                className="p-1.5 rounded hover:bg-discord-hover text-discord-text-muted hover:text-discord-red transition-colors"
+              >
+                <Eraser size={18} />
+              </button>
+            </Tip>
+          )}
+          {roomId === 'alerts' && (
+            <Tip label="New alert">
+              <button
+                onClick={() => useAppStore.getState().setAlertCreateOpen(true)}
+                className="p-1.5 rounded hover:bg-discord-hover text-discord-text-muted hover:text-discord-text transition-colors"
+              >
+                <Plus size={18} />
+              </button>
+            </Tip>
+          )}
           {activeRoom && activeRoom.highlightedUsers.length > 0 && (
             <span className="text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full bg-discord-blurple/20 text-discord-blurple hidden lg:inline-flex">
               {activeRoom.highlightedUsers.length} highlighted
@@ -615,7 +937,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
               <X size={10} className="shrink-0" />
             </button>
           )}
-          {channelHiddenUsers.length > 0 && (
+          {hiddenCount > 0 && (
             <button
               onClick={() => setHiddenPanelOpen(!hiddenPanelOpen)}
               className={`flex items-center gap-1 text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full transition-colors ${
@@ -623,101 +945,227 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
                   ? 'bg-discord-red/20 text-discord-red'
                   : 'bg-discord-dark/50 text-discord-text-muted hover:text-discord-text'
               }`}
-              title="View hidden users"
+              title="View hidden users & muted roles"
             >
               <EyeOff size={10} />
-              <span className="hidden lg:inline">{channelHiddenUsers.length} hidden</span>
+              <span className="hidden lg:inline">{hiddenCount} hidden</span>
             </button>
           )}
-          <Tip label={searchOpen ? 'Close search' : 'Search messages (Ctrl+F)'}>
-            <button
-              onClick={searchOpen ? closeSearch : openSearch}
-              className={`p-1 transition-colors ${
-                searchOpen ? 'text-white' : 'text-discord-channel-icon hover:text-discord-text'
-              }`}
-            >
-              <Search size={18} />
-            </button>
-          </Tip>
-          {activeRoom && (
-            <Tip label="Room settings">
+          {compact ? (
+            /* Phone header: one comfortable overflow menu instead of a strip of
+               26px icon buttons. Same actions, same conditions as the desktop
+               cluster below. */
+            <div className="relative flex items-center">
               <button
-                onClick={() => openConfigModal(activeRoom)}
-                className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
+                onClick={() => setOverflowOpen((v) => !v)}
+                className={`p-2 rounded transition-colors ${overflowOpen ? 'text-white bg-discord-hover' : 'text-discord-channel-icon hover:text-discord-text'}`}
+                title="More actions"
               >
-                <Settings size={18} />
+                <MoreVertical size={20} />
               </button>
-            </Tip>
-          )}
-          {canPopOut && (
-            <Tip label="Pop out to its own window">
-              <button
-                onClick={() => popOutPane(paneIndex)}
-                className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
-              >
-                <ExternalLink size={18} />
-              </button>
-            </Tip>
-          )}
-          {editMode && onMoveLeft && (
-            <Tip label="Move chat to left side">
-              <button
-                onClick={onMoveLeft}
-                className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
-              >
-                <ArrowLeft size={18} />
-              </button>
-            </Tip>
-          )}
-          {editMode && onMoveRight && (
-            <Tip label="Move chat to right side">
-              <button
-                onClick={onMoveRight}
-                className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
-              >
-                <ArrowRight size={18} />
-              </button>
-            </Tip>
-          )}
-          {paneIndex === 0 && paneCount > 1 && (
-            <Tip label={isGrid ? 'Single row layout' : 'Two rows layout'}>
-              <button
-                onClick={() => updateConfig({ splitLayout: isGrid ? 'row' : 'grid' })}
-                className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
-              >
-                {isGrid ? <Columns2 size={18} /> : <Rows2 size={18} />}
-              </button>
-            </Tip>
-          )}
-          {!isPopout && (
-            <Tip label={locked ? 'Unlock pane' : 'Lock pane (prevent changing room)'}>
-              <button
-                onClick={() => togglePaneLock(paneIndex)}
-                className={`p-1 transition-colors ${locked ? 'text-discord-blurple hover:text-discord-blurple-hover' : 'text-discord-channel-icon hover:text-discord-text'}`}
-              >
-                {locked ? <Lock size={18} /> : <Unlock size={18} />}
-              </button>
-            </Tip>
-          )}
-          {!isPopout && paneCount < MAX_PANES && (
-            <Tip label="Add chat pane">
-              <button
-                onClick={() => addPane()}
-                className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
-              >
-                <Plus size={18} />
-              </button>
-            </Tip>
-          )}
-          {paneCount > 1 && (
-            <Tip label="Close pane">
-              <button
-                onClick={() => removePane(paneIndex)}
-                className="p-1 text-discord-channel-icon hover:text-discord-red transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </Tip>
+              {overflowOpen && (
+                <>
+                  <div className="fixed inset-0 z-20" onClick={() => setOverflowOpen(false)} />
+                  <div className="absolute top-full right-0 mt-1 z-30 w-60 max-w-[calc(100vw-1rem)] bg-discord-sidebar border border-discord-dark rounded-md shadow-xl py-1 animate-pop-in origin-top-right">
+                    {(
+                      [
+                        {
+                          key: 'search',
+                          show: true,
+                          icon: <Search size={18} />,
+                          label: searchOpen ? 'Close search' : 'Search messages',
+                          onClick: searchOpen ? closeSearch : openSearch,
+                        },
+                        {
+                          key: 'clear',
+                          show: clearableFeed && allRoomMessages.length > 0,
+                          icon: <Eraser size={18} />,
+                          label: clearLabel,
+                          onClick: () => setClearConfirmOpen(true),
+                        },
+                        {
+                          key: 'settings',
+                          show: !!activeRoom,
+                          icon: <Settings size={18} />,
+                          label: 'Room settings',
+                          onClick: () => activeRoom && openConfigModal(activeRoom),
+                        },
+                        {
+                          key: 'mute',
+                          show: !isPopout && paneIndex === 0,
+                          icon: soundsMuted ? <VolumeX size={18} /> : <Volume2 size={18} />,
+                          label: soundsMuted ? 'Unmute Trenchcord sounds' : 'Mute all Trenchcord sounds',
+                          onClick: toggleSoundsMuted,
+                        },
+                        {
+                          key: 'popout',
+                          show: canPopOut,
+                          icon: <ExternalLink size={18} />,
+                          label: 'Pop out to its own window',
+                          onClick: () => popOutPane(paneIndex),
+                        },
+                        {
+                          key: 'moveLeft',
+                          show: !!(editMode && onMoveLeft),
+                          icon: <ArrowLeft size={18} />,
+                          label: 'Move chat to left side',
+                          onClick: () => onMoveLeft?.(),
+                        },
+                        {
+                          key: 'moveRight',
+                          show: !!(editMode && onMoveRight),
+                          icon: <ArrowRight size={18} />,
+                          label: 'Move chat to right side',
+                          onClick: () => onMoveRight?.(),
+                        },
+                        {
+                          key: 'layout',
+                          show: paneIndex === 0 && paneCount > 1,
+                          icon: isGrid ? <Columns2 size={18} /> : <Rows2 size={18} />,
+                          label: isGrid ? 'Single row layout' : 'Two rows layout',
+                          onClick: () => updateConfig({ splitLayout: isGrid ? 'row' : 'grid' }),
+                        },
+                        // No lock entry: with a single pane on the phone there
+                        // is no layout to protect, it's just a confusing switch.
+                        // Split panes don't exist on iOS (see ChatView).
+                        {
+                          key: 'addPane',
+                          show: !isPopout && !isIOSApp() && paneCount < MAX_PANES,
+                          icon: <Plus size={18} />,
+                          label: 'Add chat pane',
+                          onClick: () => addPane(),
+                        },
+                        {
+                          key: 'closePane',
+                          show: paneCount > 1,
+                          icon: <X size={18} />,
+                          label: 'Close pane',
+                          onClick: () => removePane(paneIndex),
+                        },
+                      ] as const
+                    )
+                      .filter((item) => item.show)
+                      .map((item) => (
+                        <button
+                          key={item.key}
+                          onClick={() => { item.onClick(); setOverflowOpen(false); }}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-[15px] text-discord-text hover:bg-discord-hover transition-colors"
+                        >
+                          <span className="shrink-0 opacity-80">{item.icon}</span>
+                          {item.label}
+                        </button>
+                      ))}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <>
+              <Tip label={searchOpen ? 'Close search' : 'Search messages (Ctrl+F)'}>
+                <button
+                  onClick={searchOpen ? closeSearch : openSearch}
+                  className={`p-1 transition-colors ${
+                    searchOpen ? 'text-white' : 'text-discord-channel-icon hover:text-discord-text'
+                  }`}
+                >
+                  <Search size={18} />
+                </button>
+              </Tip>
+              {activeRoom && (
+                <Tip label="Room settings">
+                  <button
+                    onClick={() => openConfigModal(activeRoom)}
+                    className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
+                  >
+                    <Settings size={18} />
+                  </button>
+                </Tip>
+              )}
+              {/* Global mute, so first pane only (like the sidebar toggle).
+                  Popout windows never play sounds (useWebSocket skips them),
+                  so a mute toggle there would be a dead control. */}
+              {!isPopout && paneIndex === 0 && (
+                <Tip label={soundsMuted ? 'Unmute Trenchcord sounds' : 'Mute all Trenchcord sounds'}>
+                  <button
+                    onClick={toggleSoundsMuted}
+                    className={`p-1 transition-colors ${soundsMuted ? 'text-discord-red hover:text-discord-red/80' : 'text-discord-channel-icon hover:text-discord-text'}`}
+                  >
+                    {soundsMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                  </button>
+                </Tip>
+              )}
+              {canPopOut && (
+                <Tip label="Pop out to its own window">
+                  <button
+                    onClick={() => popOutPane(paneIndex)}
+                    className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
+                  >
+                    <ExternalLink size={18} />
+                  </button>
+                </Tip>
+              )}
+              {editMode && onMoveLeft && (
+                <Tip label="Move chat to left side">
+                  <button
+                    onClick={onMoveLeft}
+                    className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
+                  >
+                    <ArrowLeft size={18} />
+                  </button>
+                </Tip>
+              )}
+              {editMode && onMoveRight && (
+                <Tip label="Move chat to right side">
+                  <button
+                    onClick={onMoveRight}
+                    className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
+                  >
+                    <ArrowRight size={18} />
+                  </button>
+                </Tip>
+              )}
+              {paneIndex === 0 && paneCount > 1 && (
+                <Tip label={isGrid ? 'Single row layout' : 'Two rows layout'}>
+                  <button
+                    onClick={() => updateConfig({ splitLayout: isGrid ? 'row' : 'grid' })}
+                    className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
+                  >
+                    {isGrid ? <Columns2 size={18} /> : <Rows2 size={18} />}
+                  </button>
+                </Tip>
+              )}
+              {!isPopout && (
+                <Tip label={locked ? 'Unlock pane' : 'Lock pane (prevent changing room)'}>
+                  <button
+                    onClick={() => togglePaneLock(paneIndex)}
+                    className={`p-1 transition-colors ${locked ? 'text-discord-blurple hover:text-discord-blurple-hover' : 'text-discord-channel-icon hover:text-discord-text'}`}
+                  >
+                    {locked ? <Lock size={18} /> : <Unlock size={18} />}
+                  </button>
+                </Tip>
+              )}
+              {/* Split panes don't exist on iOS (see ChatView), so nothing to add to. */}
+              {!isPopout && !isIOSApp() && paneCount < MAX_PANES && (
+                <Tip label="Add chat pane">
+                  <button
+                    onClick={() => addPane()}
+                    className="p-1 text-discord-channel-icon hover:text-discord-text transition-colors"
+                  >
+                    <Plus size={18} />
+                  </button>
+                </Tip>
+              )}
+              {paneCount > 1 && (
+                <Tip label="Close pane">
+                  <button
+                    onClick={() => removePane(paneIndex)}
+                    className="p-1 text-discord-channel-icon hover:text-discord-red transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </Tip>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -779,12 +1227,16 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
         </div>
       )}
 
-      {/* Hidden users panel */}
-      {hiddenPanelOpen && channelHiddenUsers.length > 0 && (
+      {/* Hidden users & muted roles panel */}
+      {hiddenPanelOpen && hiddenCount > 0 && (
         <div className="border-b border-discord-dark/60 bg-discord-embed-bg px-3 sm:px-4 py-3 shrink-0">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted">
-              Hidden Users
+              {channelHiddenUsers.length > 0 && roomMutedRoles.length > 0
+                ? 'Hidden Users & Muted Roles'
+                : roomMutedRoles.length > 0
+                  ? 'Muted Roles'
+                  : 'Hidden Users'}
             </span>
             <button
               onClick={() => setHiddenPanelOpen(false)}
@@ -816,6 +1268,27 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
                 </button>
               </div>
             ))}
+            {roomMutedRoles.map((entry) => (
+              <div
+                key={`role:${entry.guildId}:${entry.roleId}`}
+                className="flex items-center justify-between gap-2 px-2 sm:px-2.5 py-1.5 rounded bg-discord-sidebar/60"
+              >
+                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                  <Shield size={12} className="shrink-0 text-discord-red/70" />
+                  <span className="text-sm text-white font-medium truncate">{entry.roleName}</span>
+                  <span className="text-[10px] text-discord-text-muted truncate hidden sm:inline">
+                    {entry.guildName ?? entry.guildId} · everyone with this role
+                  </span>
+                </div>
+                <button
+                  onClick={() => unhideRole(entry.guildId, entry.roleId)}
+                  className="shrink-0 text-discord-text-muted hover:text-discord-red transition-colors"
+                  title="Unmute role"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -828,22 +1301,54 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
             <p className="text-sm">This chat is no longer available. Pick another from the header.</p>
           </div>
         </div>
+      ) : roomId === 'alerts' ? (
+        // The Alerts feed is a management page (create/edit cards + fired
+        // history), not a message stream.
+        <AlertsPage />
       ) : (
+        <>
+        {/* Snipes mirrors Alerts: configs are managed on the feed itself. The
+            panel only appears once the chain is fully enabled — while setting
+            up, the checklist below is the sole guide. */}
+        {roomId === 'snipes' &&
+          tradingStatus?.configured === true &&
+          config?.trading?.enabled === true &&
+          config?.sniping?.enabled === true && <SnipesPanel />}
+        {/* Pull-to-refresh disc. Position/opacity are painted imperatively by
+            usePullToRefresh during the pull; React only drives the spin. */}
+        {pullEnabled && (
+          <div
+            ref={pullIndicatorRef}
+            className="absolute top-14 compact:top-[60px] left-1/2 z-30 w-9 h-9 rounded-full bg-discord-darker border border-discord-dark shadow-lg flex items-center justify-center pointer-events-none"
+            style={{ opacity: 0, transform: 'translate(-50%, 0px)' }}
+          >
+            <RefreshCw size={16} className={`text-discord-blurple ${pullRefreshing ? 'animate-spin' : ''}`} />
+          </div>
+        )}
         <div
           ref={scrollContainerRef}
-          className="flex-1 overflow-y-auto"
+          className="flex-1 overflow-y-auto overflow-x-hidden"
           onScroll={checkNearBottom}
           style={{ overflowAnchor: 'none' }}
         >
           <div ref={contentRef} className="pb-[1vh]">
             {roomMessages.length === 0 && (
-              <div className="flex items-center justify-center h-full text-discord-text-muted text-sm">
-                {searchOpen && trimmedSearch
-                  ? 'No messages match your search.'
-                  : isMentionsView
-                    ? 'No mentions yet.'
-                    : 'Waiting for messages...'}
-              </div>
+              snipeGuideNeeded && !(searchOpen && trimmedSearch) ? (
+                <SnipesSetupGuide
+                  hasToken={tradingStatus?.configured === true}
+                  tradingOn={config?.trading?.enabled === true}
+                  snipingEnabled={config?.sniping?.enabled === true}
+                  openSettings={(section) => setActiveView('settings', section)}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-discord-text-muted text-sm">
+                  {searchOpen && trimmedSearch
+                    ? 'No messages match your search.'
+                    : feedView
+                      ? feedView.empty
+                      : 'Waiting for messages...'}
+                </div>
+              )
             )}
 
             {roomMessages.map((msg, i) => {
@@ -857,9 +1362,21 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
               const guildColor = msg.source === 'telegram'
                 ? config?.telegramColors?.[msg.channelId] ?? config?.dmColors?.[msg.channelId]
                 : msg.guildId
-                  ? config?.guildColors?.[msg.guildId]
+                  ? config?.channelColors?.[msg.channelId] ?? config?.guildColors?.[msg.guildId]
                   : config?.dmColors?.[msg.channelId];
-              const highlightColor = activeRoom?.highlightedUserColors?.[msg.author.id];
+              // User-specific highlights win over role-wide ones: a highlighted
+              // user keeps their own color (or the default style), and the role
+              // color only applies to authors who aren't highlighted themselves.
+              const userHighlightEntry = activeRoom?.highlightedUsers?.find((e) =>
+                e === msg.author.id ||
+                (e.startsWith('@') && msg.author.username && e.slice(1).toLowerCase() === msg.author.username.toLowerCase())
+              );
+              const roleHighlight = activeRoom?.highlightedRoles?.find((hr) =>
+                msg.author.roles?.some((r) => r.id === hr.roleId)
+              );
+              const highlightColor = userHighlightEntry
+                ? activeRoom?.highlightedUserColors?.[userHighlightEntry] ?? activeRoom?.highlightedUserColors?.[msg.author.id]
+                : roleHighlight?.color;
 
               return (
                 <div key={msg.id} id={`msg-${msg.id}`} className="transition-colors duration-500">
@@ -868,6 +1385,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
                     isCompact={isCompact}
                     messageDisplay={config?.messageDisplay ?? 'default'}
                     compactModeAvatars={config?.compactModeAvatars ?? true}
+                    compactModeNameOnce={config?.compactModeNameOnce ?? false}
                     guildColor={guildColor}
                     highlightMode={activeRoom?.highlightMode ?? 'background'}
                     highlightColor={highlightColor}
@@ -877,20 +1395,24 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
                     contractLinkTemplates={config?.contractLinkTemplates}
                     contractClickAction={config?.contractClickAction ?? 'copy_open'}
                     showFullContractAddress={config?.showFullContractAddress ?? false}
-                    openInDiscordApp={config?.openInDiscordApp ?? false}
-                    openInTelegramApp={config?.openInTelegramApp ?? false}
+                    openInDiscordApp={config?.openInDiscordApp ?? true}
+                    openInTelegramApp={config?.openInTelegramApp ?? true}
                     badgeClickAction={config?.badgeClickAction ?? 'discord'}
+                    serverIconBadge={serverIconBadge}
+                    guildIcon={msg.guildId ? guildIcons[msg.guildId] ?? null : null}
+                    customUserNames={config?.customUserNames}
+                    onRenameUser={renameUser}
                     onHideUser={hideUser}
+                    onHideRole={hideRole}
                     onToggleHighlight={activeRoom ? toggleHighlightUser : undefined}
-                    isUserHighlighted={
-                      activeRoom?.highlightedUsers?.some((e) =>
-                        e === msg.author.id ||
-                        (e.startsWith('@') && msg.author.username && e.slice(1).toLowerCase() === msg.author.username.toLowerCase())
-                      ) ?? false
-                    }
+                    onToggleHighlightRole={activeRoom ? toggleHighlightRole : undefined}
+                    highlightedRoleIds={activeRoom?.highlightedRoles?.map((hr) => hr.roleId)}
+                    isUserHighlighted={!!userHighlightEntry}
+                    isRoleHighlighted={!!roleHighlight}
                     onFocus={handleFocus}
                     isFocused={focusFilter !== null && focusFilter.guildId === msg.guildId && focusFilter.channelId === msg.channelId}
                     onQuickReply={handleQuickReply}
+                    onDismiss={dismissableFeed ? () => dismissRoomMessage(roomId, msg.id) : undefined}
                     chattingEnabled={chattingEnabled}
                     roleColors={config?.roleColors ?? true}
                   />
@@ -899,13 +1421,14 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
             })}
           </div>
         </div>
+        </>
       )}
 
       {/* New-messages pill (shown while viewing older messages) */}
       {newMessageCount > 0 && !searchOpen && (
         <button
           onClick={jumpToPresent}
-          className="absolute top-12 left-0 right-0 z-20 flex items-center justify-between gap-2 px-3 sm:px-4 py-1.5 bg-discord-blurple hover:bg-discord-blurple-hover text-white text-xs sm:text-sm font-medium shadow-md transition-colors"
+          className="absolute top-12 compact:top-[52px] left-0 right-0 z-20 flex items-center justify-between gap-2 px-3 sm:px-4 py-1.5 compact:py-2.5 bg-discord-blurple hover:bg-discord-blurple-hover text-white text-xs sm:text-sm compact:text-sm font-medium shadow-md transition-colors"
         >
           <span className="truncate">
             {newMessageCount} new message{newMessageCount !== 1 ? 's' : ''}
@@ -923,7 +1446,7 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
           <span className="text-xs sm:text-sm text-discord-text-muted whitespace-nowrap">You're viewing older messages</span>
           <button
             onClick={jumpToPresent}
-            className="flex items-center gap-1 text-xs sm:text-sm font-semibold text-white bg-discord-blurple hover:bg-discord-blurple-hover px-2.5 py-1 rounded-full transition-colors whitespace-nowrap"
+            className="flex items-center gap-1 text-xs sm:text-sm compact:text-sm font-semibold text-white bg-discord-blurple hover:bg-discord-blurple-hover px-2.5 py-1 compact:py-2 compact:px-3.5 rounded-full transition-colors whitespace-nowrap"
           >
             Jump To Present <ArrowDown size={14} />
           </button>
@@ -946,6 +1469,22 @@ export default function ChatPane({ roomId, paneIndex, paneCount, editMode, varia
           />
         ) : null
       )}
+
+      <ConfirmModal
+        open={clearConfirmOpen}
+        title={isAnyDMView ? 'Clear Conversation' : `Clear ${headerTitle}`}
+        message={
+          isAnyDMView
+            ? `Remove all ${allRoomMessages.length} message${allRoomMessages.length === 1 ? '' : 's'} from this conversation? It disappears from the sidebar until they message you again.`
+            : `Remove all ${allRoomMessages.length} message${allRoomMessages.length === 1 ? '' : 's'} from ${headerTitle}? New ones keep arriving as usual.`
+        }
+        confirmLabel="Clear"
+        onConfirm={() => {
+          clearRoomMessages(roomId);
+          setClearConfirmOpen(false);
+        }}
+        onCancel={() => setClearConfirmOpen(false)}
+      />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { SlotsharkRegion } from '../discord/types.js';
+import { appFetch } from './http.js';
 
 // Fixed set rather than a user-supplied base URL: a free-form endpoint would be
 // an SSRF vector, and the only real choice here is latency (US vs EU).
@@ -12,6 +13,19 @@ const REGION_BASE_URLS: Record<SlotsharkRegion, string> = {
 // outcome -- the user assumes failure and re-clicks, double-buying.
 const SLOTSHARK_TIMEOUT_MS = 20_000;
 
+export interface SlotsharkLimitSell {
+  type: 'time' | 'pnl';
+  // time: seconds after the buy. pnl: profit/loss % threshold (negative = stop
+  // loss).
+  value: number;
+  sellPercent: number;
+  /** SOL. Omit = auto (p75). Only paid if the swap succeeds. */
+  tip?: number;
+  /** SOL. Omit = auto (p99). Paid whenever the TX lands, even on failure. */
+  priorityFee?: number;
+  retries: boolean;
+}
+
 export interface SlotsharkBuyParams {
   mint: string;
   solAmount: number;
@@ -24,6 +38,13 @@ export interface SlotsharkBuyParams {
   /** SOL. null/undefined omits the field, which means auto (p99). */
   priorityFee?: number | null;
   antimev?: boolean;
+  /** USD bounds enforced by Slotshark. undefined omits the field (no bound). */
+  minMarketCap?: number;
+  maxMarketCap?: number;
+  /** Sell orders scheduled with the buy (sniping). Empty/undefined = none. */
+  limitSells?: SlotsharkLimitSell[];
+  /** Slotshark skips the buy if the wallet already holds the token. */
+  skipIfBought?: boolean;
 }
 
 export type SlotsharkErrorKind =
@@ -58,10 +79,14 @@ export async function slotsharkBuy(
     slippage: params.slippage ?? 20,
     antimev: params.antimev ?? true,
     retries: true,
-    // skipIfBought intentionally omitted -- the API defaults it to false.
   };
+  // The API defaults skipIfBought to false, so it's only sent when set.
+  if (params.skipIfBought) body.skipIfBought = true;
   if (typeof params.tip === 'number') body.tip = params.tip;
   if (typeof params.priorityFee === 'number') body.priorityFee = params.priorityFee;
+  if (typeof params.minMarketCap === 'number') body.minMarketCap = params.minMarketCap;
+  if (typeof params.maxMarketCap === 'number') body.maxMarketCap = params.maxMarketCap;
+  if (params.limitSells?.length) body.limitSells = params.limitSells;
 
   // Dev seam: exercises the whole UI path with no network call and no SOL.
   if (process.env.SLOTSHARK_DRY_RUN === '1') {
@@ -69,8 +94,16 @@ export async function slotsharkBuy(
     return { ok: true, data: { dryRun: true, signature: 'DRYRUN' } };
   }
 
+  // Debug seam: logs the exact request (URL + JSON body). The Authorization
+  // token is never logged -- only its last 4 chars, to tell tokens apart.
+  if (process.env.SLOTSHARK_DEBUG === '1') {
+    console.log(
+      `[slotshark] POST ${REGION_BASE_URLS[region]}/buy token=…${apiToken.slice(-4)} body=${JSON.stringify(body)}`,
+    );
+  }
+
   try {
-    const res = await fetch(`${REGION_BASE_URLS[region]}/buy`, {
+    const res = await appFetch(`${REGION_BASE_URLS[region]}/buy`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiToken}`,
@@ -98,7 +131,10 @@ export async function slotsharkBuy(
             : res.status >= 500
               ? 'upstream'
               : 'validation';
-      console.error(`[slotshark] HTTP ${res.status} (${kind}): ${message}`);
+      console.error(
+        `[slotshark] HTTP ${res.status} (${kind}): ${message} ` +
+        `[${region} wallet=${params.wallet} mint=${params.mint} sol=${params.solAmount}]`,
+      );
       return { ok: false, kind, status: res.status, message };
     }
 

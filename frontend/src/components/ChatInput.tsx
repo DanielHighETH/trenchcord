@@ -148,7 +148,7 @@ export default function ChatInput({ channels, defaultChannelId, isDM, dmChannelI
     : <Hash size={22} strokeWidth={2.5} />;
 
   return (
-    <div className="px-2 sm:px-4 pb-4 sm:pb-6 pt-3 sm:pt-4 shrink-0">
+    <div className="px-2 sm:px-4 pb-4 sm:pb-6 compact:pb-[calc(0.5rem+var(--safe-bottom))] pt-3 sm:pt-4 compact:pt-2 shrink-0">
       {error && (
         <div className="mb-1.5 flex items-center gap-1.5 text-xs text-discord-red bg-discord-red/10 rounded px-3 py-1.5">
           <AlertTriangle size={12} className="shrink-0" />
@@ -219,7 +219,7 @@ export default function ChatInput({ channels, defaultChannelId, isDM, dmChannelI
               <div className="relative">
                 <button
                   onClick={() => setDropdownOpen(!dropdownOpen)}
-                  className={`flex items-center justify-center w-[34px] h-[34px] rounded transition-colors ${
+                  className={`flex items-center justify-center w-[34px] h-[34px] compact:w-10 compact:h-10 rounded transition-colors ${
                     dropdownOpen ? 'text-[#dbdee1]' : 'text-[#b5bac1] hover:text-[#dbdee1]'
                   }`}
                   title={selectedChannel
@@ -274,7 +274,7 @@ export default function ChatInput({ channels, defaultChannelId, isDM, dmChannelI
             <button
               onClick={handleSend}
               disabled={sending || (!content.trim() && files.length === 0) || !effectiveChannelId}
-              className={`flex items-center justify-center w-[34px] h-[34px] rounded transition-colors ${
+              className={`flex items-center justify-center w-[34px] h-[34px] compact:w-10 compact:h-10 rounded transition-colors ${
                 !sending && (content.trim() || files.length > 0) && effectiveChannelId
                   ? isTelegramChannel ? 'text-[#2AABEE] hover:text-[#5BC0F0]' : 'text-[#5865f2] hover:text-[#7983f5]'
                   : 'text-[#4e5058] cursor-not-allowed'

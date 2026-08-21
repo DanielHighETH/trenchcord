@@ -1,0 +1,85 @@
+# XcodeGen spec — run `xcodegen generate` in this directory to produce
+# Trenchcord.xcodeproj. The project file itself is not committed: it is entirely
+# derived from this file, and a generated .pbxproj is unreviewable in diffs and
+# conflicts on every change.
+#
+#   brew install xcodegen
+#   cd ios/App && xcodegen generate
+#
+# See ios/README.md for the full build and TestFlight runbook.
+
+name: Trenchcord
+options:
+  bundleIdPrefix: app.trenchcord
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    MARKETING_VERSION: "2.0.0"
+    CURRENT_PROJECT_VERSION: "9"
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: "233784Y8FJ" # Apple Developer Team ID
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  Trenchcord:
+    type: application
+    platform: iOS
+    sources:
+      # Swift/ObjC++ sources. Resources are added separately as folder
+      # references so their directory layout is preserved inside the bundle —
+      # NodeManager looks up "backend/index.cjs" and "frontend/dist/index.html"
+      # by subdirectory, which a flattened resource group would break.
+      - path: Trenchcord
+        excludes:
+          - "Resources/**"
+      - path: Trenchcord/Resources/backend
+        type: folder
+      - path: Trenchcord/Resources/frontend
+        type: folder
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.trenchcord.ios
+        PRODUCT_NAME: Trenchcord
+        INFOPLIST_FILE: Trenchcord/Info.plist
+        SWIFT_OBJC_BRIDGING_HEADER: Trenchcord/Trenchcord-Bridging-Header.h
+        # node.h and the C++ runtime that NodeRunner.mm links against.
+        CLANG_CXX_LANGUAGE_STANDARD: "c++17"
+        CLANG_ENABLE_MODULES: YES
+        ENABLE_BITCODE: NO
+        TARGETED_DEVICE_FAMILY: "1" # iPhone only
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      # Download NodeMobile.xcframework from the nodejs-mobile releases page and
+      # unzip it here — it is ~90 MB of prebuilt binary and is not committed.
+      # https://github.com/nodejs-mobile/nodejs-mobile/releases (v18.20.4)
+      - framework: NodeMobile.xcframework
+        embed: true
+        codeSign: true
+    postBuildScripts:
+      - name: Generate NodeMobile dSYM
+        basedOnDependencyAnalysis: false
+        script: |
+          # NodeMobile.xcframework ships stripped, with no published dSYM, and
+          # App Store Connect refuses the upload unless the archive contains one
+          # matching the binary's UUID. dsymutil can't recover debug info that
+          # was never published (hence the suppressed warnings), but it emits a
+          # UUID-matching dSYM — which is all the upload validator checks.
+          BIN="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/NodeMobile.framework/NodeMobile"
+          if [ -f "$BIN" ] && [ -n "${DWARF_DSYM_FOLDER_PATH}" ]; then
+            dsymutil "$BIN" -o "${DWARF_DSYM_FOLDER_PATH}/NodeMobile.framework.dSYM" 2>/dev/null || true
+          fi
+    preBuildScripts:
+      - name: Verify JS payload
+        basedOnDependencyAnalysis: false
+        script: |
+          # The app is useless without these, and a missing-file failure at
+          # runtime on a tester's phone is far more expensive than failing here.
+          BACKEND="$SRCROOT/Trenchcord/Resources/backend/index.cjs"
+          FRONTEND="$SRCROOT/Trenchcord/Resources/frontend/dist/index.html"
+          if [ ! -f "$BACKEND" ] || [ ! -f "$FRONTEND" ]; then
+            echo "error: JS payload missing. Run 'npm run build:ios-payload' from the repo root."
+            exit 1
+          fi

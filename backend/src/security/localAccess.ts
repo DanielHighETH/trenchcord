@@ -95,6 +95,22 @@ export function isAllowedHost(hostHeader: string | undefined): boolean {
 }
 
 /**
+ * Whether arriving from loopback is by itself enough to be handed a session
+ * token (GET /api/local-session).
+ *
+ * On a desktop it is: a request from 127.0.0.1 is the app the user just opened,
+ * and other local processes already run as that user. On iOS it is not — every
+ * app on the phone shares 127.0.0.1, so loopback proves nothing about *which*
+ * app is asking. The native shell there passes the token explicitly instead, so
+ * nothing legitimate depends on the loopback shortcut.
+ */
+export function trustsLoopbackForSession(): boolean {
+  const override = process.env.TRENCHCORD_TRUST_LOOPBACK;
+  if (override !== undefined) return override !== '0';
+  return process.env.TRENCHCORD_PLATFORM !== 'ios';
+}
+
+/**
  * Warn loudly when the user has opened the server up beyond this machine.
  * Returns whether it is in fact exposed.
  */

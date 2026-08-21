@@ -1,6 +1,6 @@
 {
   "name": "trenchcord-backend",
-  "version": "1.3.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,6 +17,7 @@
     "express-rate-limit": "^8.2.1",
     "helmet": "^8.1.0",
     "https-proxy-agent": "^9.1.0",
+    "jose": "^5.9.0",
     "multer": "^2.0.2",
     "teleproto": "^1.227.1",
     "undici": "^6.21.0",

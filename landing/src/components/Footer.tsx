@@ -1,4 +1,4 @@
-import { Github, Download } from 'lucide-react';
+import { Github, Download, BadgeCheck } from 'lucide-react';
 
 export function Footer() {
   return (
@@ -20,6 +20,15 @@ export function Footer() {
           >
             <Download size={14} />
             Download
+          </a>
+          <a
+            href="https://dashboard.trenchcord.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-dc-text-muted hover:text-dc-text transition-colors flex items-center gap-1.5 text-xs"
+          >
+            <BadgeCheck size={14} />
+            Account
           </a>
           <a
             href="https://x.com/trenchcordapp"

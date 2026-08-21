@@ -7,6 +7,23 @@ import { Api } from 'teleproto/tl/index.js';
 import type { TelegramChat, TelegramSender, TelegramRawMessage, TelegramMedia, TelegramButton } from './types.js';
 import { rewriteReferralLinks } from '../utils/contract.js';
 
+// "Meaningful" link label: contains a letter in any script or an emoji. Built
+// with new RegExp rather than a literal because nodejs-mobile's V8 has no full
+// ICU and rejects \p{...} property escapes — and an invalid regex LITERAL is an
+// early SyntaxError that kills the whole bundle at load, try/catch or not
+// (ios/build-backend.mjs guards against literals creeping back in). The
+// fallback approximates the same classes: letter blocks, BMP emoji/dingbats,
+// and any astral-plane character.
+const MEANINGFUL_LABEL_RE = (() => {
+  try {
+    return new RegExp('[\\p{L}\\p{Extended_Pictographic}]', 'u');
+  } catch {
+    return new RegExp(
+      '[A-Za-z\u00C0-\u024F\u0370-\u1FFF\u2600-\u27BF\u2C00-\uD7FF\uF900-\uFDCF\uFE70-\uFFDC]|[\uD800-\uDBFF][\uDC00-\uDFFF]'
+    );
+  }
+})();
+
 // How often to verify the connection is actually alive. teleproto pings every
 // 9s on its own, but its recovery has terminal states (see reconnectLoop), so we
 // supervise it from the outside.
@@ -30,6 +47,31 @@ const FATAL_AUTH_ERRORS = [
   'USER_DEACTIVATED_BAN',
 ];
 
+/**
+ * Telegram packs a voice note's waveform as 5-bit samples (0-31) laid end to
+ * end; Discord sends one 0-255 byte per sample, base64'd. Rescale Telegram's
+ * into Discord's shape so the frontend draws both with the same player.
+ */
+function unpackVoiceWaveform(packed?: Buffer): string | undefined {
+  if (!packed || packed.length === 0) return undefined;
+  const count = Math.floor((packed.length * 8) / 5);
+  if (count === 0) return undefined;
+  const out = Buffer.alloc(count);
+  for (let i = 0; i < count; i++) {
+    const bit = i * 5;
+    const byte = bit >> 3;
+    const window = packed[byte] | ((packed[byte + 1] ?? 0) << 8);
+    out[i] = Math.round((((window >> (bit & 7)) & 0x1f) * 255) / 31);
+  }
+  return out.toString('base64');
+}
+
+export interface TelegramAccountIdentity {
+  id: string;
+  username: string | null;
+  firstName: string;
+}
+
 export class TelegramClientWrapper extends EventEmitter {
   private client: GramJSClient;
   private session: StringSession;
@@ -37,8 +79,12 @@ export class TelegramClientWrapper extends EventEmitter {
   private apiHash: string;
   private chatCache = new Map<string, TelegramChat>();
   private senderCache = new Map<string, TelegramSender>();
+  private account: TelegramAccountIdentity | null = null;
   private connected = false;
   private destroyed = false;
+  // Set when the session itself is gone (revoked, banned, logged out elsewhere).
+  // Unlike `destroyed`, this survives so the UI can flag that specific account.
+  private fatal = false;
   private reconnecting = false;
   private probing = false;
   private reconnectAttempt = 0;
@@ -86,11 +132,12 @@ export class TelegramClientWrapper extends EventEmitter {
       this.senderReconnectingSince = null;
       console.log(`[Telegram] Connected as ${me.firstName} (@${me.username ?? 'no-username'})`);
 
-      this.emit('ready', {
+      this.account = {
         id: me.id.toString(),
         username: me.username ?? null,
         firstName: me.firstName ?? '',
-      });
+      };
+      this.emit('ready', this.account);
 
       this.setupEventHandlers();
       this.startHealthCheck();
@@ -104,9 +151,10 @@ export class TelegramClientWrapper extends EventEmitter {
       const message = err?.message ?? String(err);
       if (this.isFatalAuthError(err)) {
         this.destroyed = true;
+        this.fatal = true;
         this.stopHealthCheck();
         console.error('[Telegram] Session is no longer valid:', message);
-        this.emit('fatal', new Error(`Telegram session invalid: ${message}`));
+        this.emit('fatal', new Error(this.fatalErrorMessage(message)));
         return false;
       }
       console.error('[Telegram] Connection failed:', message);
@@ -134,6 +182,16 @@ export class TelegramClientWrapper extends EventEmitter {
       clearInterval(this.healthTimer);
       this.healthTimer = null;
     }
+  }
+
+  /**
+   * Run the health probe now instead of waiting for the next interval tick.
+   * Called when the host app returns to the foreground: iOS freezes the process
+   * while backgrounded, so the MTProto socket is typically dead on resume and
+   * would otherwise go unnoticed until the next scheduled check.
+   */
+  probeNow(): void {
+    void this.checkHealth();
   }
 
   private async checkHealth(): Promise<void> {
@@ -167,10 +225,11 @@ export class TelegramClientWrapper extends EventEmitter {
       const message = err?.message ?? String(err);
       if (this.isFatalAuthError(err)) {
         this.destroyed = true;
+        this.fatal = true;
         this.connected = false;
         this.stopHealthCheck();
         console.error('[Telegram] Session is no longer valid:', message);
-        this.emit('fatal', new Error(`Telegram session invalid: ${message}`));
+        this.emit('fatal', new Error(this.fatalErrorMessage(message)));
         return;
       }
       this.scheduleReconnect(`health check failed: ${message}`);
@@ -232,6 +291,17 @@ export class TelegramClientWrapper extends EventEmitter {
   private isFatalAuthError(err: any): boolean {
     const message = `${err?.errorMessage ?? ''} ${err?.message ?? ''}`.toUpperCase();
     return FATAL_AUTH_ERRORS.some((code) => message.includes(code));
+  }
+
+  // AUTH_KEY_DUPLICATED has one overwhelmingly common cause — the same
+  // session string running on two devices at once (e.g. a desktop backup
+  // imported to a phone with both apps open). Telegram revokes the key on
+  // both, so without this hint the error reads like random session loss.
+  private fatalErrorMessage(message: string): string {
+    const hint = message.toUpperCase().includes('AUTH_KEY_DUPLICATED')
+      ? ' — this usually means the same Telegram session was used on two devices at once (e.g. your computer and your phone). Log in again on each device separately; every device needs its own session.'
+      : '';
+    return `Telegram session invalid: ${message}${hint}`;
   }
 
   private withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -304,8 +374,12 @@ export class TelegramClientWrapper extends EventEmitter {
           const replySender = await this.resolveSender(replyMsg[0]);
           replyTo = {
             id: replyMsg[0].id,
+            senderId: replySender?.id ?? null,
             senderName: replySender?.firstName ?? 'Unknown',
+            senderPhoto: replySender?.photo ?? null,
+            senderIsBot: replySender?.isBot,
             text: replyMsg[0].text ?? '',
+            hasMedia: !!replyMsg[0].media,
           };
         }
       } catch {
@@ -379,7 +453,7 @@ export class TelegramClientWrapper extends EventEmitter {
     const entities = message.entities;
     if (!entities || entities.length === 0) return raw;
 
-    const isMeaningfulLabel = (s: string) => /[\p{L}\p{Extended_Pictographic}]/u.test(s);
+    const isMeaningfulLabel = (s: string) => MEANINGFUL_LABEL_RE.test(s);
 
     // Markers to splice into the raw text. `rank` controls nesting so bold wraps
     // links (e.g. "**[label](url)**"): lower rank is more outer.
@@ -542,6 +616,7 @@ export class TelegramClientWrapper extends EventEmitter {
           firstName: entity.firstName ?? '',
           lastName: entity.lastName ?? null,
           photo: entity.photo ? `/api/telegram/avatar/${senderId}` : null,
+          isBot: entity.bot ?? false,
         };
       } else if (entity instanceof Api.Channel || entity instanceof Api.Chat) {
         sender = {
@@ -584,20 +659,33 @@ export class TelegramClientWrapper extends EventEmitter {
           (a) => a instanceof Api.DocumentAttributeFilename
         ) as Api.DocumentAttributeFilename | undefined;
 
+        const audioAttr = doc.attributes.find(
+          (a) => a instanceof Api.DocumentAttributeAudio
+        ) as Api.DocumentAttributeAudio | undefined;
+
         let type: TelegramMedia['type'] = 'document';
         if (isAnimated) type = 'gif';
         else if (videoAttr) type = 'video';
+        // Telegram marks a recorded voice note on the audio attribute; the
+        // mime type alone can't tell one from an uploaded ogg music file.
+        else if (audioAttr?.voice) type = 'voice';
         else if (doc.mimeType?.startsWith('audio/')) type = 'audio';
-        else if (doc.mimeType === 'audio/ogg') type = 'voice';
 
+        const isVoice = type === 'voice';
         return {
           type,
           url: '', // Will be resolved via download URL
-          filename: filenameAttr?.fileName ?? `file_${message.id}`,
+          filename: filenameAttr?.fileName ?? (isVoice ? 'voice-message.ogg' : `file_${message.id}`),
           size: Number(doc.size),
-          mimeType: doc.mimeType ?? undefined,
+          // Voice notes are always ogg; without a mime type the frontend
+          // can't tell the attachment is audio at all.
+          mimeType: doc.mimeType ?? (isVoice ? 'audio/ogg' : undefined),
           width: videoAttr?.w,
           height: videoAttr?.h,
+          // Only voice notes carry these: an uploaded audio file with a
+          // duration would render as a voice note in the frontend.
+          durationSecs: isVoice ? audioAttr?.duration : undefined,
+          waveform: isVoice ? unpackVoiceWaveform(audioAttr?.waveform) : undefined,
         };
       }
     }
@@ -822,12 +910,34 @@ export class TelegramClientWrapper extends EventEmitter {
     return this.connected;
   }
 
+  isFatal(): boolean {
+    return this.fatal;
+  }
+
+  getAccount(): TelegramAccountIdentity | null {
+    return this.account;
+  }
+
   getUnderlyingClient(): GramJSClient {
     return this.client;
   }
 
   getSessionString(): string {
     return this.session.save() as unknown as string;
+  }
+
+  // Revokes the login on Telegram's side so it stops showing up under the
+  // user's active sessions. Best effort: a session that is already dead can't
+  // be logged out, and the caller drops it either way.
+  async logOut(): Promise<void> {
+    try {
+      if (this.connected) {
+        await this.withTimeout(this.client.invoke(new Api.auth.LogOut()), TEARDOWN_TIMEOUT_MS);
+      }
+    } catch (err: any) {
+      console.warn(`[Telegram] Log out failed, dropping session anyway: ${err?.message ?? err}`);
+    }
+    this.disconnect();
   }
 
   disconnect(): void {

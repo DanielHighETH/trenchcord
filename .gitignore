@@ -138,9 +138,27 @@ dist
 backend/data/config.json
 backend/data/contracts.json
 backend/data/local-token
+# Cached entitlement JWT for this device's subscription — user data, never commit.
+backend/data/entitlement.json
+backend/data/sounds/
+# Runtime state: snipe dedup ledger + premium-alerts poll cursor
+backend/data/sniped-mints.json
+backend/data/premium-events-cursor.json
 
 # Discord / tweet posting drafts (local only)
 posts/
 
+# Uncompressed walkthrough-video source — the web-encoded copy lives in
+# landing/public/trenchcord.mp4
+landing/video-src/
+
+.DS_Store
+
 # Cursor AI files
 .cursor/
+# iOS app: generated build payload, the vendored Node runtime, and the
+# XcodeGen-generated project (see ios/README.md).
+ios/App/Trenchcord/Resources/
+ios/App/NodeMobile.xcframework/
+ios/App/Trenchcord.xcodeproj/
+ios/App/build/

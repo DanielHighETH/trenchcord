@@ -4,12 +4,20 @@ import { Loader2, AlertCircle, CheckCircle2, ExternalLink, ArrowLeft } from 'luc
 
 type Step = 'credentials' | 'phone' | 'code' | '2fa' | 'success';
 
-export default function TelegramSetup({ onClose }: { onClose?: () => void }) {
+export default function TelegramSetup({
+  onClose,
+  hasApiCredentials = false,
+}: {
+  onClose?: () => void;
+  hasApiCredentials?: boolean;
+}) {
   const telegramAuthStart = useAppStore((s) => s.telegramAuthStart);
   const telegramAuthVerify = useAppStore((s) => s.telegramAuthVerify);
   const telegramAuth2FA = useAppStore((s) => s.telegramAuth2FA);
 
-  const [step, setStep] = useState<Step>('credentials');
+  // The API ID/hash are per-app, not per-account, so once they're stored an
+  // extra account only needs a phone number.
+  const [step, setStep] = useState<Step>(hasApiCredentials ? 'phone' : 'credentials');
   const [apiId, setApiId] = useState('');
   const [apiHash, setApiHash] = useState('');
   const [phone, setPhone] = useState('');
@@ -18,19 +26,34 @@ export default function TelegramSetup({ onClose }: { onClose?: () => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleCredentialsSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!apiId.trim() || !apiHash.trim() || !phone.trim()) return;
+  // Where "back" from the code step returns to, since the flow can begin at
+  // either the credentials or the phone-only step.
+  const [originStep, setOriginStep] = useState<Step>(hasApiCredentials ? 'phone' : 'credentials');
+
+  const startAuth = async (id: string | null, hash: string | null) => {
+    setOriginStep(id ? 'credentials' : 'phone');
     setLoading(true);
     setError(null);
 
-    const result = await telegramAuthStart(apiId.trim(), apiHash.trim(), phone.trim());
+    const result = await telegramAuthStart(id, hash, phone.trim());
     if (result.success) {
       setStep('code');
     } else {
       setError(result.error ?? 'Failed to start authentication.');
     }
     setLoading(false);
+  };
+
+  const handleCredentialsSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!apiId.trim() || !apiHash.trim() || !phone.trim()) return;
+    await startAuth(apiId.trim(), apiHash.trim());
+  };
+
+  const handlePhoneSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!phone.trim()) return;
+    await startAuth(null, null);
   };
 
   const handleCodeSubmit = async (e: React.FormEvent) => {
@@ -67,11 +90,82 @@ export default function TelegramSetup({ onClose }: { onClose?: () => void }) {
 
   return (
     <div className="w-full max-w-md">
-      {step === 'credentials' && (
-        <form onSubmit={handleCredentialsSubmit} className="space-y-4">
+      {step === 'phone' && (
+        <form onSubmit={handlePhoneSubmit} className="space-y-4">
           <div className="flex items-center gap-3 mb-2">
             {onClose && (
               <button type="button" onClick={onClose} className="text-discord-text-muted hover:text-white p-1">
+                <ArrowLeft size={18} />
+              </button>
+            )}
+            <h2 className="text-lg font-semibold text-white">Add Telegram Account</h2>
+          </div>
+
+          <p className="text-sm text-discord-text-muted leading-relaxed">
+            Enter the phone number of the Telegram account you want to add. Your existing API
+            credentials will be reused.
+          </p>
+
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-discord-text-muted mb-2">
+              Phone Number
+            </label>
+            <input
+              type="tel"
+              autoComplete="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+1234567890"
+              autoFocus
+              disabled={loading}
+              className="w-full px-3 py-2.5 bg-discord-darker border border-discord-dark rounded text-sm text-discord-text placeholder:text-discord-channel-icon focus:outline-none focus:ring-2 focus:ring-discord-blurple/40 disabled:opacity-50"
+            />
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-2 px-3 py-2.5 bg-discord-red/10 border border-discord-red/20 rounded text-sm text-discord-red">
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading || !phone.trim()}
+            className="w-full py-2.5 bg-[#2AABEE] hover:bg-[#229ED9] disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium text-white transition-colors flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Sending code...
+              </>
+            ) : (
+              'Send Verification Code'
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setStep('credentials'); setError(null); }}
+            className="w-full text-xs text-discord-text-muted hover:text-discord-text transition-colors"
+          >
+            Use different API credentials
+          </button>
+        </form>
+      )}
+
+      {step === 'credentials' && (
+        <form onSubmit={handleCredentialsSubmit} className="space-y-4">
+          <div className="flex items-center gap-3 mb-2">
+            {(onClose || hasApiCredentials) && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (hasApiCredentials) { setStep('phone'); setError(null); }
+                  else onClose?.();
+                }}
+                className="text-discord-text-muted hover:text-white p-1"
+              >
                 <ArrowLeft size={18} />
               </button>
             )}
@@ -124,6 +218,7 @@ export default function TelegramSetup({ onClose }: { onClose?: () => void }) {
             </label>
             <input
               type="tel"
+              autoComplete="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+1234567890"
@@ -159,7 +254,7 @@ export default function TelegramSetup({ onClose }: { onClose?: () => void }) {
       {step === 'code' && (
         <form onSubmit={handleCodeSubmit} className="space-y-4">
           <div className="flex items-center gap-3 mb-2">
-            <button type="button" onClick={() => { setStep('credentials'); setError(null); }} className="text-discord-text-muted hover:text-white p-1">
+            <button type="button" onClick={() => { setStep(originStep); setError(null); }} className="text-discord-text-muted hover:text-white p-1">
               <ArrowLeft size={18} />
             </button>
             <h2 className="text-lg font-semibold text-white">Enter Verification Code</h2>
@@ -175,6 +270,8 @@ export default function TelegramSetup({ onClose }: { onClose?: () => void }) {
             </label>
             <input
               type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               placeholder="12345"
@@ -265,9 +362,9 @@ export default function TelegramSetup({ onClose }: { onClose?: () => void }) {
           <div className="w-16 h-16 rounded-full bg-discord-green/10 flex items-center justify-center mx-auto">
             <CheckCircle2 size={32} className="text-discord-green" />
           </div>
-          <h2 className="text-lg font-semibold text-white">Telegram Connected</h2>
+          <h2 className="text-lg font-semibold text-white">Account Connected</h2>
           <p className="text-sm text-discord-text-muted">
-            Your Telegram account has been connected. You can now add Telegram chats to your rooms.
+            This Telegram account has been connected. You can now add its chats to your rooms.
           </p>
           {onClose && (
             <button

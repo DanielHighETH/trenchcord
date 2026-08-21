@@ -3,6 +3,28 @@ import type { SoundConfig, SoundType } from '../types';
 let audioCtx: AudioContext | null = null;
 const audioCache = new Map<string, HTMLAudioElement>();
 
+const SOUNDS_MUTED_STORAGE_KEY = 'trenchcord.soundsMuted';
+
+// Global mute for automatic notification sounds (header speaker button).
+// Explicit previews in settings stay audible — a preview button that plays
+// nothing looks broken, and the user asked to hear that sound.
+let soundsMuted = (() => {
+  try {
+    return localStorage.getItem(SOUNDS_MUTED_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+})();
+
+export function loadSoundsMuted(): boolean {
+  return soundsMuted;
+}
+
+export function setSoundsMuted(muted: boolean) {
+  soundsMuted = muted;
+  try { localStorage.setItem(SOUNDS_MUTED_STORAGE_KEY, muted ? '1' : '0'); } catch {}
+}
+
 function getAudioContext(): AudioContext {
   if (!audioCtx) audioCtx = new AudioContext();
   return audioCtx;
@@ -86,9 +108,15 @@ const BUILT_IN_SOUNDS: Record<SoundType, { tones: [number, number, number][]; ty
     type: 'sine',
     baseVolume: 0.16,
   },
+  premiumAlert: {
+    tones: [[659, 0, 0.09], [880, 0.1, 0.09], [1319, 0.2, 0.16]],
+    type: 'triangle',
+    baseVolume: 0.17,
+  },
 };
 
 export function playSound(soundType: SoundType, soundConfig?: SoundConfig) {
+  if (soundsMuted) return;
   if (soundConfig && !soundConfig.enabled) return;
 
   const volumeFraction = (soundConfig?.volume ?? 80) / 100;

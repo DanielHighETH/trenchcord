@@ -47,6 +47,8 @@ export function processTelegramMessage(
       content_type: raw.media.mimeType,
       width: raw.media.width,
       height: raw.media.height,
+      duration_secs: raw.media.durationSecs,
+      waveform: raw.media.waveform,
     });
   }
 
@@ -54,7 +56,11 @@ export function processTelegramMessage(
     ? {
         id: raw.replyTo.id.toString(),
         author: raw.replyTo.senderName,
+        authorId: raw.replyTo.senderId ?? undefined,
+        avatar: raw.replyTo.senderPhoto,
+        isBot: raw.replyTo.senderIsBot,
         content: raw.replyTo.text,
+        hasAttachment: (!raw.replyTo.text && raw.replyTo.hasMedia) || undefined,
         mentions: {} as Record<string, string>,
       }
     : null;
@@ -74,6 +80,7 @@ export function processTelegramMessage(
     guildId: null,
     channelName: raw.chatTitle,
     guildName: raw.chatType === 'user' ? null : raw.chatTitle,
+    chatUsername: raw.chatUsername ?? null,
     source: 'telegram',
     platformUrl,
     author: {
@@ -82,6 +89,7 @@ export function processTelegramMessage(
       displayName,
       avatar: raw.sender.photo,
       roleColor: null,
+      isBot: raw.sender.isBot,
     },
     content: raw.text,
     timestamp: new Date(raw.date * 1000).toISOString(),

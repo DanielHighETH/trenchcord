@@ -1,10 +1,13 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Search, ExternalLink, Copy, Check, Trash2, LayoutGrid, List, X, MessageSquare, PanelLeftOpen } from 'lucide-react';
+import { Search, ExternalLink, Copy, Check, Trash2, LayoutGrid, List, X, MessageSquare, PanelLeftOpen, BellRing } from 'lucide-react';
+import { isHostedMode } from '../lib/supabase';
 import { useAppStore } from '../stores/appStore';
 import { buildContractUrl } from '../utils/contractUrl';
 import ConfirmModal from './ConfirmModal';
-import type { ContractEntry } from '../types';
+import { getAvatarUrl, AppTag } from './Message';
+import type { ContractEntry, ContractTokenInfo } from '../types';
 import { colorWithExtraAlpha } from './ColorPickerWithAlpha';
+import { isIOSApp } from '../utils/platform';
 
 const EVM_CHAIN_LABELS: Record<string, string> = {
   eth: 'ETH', bsc: 'BNB', base: 'BASE', arb: 'ARB',
@@ -27,6 +30,48 @@ function timeAgo(iso: string): string {
   return `${days}d ago`;
 }
 
+// getAvatarUrl derives the default-avatar index from BigInt(userId); guard
+// against entries whose author id isn't numeric (defensive for old data).
+function safeAvatarUrl(userId: string, avatar: string | null): string {
+  try {
+    return getAvatarUrl(userId, avatar);
+  } catch {
+    return 'https://cdn.discordapp.com/embed/avatars/0.png';
+  }
+}
+
+function formatUsd(value: number): string {
+  if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
+  return `$${value.toFixed(value < 1 ? 4 : 2)}`;
+}
+
+/**
+ * Token metadata chip. Renders nothing until an entry carries `tokenInfo` —
+ * populated by the upcoming Trenchcord Cloud token-info service (premium),
+ * so the feed layout is already prepared for it.
+ */
+function TokenInfoChip({ info }: { info?: ContractTokenInfo }) {
+  if (!info || (!info.name && !info.symbol && info.marketCapUsd == null)) return null;
+  return (
+    <span className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-discord-blurple/15 text-[11px] text-discord-text shrink-0 min-w-0">
+      {info.imageUrl && (
+        <img src={info.imageUrl} alt="" loading="lazy" decoding="async" className="w-3.5 h-3.5 rounded-full shrink-0" />
+      )}
+      {(info.symbol || info.name) && (
+        <span className="font-semibold truncate">{info.symbol ?? info.name}</span>
+      )}
+      {info.marketCapUsd != null && (
+        <span className="text-discord-text-muted whitespace-nowrap">MC {formatUsd(info.marketCapUsd)}</span>
+      )}
+      {info.liquidityUsd != null && (
+        <span className="text-discord-text-muted whitespace-nowrap hidden lg:inline">LP {formatUsd(info.liquidityUsd)}</span>
+      )}
+    </span>
+  );
+}
+
 type ViewMode = 'table' | 'cards';
 
 export default function ContractDashboard() {
@@ -37,6 +82,11 @@ export default function ContractDashboard() {
   const config = useAppStore((s) => s.config);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
+  const setAlertPrefill = useAppStore((s) => s.setAlertPrefill);
+  const setActiveView = useAppStore((s) => s.setActiveView);
+  const setActiveRoom = useAppStore((s) => s.setActiveRoom);
+  const subscriptionStatus = useAppStore((s) => s.subscriptionStatus);
+  const showAlertButton = !isHostedMode && (subscriptionStatus?.active ?? false);
   const [search, setSearch] = useState('');
   const [chainFilter, setChainFilter] = useState<'all' | 'evm' | 'sol'>('all');
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null);
@@ -59,7 +109,10 @@ export default function ContractDashboard() {
           c.address.toLowerCase().includes(q) ||
           c.authorName.toLowerCase().includes(q) ||
           c.channelName.toLowerCase().includes(q) ||
-          (c.guildName?.toLowerCase().includes(q) ?? false),
+          (c.guildName?.toLowerCase().includes(q) ?? false) ||
+          (c.content?.toLowerCase().includes(q) ?? false) ||
+          (c.tokenInfo?.name?.toLowerCase().includes(q) ?? false) ||
+          (c.tokenInfo?.symbol?.toLowerCase().includes(q) ?? false),
       );
     }
     return result;
@@ -79,13 +132,24 @@ export default function ContractDashboard() {
 
   const handleOpenDiscord = (entry: ContractEntry) => {
     const path = `discord.com/channels/${entry.guildId ?? '@me'}/${entry.channelId}/${entry.messageId}`;
-    const useApp = config?.openInDiscordApp ?? false;
+    // iOS always prefers the native app — the web target is useless there.
+    const useApp = (config?.openInDiscordApp ?? true) || isIOSApp();
     const url = useApp ? `discord://${path}` : `https://${path}`;
     window.open(url, useApp ? '_self' : '_blank');
   };
 
   const handleDelete = (entry: ContractEntry) => {
     deleteContract(entry.messageId, entry.address);
+  };
+
+  // Prefill a DEX price alert from this contract and open it on the Alerts page.
+  const handleAlert = (entry: ContractEntry) => {
+    setAlertPrefill({
+      chain: entry.chain === 'sol' ? 'sol' : entry.evmChain ?? 'eth',
+      contract: entry.address,
+    });
+    setActiveRoom('alerts');
+    setActiveView('chat');
   };
 
   const handleDeleteAll = () => {
@@ -199,6 +263,7 @@ export default function ContractDashboard() {
                 onOpen={handleOpen}
                 onOpenDiscord={handleOpenDiscord}
                 onDelete={handleDelete}
+                onAlert={showAlertButton ? handleAlert : undefined}
               />
             ))}
           </div>
@@ -215,6 +280,7 @@ export default function ContractDashboard() {
                 onOpen={handleOpen}
                 onOpenDiscord={handleOpenDiscord}
                 onDelete={handleDelete}
+                onAlert={showAlertButton ? handleAlert : undefined}
               />
             ))}
           </div>
@@ -246,6 +312,8 @@ interface ContractItemProps {
   onOpen: (addr: string, evmChain?: string) => void;
   onOpenDiscord: (entry: ContractEntry) => void;
   onDelete: (entry: ContractEntry) => void;
+  /** Absent when premium alerts are unavailable (hosted mode / no subscription). */
+  onAlert?: (entry: ContractEntry) => void;
 }
 
 function ContractRow({
@@ -258,6 +326,7 @@ function ContractRow({
   onOpen,
   onOpenDiscord,
   onDelete,
+  onAlert,
 }: ContractItemProps) {
   const color = entry.chain === 'evm' ? evmColor : solColor;
   const chainLabel = entry.chain === 'evm' && entry.evmChain
@@ -267,74 +336,104 @@ function ContractRow({
   const isNew = entry.firstSeen !== false;
 
   return (
-    <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 hover:bg-discord-hover/30 transition-colors group">
-      <span
-        className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 uppercase"
-        style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}
-      >
-        {chainLabel}
-      </span>
+    <div className="px-3 sm:px-4 py-2.5 hover:bg-discord-hover/30 transition-colors group">
+      <div className="flex items-center gap-2 sm:gap-3">
+        <span
+          className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 uppercase"
+          style={{ backgroundColor: colorWithExtraAlpha(color, 0.125), color }}
+        >
+          {chainLabel}
+        </span>
 
-      <span
-        className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 uppercase hidden sm:inline ${
-          isNew
-            ? 'bg-green-500/20 text-green-400'
-            : 'bg-orange-500/20 text-orange-400'
-        }`}
-      >
-        {isNew ? 'NEW' : 'RESCAN'}
-      </span>
+        <span
+          className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 uppercase hidden sm:inline ${
+            isNew
+              ? 'bg-green-500/20 text-green-400'
+              : 'bg-orange-500/20 text-orange-400'
+          }`}
+        >
+          {isNew ? 'NEW' : 'RESCAN'}
+        </span>
 
-      <span
-        className={`font-mono text-sm cursor-pointer hover:underline ${showFull ? 'min-w-0 break-all' : 'shrink-0'}`}
-        style={{ color }}
-        title={entry.address}
-        onClick={() => onCopy(entry.address)}
-      >
-        {showFull ? entry.address : `${entry.address.slice(0, 6)}...${entry.address.slice(-4)}`}
-      </span>
-
-      <div className="flex items-center gap-0.5 shrink-0">
-        <button
+        <span
+          className={`font-mono text-sm cursor-pointer hover:underline ${showFull ? 'min-w-0 break-all' : 'shrink-0'}`}
+          style={{ color }}
+          title={entry.address}
           onClick={() => onCopy(entry.address)}
-          className="p-1 rounded hover:bg-discord-dark/60 text-discord-text-muted hover:text-white transition-colors"
-          title="Copy CA"
         >
-          {isCopied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
-        </button>
+          {showFull ? entry.address : `${entry.address.slice(0, 6)}...${entry.address.slice(-4)}`}
+        </span>
+
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            onClick={() => onCopy(entry.address)}
+            className="p-1 rounded hover:bg-discord-dark/60 text-discord-text-muted hover:text-white transition-colors"
+            title="Copy CA"
+          >
+            {isCopied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+          </button>
+          <button
+            onClick={() => onOpen(entry.address, entry.evmChain)}
+            className="p-1 rounded hover:bg-discord-dark/60 text-discord-text-muted hover:text-white transition-colors"
+            title="Open chart"
+          >
+            <ExternalLink size={13} />
+          </button>
+          {onAlert && (
+            <button
+              onClick={() => onAlert(entry)}
+              className="p-1 rounded hover:bg-discord-dark/60 text-discord-text-muted hover:text-white transition-colors"
+              title="Create price alert"
+            >
+              <BellRing size={13} />
+            </button>
+          )}
+          {entry.source !== 'telegram' && (
+            <button
+              onClick={() => onOpenDiscord(entry)}
+              className="p-1 rounded hover:bg-discord-dark/60 text-discord-text-muted hover:text-white transition-colors hidden sm:block"
+              title="Open in Discord"
+            >
+              <MessageSquare size={13} />
+            </button>
+          )}
+        </div>
+
+        <TokenInfoChip info={entry.tokenInfo} />
+
+        <span className="text-xs text-discord-text-muted shrink-0 ml-auto">
+          {timeAgo(entry.timestamp)}
+        </span>
+
         <button
-          onClick={() => onOpen(entry.address, entry.evmChain)}
-          className="p-1 rounded hover:bg-discord-dark/60 text-discord-text-muted hover:text-white transition-colors"
-          title="Open chart"
+          onClick={() => onDelete(entry)}
+          className="p-1 rounded sm:opacity-0 sm:group-hover:opacity-100 hover:bg-discord-red/20 text-discord-text-muted hover:text-discord-red transition-all shrink-0"
+          title="Delete"
         >
-          <ExternalLink size={13} />
-        </button>
-        <button
-          onClick={() => onOpenDiscord(entry)}
-          className="p-1 rounded hover:bg-discord-dark/60 text-discord-text-muted hover:text-white transition-colors hidden sm:block"
-          title="Open in Discord"
-        >
-          <MessageSquare size={13} />
+          <X size={13} />
         </button>
       </div>
 
-      <span className="text-sm text-white truncate max-w-[80px] sm:max-w-[120px] hidden sm:inline">{entry.authorName}</span>
-
-      <span className="text-xs text-discord-text-muted truncate max-w-[180px] hidden md:inline">
-        {entry.guildName ? `${entry.guildName} / ` : ''}#{entry.channelName}
-      </span>
-
-      <span className="text-xs text-discord-text-muted shrink-0 ml-auto">
-        {timeAgo(entry.timestamp)}
-      </span>
-
-      <button
-        onClick={() => onDelete(entry)}
-        className="p-1 rounded sm:opacity-0 sm:group-hover:opacity-100 hover:bg-discord-red/20 text-discord-text-muted hover:text-discord-red transition-all shrink-0"
-        title="Delete"
-      >
-        <X size={13} />
-      </button>
+      {/* Who posted it + the message itself */}
+      <div className="flex items-center gap-2 mt-1.5 min-w-0">
+        <img
+          src={safeAvatarUrl(entry.authorId, entry.authorAvatar ?? null)}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="w-5 h-5 rounded-full shrink-0"
+        />
+        <span className="text-sm text-white font-medium truncate max-w-[120px] sm:max-w-[160px] shrink-0">{entry.authorName}</span>
+        {entry.authorIsBot && <AppTag dense />}
+        <span className="text-xs text-discord-text-muted truncate max-w-[180px] shrink-0 hidden md:inline">
+          {entry.guildName ? `${entry.guildName} / ` : ''}#{entry.channelName}
+        </span>
+        {entry.content && (
+          <span className="text-sm text-discord-text-muted truncate min-w-0" title={entry.content}>
+            {entry.content}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -348,6 +447,7 @@ function ContractCard({
   onOpen,
   onOpenDiscord,
   onDelete,
+  onAlert,
 }: ContractItemProps) {
   const color = entry.chain === 'evm' ? evmColor : solColor;
   const chainLabel = entry.chain === 'evm' && entry.evmChain
@@ -394,6 +494,8 @@ function ContractCard({
         {entry.address}
       </div>
 
+      <TokenInfoChip info={entry.tokenInfo} />
+
       <div className="flex items-center gap-1.5">
         <button
           onClick={() => onCopy(entry.address)}
@@ -411,22 +513,48 @@ function ContractCard({
           <ExternalLink size={11} />
           <span>Chart</span>
         </button>
-        <button
-          onClick={() => onOpenDiscord(entry)}
-          className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-discord-bg hover:bg-discord-hover transition-colors text-discord-text-muted hover:text-white"
-          title="Open in Discord"
-        >
-          <MessageSquare size={11} />
-          <span>Discord</span>
-        </button>
+        {onAlert && (
+          <button
+            onClick={() => onAlert(entry)}
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-discord-bg hover:bg-discord-hover transition-colors text-discord-text-muted hover:text-white"
+            title="Create price alert"
+          >
+            <BellRing size={11} />
+            <span>Alert</span>
+          </button>
+        )}
+        {entry.source !== 'telegram' && (
+          <button
+            onClick={() => onOpenDiscord(entry)}
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-discord-bg hover:bg-discord-hover transition-colors text-discord-text-muted hover:text-white"
+            title="Open in Discord"
+          >
+            <MessageSquare size={11} />
+            <span>Discord</span>
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-2 text-xs">
+        <img
+          src={safeAvatarUrl(entry.authorId, entry.authorAvatar ?? null)}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="w-4 h-4 rounded-full shrink-0"
+        />
         <span className="text-white truncate">{entry.authorName}</span>
+        {entry.authorIsBot && <AppTag dense />}
         <span className="text-discord-text-muted truncate">
           {entry.guildName ? `${entry.guildName} / ` : ''}#{entry.channelName}
         </span>
       </div>
+
+      {entry.content && (
+        <p className="text-xs text-discord-text-muted line-clamp-2 break-words" title={entry.content}>
+          {entry.content}
+        </p>
+      )}
     </div>
   );
 }

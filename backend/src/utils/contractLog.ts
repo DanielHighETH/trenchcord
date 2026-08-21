@@ -7,12 +7,30 @@ const DATA_DIR = process.env.TRENCHCORD_DATA_DIR || join(__dirname, '../../data'
 const LOG_PATH = join(DATA_DIR, 'contracts.json');
 const MAX_ENTRIES = 2000;
 
+/**
+ * Token metadata for a contract entry. Populated server-side by the
+ * Trenchcord Cloud token-info service (premium feature, not yet live);
+ * local builds leave it unset and the UI renders nothing for it.
+ */
+export interface ContractTokenInfo {
+  name?: string;
+  symbol?: string;
+  imageUrl?: string;
+  priceUsd?: number;
+  marketCapUsd?: number;
+  liquidityUsd?: number;
+  updatedAt?: string;
+}
+
 export interface ContractEntry {
   address: string;
   chain: 'evm' | 'sol';
   evmChain?: string;
   authorId: string;
   authorName: string;
+  authorAvatar?: string | null;
+  /** The poster is an app (scanner bot, webhook), shown with the APP tag. */
+  authorIsBot?: boolean;
   channelId: string;
   channelName: string;
   guildId: string | null;
@@ -21,6 +39,10 @@ export interface ContractEntry {
   messageId: string;
   timestamp: string;
   firstSeen?: boolean;
+  source?: 'discord' | 'telegram';
+  /** Snapshot of the message text the CA appeared in (truncated). */
+  content?: string;
+  tokenInfo?: ContractTokenInfo;
 }
 
 class ContractLog {

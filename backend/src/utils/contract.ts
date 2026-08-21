@@ -1,4 +1,5 @@
 import type { ContractLinkTemplates } from '../discord/types.js';
+import { appFetch } from './http.js';
 
 const SOL_ADDRESS_REGEX = /(?<![1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{32,48}(?![1-9A-HJ-NP-Za-km-z])/g;
 const EVM_ADDRESS_REGEX = /\b0x[a-fA-F0-9]{40}\b/g;
@@ -77,9 +78,57 @@ export function detectContractAddresses(content: string): ContractDetectionResul
   };
 }
 
-type EmbedLike = { description?: string; fields?: { name: string; value: string }[] };
+type EmbedLike = {
+  title?: string;
+  description?: string;
+  author?: { name?: string };
+  footer?: { text?: string };
+  fields?: { name: string; value: string }[];
+};
 
-function collectEmbedText(embeds?: EmbedLike[]): string {
+/**
+ * Every Solana address a message points at, including ones only present in its
+ * embeds.
+ *
+ * Server-side port of the frontend's collectSolAddresses
+ * (frontend/src/utils/addressDetect.ts): detectContractAddresses only scans
+ * `content`, but caller bots -- Rick being the common case -- put the contract
+ * exclusively in an embed. The snipe engine needs those too. Content hits come
+ * first, matching the frontend ordering.
+ */
+export function detectSolAddressesInMessage(content: string, embeds?: EmbedLike[], extraText?: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  const add = (addr: string) => {
+    if (addr.startsWith('0x') || seen.has(addr)) return;
+    seen.add(addr);
+    out.push(addr);
+  };
+
+  detectContractAddresses(content ?? '').addresses.forEach(add);
+
+  // Components v2 text (extractComponentText): v2 caller bots have no
+  // content/embeds at all, the CA only appears here.
+  if (extraText) detectContractAddresses(extraText).addresses.forEach(add);
+
+  for (const embed of embeds ?? []) {
+    const parts: string[] = [];
+    if (embed.title) parts.push(embed.title);
+    if (embed.description) parts.push(embed.description);
+    if (embed.author?.name) parts.push(embed.author.name);
+    if (embed.footer?.text) parts.push(embed.footer.text);
+    for (const field of embed.fields ?? []) {
+      parts.push(field.name);
+      parts.push(field.value);
+    }
+    if (parts.length > 0) detectContractAddresses(parts.join(' ')).addresses.forEach(add);
+  }
+
+  return out;
+}
+
+export function collectEmbedText(embeds?: EmbedLike[]): string {
   if (!embeds) return '';
   const parts: string[] = [];
   for (const embed of embeds) {
@@ -97,8 +146,9 @@ function collectEmbedText(embeds?: EmbedLike[]): string {
 export function extractEvmChainFromGmgnLinks(
   content: string,
   embeds?: EmbedLike[],
+  extraText?: string,
 ): { address: string; chain: string }[] {
-  const fullText = content + ' ' + collectEmbedText(embeds);
+  const fullText = content + ' ' + collectEmbedText(embeds) + (extraText ? ' ' + extraText : '');
   const regex = /gmgn\.ai\/(\w+)\/token\/(?:\w+_)?(0x[a-fA-F0-9]{40})/g;
   const results: { address: string; chain: string }[] = [];
   let m;
@@ -114,8 +164,9 @@ export function extractEvmChainFromGmgnLinks(
 export function detectEvmChainFromContent(
   content: string,
   embeds?: EmbedLike[],
+  extraText?: string,
 ): string | null {
-  const fullText = content + ' ' + collectEmbedText(embeds);
+  const fullText = content + ' ' + collectEmbedText(embeds) + (extraText ? ' ' + extraText : '');
 
   const gmgnRegex = /gmgn\.ai\/(\w+)\/token\//g;
   let m;
@@ -189,7 +240,7 @@ const NEGATIVE_CACHE_TTL_MS = 10 * 60 * 1000;
 const chainResolveCache = new Map<string, { slug: string | null; expires: number }>();
 
 async function fetchDexScreenerChain(address: string): Promise<string | null> {
-  const res = await fetch(
+  const res = await appFetch(
     `https://api.dexscreener.com/latest/dex/search?q=${address}`,
     { signal: AbortSignal.timeout(API_TIMEOUT_MS) },
   );
@@ -208,7 +259,7 @@ async function fetchDexScreenerChain(address: string): Promise<string | null> {
 }
 
 async function fetchGeckoTerminalChain(address: string): Promise<string | null> {
-  const res = await fetch(
+  const res = await appFetch(
     `https://api.geckoterminal.com/api/v2/search/pools?query=${address}`,
     { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(API_TIMEOUT_MS) },
   );
@@ -264,6 +315,10 @@ export async function resolveEvmChainFromApi(address: string): Promise<string | 
 
 const REFERRALS = { axiom: 'danielref', padre: 'daniel_dev', gmgn: 'danieldev', bloom: 'daniel' };
 
+// fomo.family spells out chain names in its URLs where we use short slugs;
+// chains not listed here (base, robinhood, ...) already match ours.
+const FOMO_CHAIN_SLUGS: Record<string, string> = { eth: 'ethereum', bsc: 'bnb' };
+
 // Rewrite gmgn/axiom referral codes in third-party links (e.g. Rick bot's
 // per-terminal buy links) so they carry our referral instead of the sender's.
 // Address and chain are preserved; only the referral portion is swapped.
@@ -298,6 +353,10 @@ function getPresetTemplate(platform: string, chain: 'sol' | 'evm', evmChain?: st
       return chain === 'sol'
         ? `https://gmgn.ai/sol/token/${REFERRALS.gmgn}_{address}`
         : `https://gmgn.ai/${evmSlug}/token/${REFERRALS.gmgn}_{address}`;
+    case 'fomo':
+      return chain === 'sol'
+        ? 'https://fomo.family/tokens/solana/{address}'
+        : `https://fomo.family/tokens/${FOMO_CHAIN_SLUGS[evmSlug] ?? evmSlug}/{address}`;
     default:
       return chain === 'sol'
         ? 'https://axiom.trade/t/{address}?chain=sol'

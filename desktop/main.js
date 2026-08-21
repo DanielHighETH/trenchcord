@@ -1,10 +1,18 @@
-const { app, BrowserWindow, dialog, utilityProcess, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, utilityProcess, shell, ipcMain, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const net = require('net');
 
 const isDev = !app.isPackaged;
+
+// Chromium's bundled ffmpeg spams stderr with "Unsupported pixel format: -1"
+// while probing some Tenor/Giphy/Discord video streams — the media decodes and
+// plays fine, so silence Chromium-internal logging. Set ELECTRON_ENABLE_LOGGING
+// to get it back when debugging.
+if (!process.env.ELECTRON_ENABLE_LOGGING) {
+  app.commandLine.appendSwitch('disable-logging');
+}
 
 // Stable default so the renderer origin (scheme+host+port) — and therefore its
 // localStorage — survives restarts.
@@ -98,6 +106,9 @@ function startBackend(port) {
       NODE_ENV: 'production',
       TRENCHCORD_DATA_DIR: app.getPath('userData'),
       TRENCHCORD_FRONTEND_DIST: frontendDist(),
+      // Official desktop builds require a linked account with an active
+      // subscription. Self-hosted/source builds are not gated by default.
+      TRENCHCORD_REQUIRE_SUBSCRIPTION: '1',
     },
   });
   backendProcess.stdout?.on('data', (d) => process.stdout.write(`[backend] ${d}`));
@@ -229,11 +240,74 @@ ipcMain.handle('popout:getSeed', (_event, roomId) => {
   return seed;
 });
 
+// OS-wide "bring Trenchcord to front" shortcut. The renderer pushes the
+// accelerator from the saved config on load and whenever the setting changes;
+// an empty value unregisters it.
+let focusAccelerator = null;
+
+function registerFocusShortcut(accelerator) {
+  if (focusAccelerator) {
+    try {
+      globalShortcut.unregister(focusAccelerator);
+    } catch {
+      /* ignore */
+    }
+    focusAccelerator = null;
+  }
+  if (!accelerator) return true;
+  try {
+    const ok = globalShortcut.register(accelerator, () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    });
+    if (ok) focusAccelerator = accelerator;
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+ipcMain.handle('focusShortcut:set', (_event, accelerator) => {
+  if (accelerator !== null && (typeof accelerator !== 'string' || accelerator.length > 64)) return false;
+  return registerFocusShortcut(accelerator || null);
+});
+
+// Desktop-only settings (currently just the auto-update opt-in) live in their
+// own file in userData rather than the backend's config.json, because the main
+// process needs them before/independently of the backend.
+function desktopSettingsPath() {
+  return path.join(app.getPath('userData'), 'desktop-settings.json');
+}
+
+function readDesktopSettings() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(desktopSettingsPath(), 'utf8'));
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeDesktopSettings(patch) {
+  try {
+    fs.writeFileSync(desktopSettingsPath(), JSON.stringify({ ...readDesktopSettings(), ...patch }, null, 2));
+  } catch {
+    /* ignore */
+  }
+}
+
+// Guards against registering updater listeners twice if the user toggles the
+// setting off and on within one session.
+let autoUpdateStarted = false;
+
 function setupAutoUpdate() {
   // Squirrel.Mac requires a signed + notarized app to apply updates, and this
   // build is unsigned. So auto-update runs on Windows only; macOS users update
   // by re-downloading the latest release.
   if (process.platform !== 'win32') return;
+  if (autoUpdateStarted) return;
 
   let autoUpdater;
   try {
@@ -241,6 +315,7 @@ function setupAutoUpdate() {
   } catch {
     return;
   }
+  autoUpdateStarted = true;
 
   autoUpdater.autoDownload = true;
   autoUpdater.on('update-downloaded', async (info) => {
@@ -263,6 +338,23 @@ function setupAutoUpdate() {
   });
 }
 
+// Auto-update is opt-in: with it off (the default) the app never contacts
+// GitHub for updates, so nothing new can ever be downloaded without the user
+// having explicitly enabled it. Users update manually from the releases page.
+ipcMain.handle('autoUpdate:get', () => ({
+  supported: process.platform === 'win32' && !isDev,
+  enabled: readDesktopSettings().autoUpdate === true,
+}));
+
+ipcMain.handle('autoUpdate:set', (_event, enabled) => {
+  if (typeof enabled !== 'boolean') return false;
+  writeDesktopSettings({ autoUpdate: enabled });
+  // Turning it on checks right away; turning it off takes effect from the next
+  // launch (the once-per-launch check may have already run).
+  if (enabled) setupAutoUpdate();
+  return true;
+});
+
 async function bootstrap() {
   if (isDev) {
     // Dev: run `npm run dev` in the repo root (backend on 3001 + Vite on 5173),
@@ -283,7 +375,7 @@ async function bootstrap() {
   }
 
   createWindow(`http://127.0.0.1:${backendPort}`);
-  setupAutoUpdate();
+  if (readDesktopSettings().autoUpdate === true) setupAutoUpdate();
 }
 
 app.whenReady().then(bootstrap);
@@ -299,6 +391,10 @@ app.on('activate', () => {
 
 app.on('window-all-closed', () => {
   app.quit();
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on('before-quit', () => {

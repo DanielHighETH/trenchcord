@@ -10,7 +10,7 @@ export default function GatewayAuthBanner() {
   if (!error) return null;
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-[200] flex items-center justify-center gap-3 px-4 py-3 bg-red-600/95 text-white text-sm shadow-lg">
+    <div className="fixed top-0 left-0 right-0 z-[200] flex items-center justify-center gap-3 px-4 py-3 pt-[calc(0.75rem+var(--safe-top))] bg-red-600/95 text-white text-sm shadow-lg">
       <AlertTriangle size={18} className="shrink-0" />
       <span className="flex-1">
         <strong>{blocked ? 'Connection blocked:' : 'Discord token error:'}</strong> {error}{' '}

@@ -3,6 +3,7 @@ import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { Download } from './components/Download';
 import { Features } from './components/Features';
+import { Pricing } from './components/Pricing';
 import { Security } from './components/Security';
 import { OpenSource } from './components/OpenSource';
 import { HowItWorks } from './components/HowItWorks';
@@ -27,8 +28,8 @@ export default function App() {
       <Hero />
       <Download />
       <Features />
+      <Pricing />
       <Security />
-      <div className="mx-auto max-w-5xl px-6"><hr className="border-dc-divider" /></div>
       <OpenSource />
       <HowItWorks />
       <Tutorial />

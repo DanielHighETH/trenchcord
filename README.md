@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/DanielHighETH/trenchcord)](LICENSE)
 [![Discord](https://img.shields.io/badge/discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/cDhrRVZ9xg)
 
-**Your Discord, Supercharged for Trenching**
+**Your Discord and Telegram, Supercharged for Trenching**
 
 Aggregate channels, track key users, auto-detect contracts, and trade in one click — all from a single dashboard. Trenchcord is a custom Discord frontend that combines multiple guild channels and DMs into custom "rooms" with user highlighting, keyword alerts, contract address detection, and optional chat capabilities.
 
@@ -16,10 +16,11 @@ Aggregate channels, track key users, auto-detect contracts, and trade in one cli
 ## Features
 
 - **Custom Rooms** — Aggregate channels from multiple servers into unified rooms
+- **Category Following** — Add a whole Discord category to a room; channels added to or removed from it in Discord follow automatically
 - **User Highlighting** — Track key users across all channels with visual alerts
 - **Contract Detection** — Auto-detect Solana and EVM contract addresses in messages
 - **One-Click Buys** — Buy a Solana token straight from the message that called it, via Slotshark
-- **Trade Links** — Click contracts to open Axiom, GMGN, Bloom, Padre and more
+- **Trade Links** — Click contracts to open Axiom, GMGN, Bloom, Padre, fomo.family and more
 - **Push Notifications** — Pushover alerts when highlighted users post contracts
 - **Focus Mode** — Filter messages to a specific channel within a room
 - **Real-time Streaming** — Live message updates via Discord Gateway
@@ -32,7 +33,7 @@ Aggregate channels, track key users, auto-detect contracts, and trade in one cli
 
 ## Download
 
-The easiest way to get started — no Node, no terminal. Download, install, and paste your Discord token on first launch.
+The easiest way to get started — no Node, no terminal. Download and install, then on first launch: link your Trenchcord account — the app shows a pairing code you approve at [dashboard.trenchcord.app](https://dashboard.trenchcord.app) (accounts are created right there), and an active [subscription](#pricing) unlocks the app. Then paste your Discord token and you're in.
 
 | Platform | Download |
 | --- | --- |
@@ -65,16 +66,33 @@ Windows SmartScreen may warn about an unknown publisher. Click **More info → R
 
 Want to try Trenchcord without connecting a token? Check out the live demo at **[demo.trenchcord.app](https://demo.trenchcord.app)**.
 
+## Pricing
+
+Trenchcord requires an active subscription — simple pricing, paid in SOL. One on-chain payment from any wallet or exchange: no card, no auto-renew, and your time is credited the moment the transaction confirms. Buying while a subscription is active just extends it — stack as much time as you want.
+
+![Trenchcord pricing](docs/pricing.png)
+
+| Plan | Price | Works out to |
+| --- | --- | --- |
+| 1 month | `0.99 SOL` | 0.99 SOL / month |
+| 3 months | `2.79 SOL` | 0.93 SOL / month |
+| 12 months | `9.49 SOL` | 0.79 SOL / month — best value, ~20% off |
+
+Every plan includes everything: the full desktop app with every feature and every update, the iPhone app (beta via TestFlight), up to 3 linked devices sharing one subscription, and the **@Trencher** role with private member chats on [our Discord](https://discord.gg/cDhrRVZ9xg).
+
+Subscribe and manage everything at [dashboard.trenchcord.app](https://dashboard.trenchcord.app).
+
 ## Self-Host
 
 Prefer to run everything from source? When self-hosting, there is **no database** — your tokens and all configuration are stored locally in a simple JSON file. Nothing ever leaves your PC. See [Installation](#installation) below.
 
 ## How It Works
 
-1. **Connect** — Add your Discord token to authenticate
-2. **Configure** — Set up rooms and aggregate channels
-3. **Highlight** — Mark users you want to track closely
-4. **Monitor** — Watch everything in a unified dashboard
+1. **Subscribe** — Create your account at [dashboard.trenchcord.app](https://dashboard.trenchcord.app), approve the app's pairing code, and activate a subscription
+2. **Connect** — Add your Discord token to authenticate
+3. **Configure** — Set up rooms and aggregate channels
+4. **Highlight** — Mark users you want to track closely
+5. **Monitor** — Watch everything in a unified dashboard
 
 ## Requirements
 
@@ -240,8 +258,8 @@ desktop/self-hosted only; it is disabled in the hosted web app.
   so the parts always add back up to exactly the amount you clicked
 - **Execution** — slippage, tip, priority fee, anti-MEV, and the US or EU server
 - **Misclick protection** — require a double click before a buy fires (off by default)
-- **Open Chart on Buy** — also open the token on Axiom, Padre, Bloom, GMGN, or any URL template you paste, the
-  moment you click. It follows your Settings > Contracts platform by default
+- **Open Chart on Buy** — also open the token on Axiom, Padre, Bloom, GMGN, fomo.family, or any URL template you
+  paste, the moment you click. It follows your Settings > Contracts platform by default
 - **Button appearance** — size, colors, and whether the contract address shows on the buy row
 
 **Safety notes:**
@@ -275,6 +293,7 @@ Get alerted when messages match your keyword patterns:
 
 - **Edit/Delete:** Hover over a room in the sidebar to reveal the gear (edit) and trash (delete) icons
 - **Room Color:** Set a custom background color for the room in the config modal
+- **Whole Categories:** In the Channels tab, use **Add category** next to a category name to take every channel under it. The room keeps following that category: channels created in it join by themselves, channels deleted or moved out leave. Click a channel inside a followed category to switch it off by hand — it shows as **OFF** and stays off whatever the category does
 - **Disable Embeds:** Toggle embeds off for specific channels in the Channels tab of room config
 - **User Filter:** In the Filter tab, add user IDs to only show messages from those users in the room
 
@@ -342,7 +361,138 @@ Trenchcord takes token security seriously:
 - **AES-256-GCM Encryption** — For multi-user/hosted deployments (Supabase), every Discord token is encrypted at rest using AES-256-GCM before being stored. Tokens are never stored, logged, or transmitted in plain text. [View the encryption source code](https://github.com/DanielHighETH/trenchcord/blob/main/backend/src/auth/encryption.ts).
 - **Server Hardening** — Helmet security headers, API rate limiting, strict CORS policies, and JWT-authenticated WebSockets protect every request. Self-hosted installs listen on `127.0.0.1` only and require a local session token on both the API and the WebSocket, so nothing else on your network — or on your machine — can reach them.
 - **Trading Credentials** — Your Slotshark API token is stored locally, masked once saved, never shown again, and excluded from settings exports. It is sent only to Slotshark, never to Trenchcord.
-- **Open Source & Auditable** — The entire codebase is open source. Don't just trust it — inspect every line yourself.
+- **Source-Available & Auditable** — The entire codebase is public. Don't just trust it — inspect every line yourself.
+
+## What Leaves Your PC — Full Network Transparency
+
+Trenchcord runs on your machine, and we want you to be able to verify exactly what it sends out.
+This section lists **every single request the app makes to the internet**, what is in it, and what
+comes back. If a future release adds a new outbound request, it will be documented here as well —
+that's a promise, and because the code is public, you can always check for yourself.
+
+**The short version:** your Discord token goes only to Discord, your Telegram session only to
+Telegram, your trading token only to Slotshark. Your messages, rooms, keywords, settings, and feeds
+are **never** uploaded anywhere. The one deliberate, opt-in exception: if you create **Alerts**
+(a subscription feature that runs on Trenchcord Cloud), the watchlists you define for them — token symbols or contract addresses,
+X handles, public Telegram channel names, and the alert keywords you type into those forms — are
+stored by Trenchcord Cloud so it can watch them for you while your PC is off. Nothing else is sent,
+and nothing at all if you never use Alerts. Your room keywords, message keywords, and everything
+listed above stay local as always.
+
+### 1. Trenchcord Cloud (`api.trenchcord.app`)
+
+Used to check that your subscription is active and, if you opt in, to run **Alerts** (cloud-watched
+price / X / Telegram-channel alerts). It never sees your Discord token, your Telegram session,
+your messages, or your other settings.
+
+| When it happens | What is sent | What comes back |
+| --- | --- | --- |
+| You click **Link account** in Settings → Account | A device name (e.g. "Desktop") and platform ("desktop"/"ios") | A short pairing code to type into the account dashboard |
+| While the pairing code is waiting for approval | The pairing code + a temporary secret (repeats every few seconds until approved or expired) | A device token once you approve the link |
+| On startup and every 5 minutes | Your device token (a random ID — it contains no personal data) | A signed receipt saying "this subscription is active until \<date\>" — this is also how the app notices within minutes that you revoked its device on the dashboard |
+| Verifying that receipt (rare, only after key rotation) | Nothing — it's a plain download | The public keys used to check the receipt's signature |
+| You create, edit, pause, or delete an Alert (the Alerts page) | Your device token + the alert definition you typed: token symbol or contract address, condition and target value, X handle, or Telegram channel name and keywords | Confirmation (for price alerts, also the validated symbol and the current price captured as your baseline) |
+| Every ~25 seconds while the app is open (only if you use Alerts, with an active subscription) | Your device token + a cursor id ("give me alerts fired since #N") | Any alerts that fired: title, text, and a chart/post link |
+| You save Alert delivery or sound settings | Your device token + your Pushover user key (if you enter one), the Pushover / Telegram-DM / Discord-DM on/off flags, and/or your chosen Pushover priorities & sounds | Confirmation |
+| You link Telegram/Discord delivery (Alerts → Delivery settings) | Your device token + the 6-character code the Trenchcord bot DM'd you | Confirmation — this binds that chat to your account so the bot can DM your alerts |
+| You press ▶ on a sound in Alerts → Sound settings | A plain download request to pushover.net (no token, nothing about you) | That sound's preview clip |
+| You remove one Recent alert (or Clear all) | Your device token + which fired-alert entries to delete | Confirmation — the entries are deleted from your cloud history |
+| You open Settings → Account (while linked) | Your device token | Your account overview: linked Discord/Telegram usernames, linked devices, subscription status, payment history — and, if your linked Discord holds the OG role, your discounted plan prices |
+| You pick a plan to extend your subscription | Your device token + the chosen plan code | A one-time Solana deposit address and amount (OG-discounted if eligible) for that payment |
+| While a payment window is open (every ~5 s), or you click "I've paid — check now" | Your device token + the payment's id | The payment's status (waiting / detected / credited) |
+
+Alert watchlists live on Trenchcord Cloud **by design** — that's what lets an alert fire and reach
+your phone while your PC is off. Delete an alert and its definition is deleted with it. Your
+Telegram *account* is never involved: public channels are watched by Trenchcord's own watcher
+accounts, and your local Telegram sessions never leave your machine.
+
+If you self-host with subscription enforcement off (`TRENCHCORD_REQUIRE_SUBSCRIPTION=0`) and never
+link an account, **none** of these requests are made.
+
+> **Planned (not live yet):** a subscription token-info service for the Contract feed. When it ships, it
+> will send **only the detected contract address** to Trenchcord Cloud and receive token name,
+> symbol, and market cap back. It will be documented here in full before it goes live.
+
+`dashboard.trenchcord.app` (the billing dashboard) is only ever opened in your normal browser — the
+app itself sends no data to it.
+
+### 2. Discord (`gateway.discord.gg`, `discord.com/api`) — required
+
+The core of the app: Trenchcord connects to Discord's own servers with your token to receive
+messages in real time, exactly like a Discord client does. Your token is sent **only to Discord**.
+If you configure a proxy in Settings → Tokens, this traffic goes through your proxy instead.
+Images, avatars, stickers, and attachments load from Discord's CDN (`cdn.discordapp.com` /
+`media.discordapp.net`). One exception: when a message embeds media hosted elsewhere — for
+example a Tenor or Giphy GIF — that image/video loads directly from the sender's host (e.g.
+`media.tenor.com`), the same as it would in the official Discord client. Only the media is
+fetched; no data about you is sent along.
+
+If you enable **DM Read Sync** (Settings → General, off by default), viewing a DM in Trenchcord
+also tells Discord "mark this conversation read" (`discord.com/api` again, the same request the
+official client makes when you open a chat), so the unread badge clears on your phone and desktop
+Discord too. This only ever happens for the DM you are looking at — never for servers, channels,
+or anything you haven't opened — and with the toggle off, nothing is ever sent.
+
+Pointing at the "*someone* used /command" line above a bot's reply asks Discord for the arguments
+that command was run with (`discord.com/api` again — the identical request the official client
+makes when you hover that line in Discord, since the arguments aren't part of the message itself).
+Only that one message's id goes out, only for the message you point at, and each message is asked
+about at most once.
+
+### 3. Telegram — optional
+
+Only if you connect a Telegram account: the app talks to Telegram's servers using your session,
+via the standard Telegram protocol (MTProto). Nothing Telegram-related is sent anywhere else.
+
+### 4. Slotshark (`us.slotshark.xyz` / `eu.slotshark.xyz`) — optional, trading & sniping
+
+Only when you click a buy button, a snipe config fires, or you use limit sells. The request
+contains your Slotshark API token, the wallet public key, the token mint, and the buy parameters
+(amount, slippage, tip, etc.). Slotshark executes the trade and returns the result. Nothing is
+sent to Slotshark unless trading is set up and a buy actually fires.
+
+### 5. Pushover (`api.pushover.net`) — optional, phone notifications
+
+Only if you set up Pushover: your Pushover app token and user key, plus the notification content
+(author name, channel name, and a short snippet of the triggering message — or, for snipe
+notifications, the snipe config name, token mint, SOL amount, and per-wallet outcome) are sent so
+the alert can reach your phone. Turn Pushover off and nothing is ever sent.
+
+### 6. Chain lookups (`api.dexscreener.com`, `api.geckoterminal.com`, `api.mainnet-beta.solana.com`) — automatic
+
+When an EVM contract address (0x…) is detected without a clear chain, Trenchcord asks the first two
+public APIs "which chain is this token on?" so the chart link opens on the right chain. **Only the
+contract address itself is sent** — no account info, no message content, nothing about you.
+
+If trading is enabled, detected Solana addresses are also checked once against Solana's public RPC
+(`api.mainnet-beta.solana.com`) with the standard "what kind of account is this?" query, so buy
+buttons appear only under token contracts and not under wallet addresses that happen to be in a
+message. The request goes out from Trenchcord's local backend rather than the app window, because
+that endpoint rejects browser-origin requests. Again, **only the address itself is sent** — no wallet of yours, no message content,
+nothing about you. If trading is off, this lookup never happens.
+
+### 7. Announcements (`raw.githubusercontent.com`) — automatic
+
+On startup the app downloads a small public JSON file from this GitHub repository to show in-app
+announcements (release notes, warnings). It's a plain download — nothing about you is sent.
+
+### 8. Auto-update (`github.com`) — Windows only, **off by default**
+
+Auto-update is opt-in. With the toggle off (the default — Settings → General → **Automatic
+Updates**), the app never contacts GitHub for updates and nothing is ever downloaded or installed
+on its own; you update manually from the releases page. If you turn it on, the app checks GitHub
+Releases at launch, downloads a newer installer if there is one, and asks before installing. Either
+way it's a plain download from `github.com`; nothing about you is sent. macOS always updates
+manually.
+
+### 9. Links you click
+
+Opening a chart (Axiom, GMGN, Padre, Bloom, fomo.family, custom templates), a Discord jump-link, or a
+Telegram link simply opens that site in your browser or app — the same as clicking any link.
+
+That's the complete list. Everything else — your config, message history, contract feed, mentions,
+keywords, snipes, hotkeys — lives in local files on your machine and is never transmitted, with the
+single opt-in exception of Alert definitions described in section 1.
 
 ## Configuration
 
@@ -360,11 +510,11 @@ Trenchcord is also not affiliated with Slotshark. The trading features execute r
 
 ## License
 
-This release of Trenchcord is open source under the [GNU AGPL-3.0](LICENSE). You're free to inspect, run, modify, and share it — with the condition that derivative works and network-deployed versions are also made available under the AGPL.
+Trenchcord is **source-available** under the [Trenchcord Source-Available License](LICENSE). The full source is published so you can inspect every line — especially what does and does not leave your machine — build it yourself, and verify its behavior. Using Trenchcord day-to-day requires an active subscription ([dashboard.trenchcord.app](https://dashboard.trenchcord.app)), whether you run an official build or one you compiled yourself; redistribution is not permitted.
 
 A few things to note:
 
-- **Future releases may be distributed under a different, proprietary license** (for example, the upcoming paid desktop version). This does not affect your rights to this release, which remains under the AGPL.
+- **Earlier releases were published under the GNU AGPL-3.0** and remain under that license — the new license applies from this version onward.
 - The **"Trenchcord" name and logo are trademarks** and are not covered by the code license.
 
 [Website](https://trenchcord.app) · [Download](https://github.com/DanielHighETH/trenchcord/releases/latest) · [Live Demo](https://demo.trenchcord.app) · [Discord](https://discord.gg/cDhrRVZ9xg) · [GitHub](https://github.com/DanielHighETH/trenchcord) · [Twitter / X](https://x.com/trenchcordapp)

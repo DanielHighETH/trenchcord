@@ -7,12 +7,13 @@ import type {
   DiscordGuild,
   DiscordChannel,
   DiscordUser,
+  DiscordCommandOption,
   GuildInfo,
   DMChannel,
 } from './types.js';
 import { GatewayOpcodes } from './types.js';
-import { fetch as undiciFetch } from 'undici';
 import type { ProxyBundle } from './proxy.js';
+import { appFetch, type AppRequestInit, type AppResponse } from '../utils/http.js';
 
 const GATEWAY_URL = 'wss://gateway.discord.gg/?v=10&encoding=json';
 const REST_BASE = 'https://discord.com/api/v10';
@@ -20,8 +21,30 @@ const REST_BASE = 'https://discord.com/api/v10';
 // Channel types that support text messages
 const TEXT_CHANNEL_TYPES = new Set([0, 2, 5, 10, 11, 12, 13, 15, 16]);
 
+// Category ("group of channels" in the Discord sidebar).
+const CATEGORY_TYPE = 4;
+
 function isTextChannel(type: number): boolean {
   return TEXT_CHANNEL_TYPES.has(type);
+}
+
+/**
+ * One channel of a guild payload, from either shape Discord sends: full
+ * objects, or the compact arrays READY sometimes uses ([id, name, ?, type]).
+ * The array form carries no parent, so guilds delivered that way have no
+ * category information -- rooms can still watch their channels one by one.
+ */
+function parseGuildChannel(c: any): { id: string; name: string; type: number; parentId: string | null; position?: number } {
+  if (Array.isArray(c)) {
+    return { id: String(c[0]), name: String(c[1] ?? ''), type: Number(c[3] ?? 0), parentId: null };
+  }
+  return {
+    id: c.id,
+    name: c.name ?? '',
+    type: c.type ?? 0,
+    parentId: c.parent_id ?? null,
+    position: typeof c.position === 'number' ? c.position : undefined,
+  };
 }
 
 export interface GatewayAuthFailure {
@@ -40,6 +63,8 @@ export class DiscordGateway extends EventEmitter {
   private token: string;
   private tokenIndex: number;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private probeAckTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly PROBE_ACK_TIMEOUT_MS = 10_000;
   private lastSequence: number | null = null;
   private sessionId: string | null = null;
   private resumeGatewayUrl: string | null = null;
@@ -47,15 +72,30 @@ export class DiscordGateway extends EventEmitter {
   private dmChannels: Map<string, DMChannel> = new Map();
   private channelGuildMap: Map<string, string> = new Map();
   private channelNameMap: Map<string, string> = new Map();
+  // channel id -> id of the category it sits under. Rooms that watch a whole
+  // category match incoming messages through this.
+  private channelParentMap: Map<string, string> = new Map();
+  // thread/forum-post id -> parent channel id. Thread messages arrive with the
+  // thread's own channel_id, so room matching needs the parent to resolve.
+  private threadParentMap: Map<string, string> = new Map();
   private roleNameMap: Map<string, string> = new Map();
   private roleDataMap: Map<string, { name: string; color: number; position: number }> = new Map();
+  // Which roles belong to which guild — roleDataMap alone is flat, so listing
+  // "all roles of server X" (the room-config role pickers) needs this index.
+  private guildRoleIds: Map<string, Set<string>> = new Map();
   private selfUserId: string | null = null;
+  // Display name of the logged-in account (READY user), so a DM can say which
+  // of several configured accounts received it.
+  private selfUserName: string | null = null;
   // guildId -> { roleIds, fetchedAt }. Lazily fetched via REST, refreshed periodically.
   private selfGuildRoles: Map<string, { roleIds: Set<string>; fetchedAt: number }> = new Map();
   private static readonly SELF_ROLES_TTL_MS = 10 * 60 * 1000;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 30;
   private stopped = false;
+  /** True when stopped only because the retry budget ran out (not a fatal
+   *  close, invalid token, or an intentional disconnect) — probeNow may revive. */
+  private gaveUp = false;
   private proxy: ProxyBundle | null;
   // Set when the gateway handshake is rejected with an HTTP status (403/429),
   // which is how a Cloudflare/VPN IP block surfaces. Cleared on a clean open.
@@ -148,6 +188,7 @@ export class DiscordGateway extends EventEmitter {
         break;
 
       case GatewayOpcodes.HEARTBEAT_ACK:
+        this.clearProbeDeadline();
         break;
 
       case GatewayOpcodes.HEARTBEAT:
@@ -166,6 +207,12 @@ export class DiscordGateway extends EventEmitter {
         break;
 
       case GatewayOpcodes.DISPATCH:
+        // A successful session resume refills the retry budget just like READY.
+        // Without this, every suspend/wake cycle (iOS backgrounding, laptop
+        // sleep) permanently ate attempts until the gateway "gave up" for good.
+        if (payload.t === 'RESUMED') {
+          this.reconnectAttempts = 0;
+        }
         this.handleDispatch(payload.t!, payload.d);
         break;
     }
@@ -178,6 +225,7 @@ export class DiscordGateway extends EventEmitter {
         this.resumeGatewayUrl = data.resume_gateway_url;
         this.reconnectAttempts = 0;
         this.selfUserId = data.user?.id ?? null;
+        this.selfUserName = data.user?.global_name || data.user?.username || null;
         console.log(`[Gateway] Ready as ${data.user.username}#${data.user.discriminator}`);
 
         for (const guild of data.guilds ?? []) {
@@ -186,31 +234,29 @@ export class DiscordGateway extends EventEmitter {
           const guildId = guild.id;
 
           // User tokens get channel data directly in READY (not via GUILD_CREATE)
-          const rawChannels: any[] = guild.channels ?? [];
-          const channels = rawChannels
-            .filter((c: any) => isTextChannel(c.type ?? c[3]))
-            .map((c: any) => {
-              // Channels can arrive as objects {id, name, type, ...} or as arrays [id, type, ...]
-              if (Array.isArray(c)) {
-                return { id: String(c[0]), name: String(c[1] ?? ''), type: Number(c[3] ?? 0) };
-              }
-              return { id: c.id, name: c.name ?? '', type: c.type ?? 0 };
-            });
+          const parsedChannels = ((guild.channels ?? []) as any[]).map(parseGuildChannel);
+          const channels = parsedChannels
+            .filter((c) => isTextChannel(c.type))
+            .map((c) => ({ id: c.id, name: c.name, type: c.type, parentId: c.parentId }));
+          const categories = parsedChannels
+            .filter((c) => c.type === CATEGORY_TYPE)
+            .map((c) => ({ id: c.id, name: c.name, position: c.position }));
 
-          this.guilds.set(guildId, { id: guildId, name: guildName, icon: guildIcon, channels });
+          this.guilds.set(guildId, { id: guildId, name: guildName, icon: guildIcon, channels, categories });
 
-          for (const ch of rawChannels) {
-            const chId = Array.isArray(ch) ? String(ch[0]) : ch.id;
-            const chName = Array.isArray(ch) ? String(ch[1] ?? '') : (ch.name ?? '');
-            this.channelGuildMap.set(chId, guildId);
-            if (chName) this.channelNameMap.set(chId, chName);
+          for (const ch of parsedChannels) {
+            this.channelGuildMap.set(ch.id, guildId);
+            if (ch.name) this.channelNameMap.set(ch.id, ch.name);
+            if (ch.parentId) this.channelParentMap.set(ch.id, ch.parentId);
           }
 
+          const readyRoleIds = new Set<string>();
           for (const role of guild.roles ?? []) {
             const roleId = role.id ?? (Array.isArray(role) ? String(role[0]) : null);
             const roleName = role.name ?? (Array.isArray(role) ? String(role[1] ?? '') : '');
             if (roleId && roleName) this.roleNameMap.set(roleId, roleName);
             if (roleId) {
+              readyRoleIds.add(roleId);
               this.roleDataMap.set(roleId, {
                 name: roleName || '',
                 color: role.color ?? 0,
@@ -218,6 +264,7 @@ export class DiscordGateway extends EventEmitter {
               });
             }
           }
+          this.guildRoleIds.set(guildId, readyRoleIds);
 
           console.log(`[Gateway] Guild "${guildName}" - ${channels.length} text channels`);
         }
@@ -265,10 +312,13 @@ export class DiscordGateway extends EventEmitter {
         break;
 
       case 'GUILD_CREATE': {
-        const rawChannels: any[] = data.channels ?? [];
-        const channels = rawChannels
-          .filter((c: any) => isTextChannel(c.type))
-          .map((c: any) => ({ id: c.id, name: c.name ?? '', type: c.type }));
+        const parsedChannels = ((data.channels ?? []) as any[]).map(parseGuildChannel);
+        const channels = parsedChannels
+          .filter((c) => isTextChannel(c.type))
+          .map((c) => ({ id: c.id, name: c.name, type: c.type, parentId: c.parentId }));
+        const categories = parsedChannels
+          .filter((c) => c.type === CATEGORY_TYPE)
+          .map((c) => ({ id: c.id, name: c.name, position: c.position }));
 
         const guildName = data.properties?.name ?? data.name ?? 'Unknown';
         const existing = this.guilds.get(data.id);
@@ -278,16 +328,25 @@ export class DiscordGateway extends EventEmitter {
           name: guildName,
           icon: data.properties?.icon ?? data.icon ?? null,
           channels: channels.length > 0 ? channels : (existing?.channels ?? []),
+          categories: channels.length > 0 ? categories : (existing?.categories ?? []),
         });
 
-        for (const ch of rawChannels) {
+        for (const ch of parsedChannels) {
           this.channelGuildMap.set(ch.id, data.id);
           if (ch.name) this.channelNameMap.set(ch.id, ch.name);
+          if (ch.parentId) this.channelParentMap.set(ch.id, ch.parentId);
         }
 
+        // Active threads/forum posts arrive alongside the channel list.
+        for (const t of data.threads ?? []) {
+          this.registerThread(t, data.id);
+        }
+
+        const createRoleIds = new Set<string>();
         for (const role of data.roles ?? []) {
           if (role.id && role.name) this.roleNameMap.set(role.id, role.name);
           if (role.id) {
+            createRoleIds.add(role.id);
             this.roleDataMap.set(role.id, {
               name: role.name ?? '',
               color: role.color ?? 0,
@@ -295,6 +354,7 @@ export class DiscordGateway extends EventEmitter {
             });
           }
         }
+        if (createRoleIds.size > 0) this.guildRoleIds.set(data.id, createRoleIds);
 
         console.log(`[Gateway] GUILD_CREATE "${guildName}" - ${channels.length} text channels`);
         break;
@@ -303,7 +363,7 @@ export class DiscordGateway extends EventEmitter {
       case 'MESSAGE_CREATE': {
         const msg = data as DiscordMessage;
         const guildId = msg.guild_id ?? this.channelGuildMap.get(msg.channel_id) ?? null;
-        const channelName = this.channelNameMap.get(msg.channel_id) ?? 'unknown';
+        const channelName = this.getChannelName(msg.channel_id);
         const guildName = guildId ? this.guilds.get(guildId)?.name ?? null : null;
 
         this.emit('message', {
@@ -318,7 +378,7 @@ export class DiscordGateway extends EventEmitter {
       case 'MESSAGE_UPDATE': {
         const msg = data as Partial<DiscordMessage> & { id: string; channel_id: string };
         const guildId = msg.guild_id ?? this.channelGuildMap.get(msg.channel_id) ?? null;
-        const channelName = this.channelNameMap.get(msg.channel_id) ?? 'unknown';
+        const channelName = this.getChannelName(msg.channel_id);
         const guildName = guildId ? this.guilds.get(guildId)?.name ?? null : null;
 
         this.emit('messageUpdate', {
@@ -374,17 +434,92 @@ export class DiscordGateway extends EventEmitter {
         break;
       }
 
+      case 'MESSAGE_POLL_VOTE_ADD': {
+        this.emit('pollVoteUpdate', {
+          channelId: data.channel_id,
+          messageId: data.message_id,
+          answerId: data.answer_id,
+          delta: 1,
+        });
+        break;
+      }
+
+      case 'MESSAGE_POLL_VOTE_REMOVE': {
+        this.emit('pollVoteUpdate', {
+          channelId: data.channel_id,
+          messageId: data.message_id,
+          answerId: data.answer_id,
+          delta: -1,
+        });
+        break;
+      }
+
+      // Sent when this account reads a channel in an official Discord client.
+      // A manual ack is the user moving the read marker (Mark Unread), not
+      // reading — clearing badges on it would do the opposite of what they
+      // asked for.
+      case 'MESSAGE_ACK': {
+        if (data.manual) break;
+        this.emit('messageAck', {
+          channelId: data.channel_id,
+          messageId: data.message_id,
+        });
+        break;
+      }
+
+      // Threads and forum posts are channels whose messages carry the thread's
+      // id as channel_id. Track id -> parent so rooms watching the parent
+      // channel receive them, and the thread/post title so it can be shown.
+      case 'THREAD_CREATE':
+      case 'THREAD_UPDATE': {
+        this.registerThread(data, data.guild_id);
+        break;
+      }
+
+      case 'THREAD_DELETE': {
+        this.threadParentMap.delete(data.id);
+        this.channelNameMap.delete(data.id);
+        this.channelGuildMap.delete(data.id);
+        break;
+      }
+
+      case 'THREAD_LIST_SYNC': {
+        for (const t of data.threads ?? []) {
+          this.registerThread(t, data.guild_id);
+        }
+        break;
+      }
+
       case 'CHANNEL_CREATE':
       case 'CHANNEL_UPDATE': {
         if (data.guild_id) {
           this.channelGuildMap.set(data.id, data.guild_id);
           if (data.name) this.channelNameMap.set(data.id, data.name);
+          const parentId: string | null = data.parent_id ?? null;
+          if (parentId) this.channelParentMap.set(data.id, parentId);
+          else this.channelParentMap.delete(data.id);
+
           const guild = this.guilds.get(data.guild_id);
-          if (guild && isTextChannel(data.type)) {
+          if (guild && data.type === CATEGORY_TYPE) {
+            if (!guild.categories) guild.categories = [];
+            const idx = guild.categories.findIndex((c) => c.id === data.id);
+            const entry = { id: data.id, name: data.name ?? '', position: data.position };
+            if (idx >= 0) guild.categories[idx] = entry;
+            else guild.categories.push(entry);
+            this.emitChannelsChanged(data.guild_id);
+          } else if (guild && isTextChannel(data.type)) {
             const idx = guild.channels.findIndex((c) => c.id === data.id);
-            const entry = { id: data.id, name: data.name ?? '', type: data.type };
+            const before = idx >= 0 ? guild.channels[idx] : null;
+            const entry = { id: data.id, name: data.name ?? '', type: data.type, parentId };
             if (idx >= 0) guild.channels[idx] = entry;
             else guild.channels.push(entry);
+            // CHANNEL_UPDATE also fires for topic and permission edits, which
+            // change nothing a room watching this category would show. Only a
+            // new channel, a move between categories, or a rename is worth
+            // telling the clients about.
+            if (!before || before.parentId !== entry.parentId || before.name !== entry.name) {
+              this.emitChannelsChanged(data.guild_id);
+            }
           }
         } else if (data.type === 1 || data.type === 3) {
           const recipients = (data.recipients ?? []).map((r: any) => ({
@@ -401,7 +536,33 @@ export class DiscordGateway extends EventEmitter {
         }
         break;
       }
+
+      case 'CHANNEL_DELETE': {
+        const guildId = data.guild_id ?? this.channelGuildMap.get(data.id) ?? null;
+        this.channelGuildMap.delete(data.id);
+        this.channelNameMap.delete(data.id);
+        this.channelParentMap.delete(data.id);
+
+        if (!guildId) {
+          this.dmChannels.delete(data.id);
+          break;
+        }
+        const guild = this.guilds.get(guildId);
+        if (!guild) break;
+        const sizeBefore = guild.channels.length + (guild.categories?.length ?? 0);
+        guild.channels = guild.channels.filter((c) => c.id !== data.id);
+        if (guild.categories) guild.categories = guild.categories.filter((c) => c.id !== data.id);
+        if (guild.channels.length + (guild.categories?.length ?? 0) !== sizeBefore) {
+          this.emitChannelsChanged(guildId);
+        }
+        break;
+      }
     }
+  }
+
+  /** A guild's channel or category list changed in a way rooms can see. */
+  private emitChannelsChanged(guildId: string): void {
+    this.emit('guildChannelsUpdated', { guildId });
   }
 
   private identify(): void {
@@ -485,8 +646,56 @@ export class DiscordGateway extends EventEmitter {
     }
   }
 
+  private clearProbeDeadline(): void {
+    if (this.probeAckTimer) {
+      clearTimeout(this.probeAckTimer);
+      this.probeAckTimer = null;
+    }
+  }
+
+  /**
+   * Force an immediate liveness check. Called when the host app comes back to
+   * the foreground: iOS freezes the process while backgrounded, so the TCP
+   * connection is usually dead while `ws` still reports it OPEN. Nothing would
+   * notice until the next scheduled heartbeat times out, which can be a minute
+   * of silently missed messages. A heartbeat with a short ACK deadline collapses
+   * that to a few seconds; killing the socket lets the normal close handler
+   * reconnect, and the retained session_id means it RESUMEs rather than
+   * re-identifying, so no messages are lost in the gap.
+   */
+  probeNow(): void {
+    // A connection that exhausted its retry budget (typically while the device
+    // was suspended and the network wasn't back yet) gets a fresh start when
+    // the app returns to the foreground. Fatal closes and invalid tokens keep
+    // stopped set without gaveUp, so they are never revived here.
+    if (this.gaveUp) {
+      this.gaveUp = false;
+      this.stopped = false;
+      this.reconnectAttempts = 0;
+      this.lastBlockStatus = null;
+      console.log('[Gateway] Foreground resume — retrying a connection that had given up.');
+      this.connect();
+      return;
+    }
+    if (this.stopped || this.probeAckTimer) return;
+    const ws = this.ws;
+    // Anything other than OPEN already has a reconnect in flight via 'close'.
+    if (ws?.readyState !== WebSocket.OPEN) return;
+
+    this.sendHeartbeat();
+    this.probeAckTimer = setTimeout(() => {
+      this.probeAckTimer = null;
+      if (this.ws === ws && ws.readyState === WebSocket.OPEN) {
+        console.warn('[Gateway] No heartbeat ACK after resume — recycling the connection.');
+        ws.terminate();
+      }
+    }, DiscordGateway.PROBE_ACK_TIMEOUT_MS);
+    this.probeAckTimer.unref?.();
+  }
+
   private cleanup(): void {
     this.stopHeartbeat();
+    this.clearProbeDeadline();
   }
 
   private attemptReconnect(): void {
@@ -500,6 +709,7 @@ export class DiscordGateway extends EventEmitter {
 
     if (this.reconnectAttempts >= attemptsBudget) {
       this.stopped = true;
+      this.gaveUp = true;
       if (isBlocked) {
         console.error(`[Gateway] Discord refused the connection (HTTP ${this.lastBlockStatus}). Giving up.`);
         this.emit('auth_failed', {
@@ -538,11 +748,37 @@ export class DiscordGateway extends EventEmitter {
   }
 
   getChannelName(channelId: string): string {
-    return this.channelNameMap.get(channelId) ?? 'unknown';
+    const name = this.channelNameMap.get(channelId) ?? 'unknown';
+    // Threads/forum posts display as "parent › title" so messages show where
+    // they came from, not just the (often generic) thread title.
+    const parentId = this.threadParentMap.get(channelId);
+    if (parentId) {
+      const parentName = this.channelNameMap.get(parentId);
+      if (parentName) return `${parentName} › ${name}`;
+    }
+    return name;
   }
 
   getGuildForChannel(channelId: string): string | null {
     return this.channelGuildMap.get(channelId) ?? null;
+  }
+
+  /** Parent channel id if channelId is a known thread/forum post, else null. */
+  getThreadParent(channelId: string): string | null {
+    return this.threadParentMap.get(channelId) ?? null;
+  }
+
+  /** Id of the category a channel sits under, null when it has none. */
+  getChannelCategory(channelId: string): string | null {
+    return this.channelParentMap.get(channelId) ?? null;
+  }
+
+  private registerThread(t: any, guildId?: string): void {
+    if (!t?.id || !t.parent_id) return;
+    this.threadParentMap.set(t.id, t.parent_id);
+    if (t.name) this.channelNameMap.set(t.id, t.name);
+    const gid = t.guild_id ?? guildId ?? this.channelGuildMap.get(t.parent_id);
+    if (gid) this.channelGuildMap.set(t.id, gid);
   }
 
   getGuildName(guildId: string): string | null {
@@ -567,19 +803,62 @@ export class DiscordGateway extends EventEmitter {
     return `#${best.color.toString(16).padStart(6, '0')}`;
   }
 
+  // Resolves a member's role IDs to displayable {id, name} pairs, highest role
+  // first. Roles whose metadata hasn't arrived yet (no GUILD_CREATE seen) are
+  // skipped rather than shown as bare IDs.
+  getMemberRoles(roleIds: string[] | undefined): { id: string; name: string }[] | undefined {
+    if (!roleIds || roleIds.length === 0) return undefined;
+    const resolved: { id: string; name: string; position: number }[] = [];
+    for (const id of roleIds) {
+      const rd = this.roleDataMap.get(id);
+      if (!rd || !rd.name) continue;
+      resolved.push({ id, name: rd.name, position: rd.position });
+    }
+    if (resolved.length === 0) return undefined;
+    resolved.sort((a, b) => b.position - a.position);
+    return resolved.map(({ id, name }) => ({ id, name }));
+  }
+
+  // Every role of a guild, highest first, for the room-config role pickers.
+  // @everyone (role id === guild id) is excluded: it isn't carried on
+  // member.roles, so muting or highlighting it would silently do nothing.
+  getGuildRoles(guildId: string): { id: string; name: string; color: string | null }[] {
+    const roleIds = this.guildRoleIds.get(guildId);
+    if (!roleIds || roleIds.size === 0) return [];
+    const roles: { id: string; name: string; color: string | null; position: number }[] = [];
+    for (const id of roleIds) {
+      if (id === guildId) continue;
+      const rd = this.roleDataMap.get(id);
+      if (!rd || !rd.name) continue;
+      roles.push({
+        id,
+        name: rd.name,
+        color: rd.color !== 0 ? `#${rd.color.toString(16).padStart(6, '0')}` : null,
+        position: rd.position,
+      });
+    }
+    roles.sort((a, b) => b.position - a.position);
+    return roles.map(({ id, name, color }) => ({ id, name, color }));
+  }
+
   getSelfUserId(): string | null {
     return this.selfUserId;
   }
 
-  // Routes REST calls through the configured proxy when set. We use undici's own
-  // fetch in the proxy path so the ProxyAgent dispatcher is guaranteed compatible
-  // (mixing it with Node's bundled fetch can silently ignore the dispatcher). The
-  // undici Response shape used here (ok/status/json/text) matches the DOM one.
-  private fetch(url: string, init?: RequestInit): Promise<Response> {
+  getSelfUserName(): string | null {
+    return this.selfUserName;
+  }
+
+  // Routes REST calls through the configured proxy when set. The proxy path uses
+  // undici's own fetch so the ProxyAgent dispatcher is guaranteed compatible
+  // (mixing it with Node's bundled fetch can silently ignore the dispatcher);
+  // the direct path goes through appFetch, which falls back to node:https where
+  // WebAssembly — and therefore undici — is unavailable.
+  private fetch(url: string, init?: AppRequestInit): Promise<AppResponse> {
     if (this.proxy) {
-      return undiciFetch(url, { ...(init as any), dispatcher: this.proxy.dispatcher }) as unknown as Promise<Response>;
+      return this.proxy.fetch(url, init);
     }
-    return fetch(url, init);
+    return appFetch(url, init);
   }
 
   // Returns the logged-in user's role IDs for a guild, lazily fetched via REST and cached.
@@ -659,6 +938,25 @@ export class DiscordGateway extends EventEmitter {
     return res.json();
   }
 
+  // Marks a channel read up to a message on the Discord account itself — the
+  // same call the official client makes when a channel is opened, so the
+  // badge clears on the user's other Discord clients too.
+  async ackChannelMessage(channelId: string, messageId: string): Promise<boolean> {
+    const res = await this.fetch(`${REST_BASE}/channels/${channelId}/messages/${messageId}/ack`, {
+      method: 'POST',
+      headers: {
+        Authorization: this.token,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ token: null }),
+    });
+    if (!res.ok) {
+      console.error(`[Gateway] Failed to ack channel ${channelId}: ${res.status}`);
+      return false;
+    }
+    return true;
+  }
+
   async fetchChannelMessages(channelId: string, limit = 30): Promise<DiscordMessage[]> {
     const url = `${REST_BASE}/channels/${channelId}/messages?limit=${limit}`;
     const res = await this.fetch(url, {
@@ -696,6 +994,24 @@ export class DiscordGateway extends EventEmitter {
       return [];
     }
     return res.json();
+  }
+
+  // The arguments a slash command was invoked with. The message payload never
+  // carries them; the official client fills its command tooltip with this same
+  // per-message request when the "used /command" pill is hovered. Returns null
+  // on failure so a missing permission or a deleted message degrades to the
+  // bare command name.
+  async fetchMessageInteractionData(channelId: string, messageId: string): Promise<DiscordCommandOption[] | null> {
+    const url = `${REST_BASE}/channels/${channelId}/messages/${messageId}/interaction-data`;
+    const res = await this.fetch(url, {
+      headers: { Authorization: this.token },
+    });
+    if (!res.ok) {
+      console.error(`[Gateway] Failed to fetch interaction data for ${messageId}: ${res.status}`);
+      return null;
+    }
+    const data = await res.json();
+    return data?.options ?? data?.data?.options ?? [];
   }
 
   disconnect(): void {

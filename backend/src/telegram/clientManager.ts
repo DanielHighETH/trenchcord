@@ -5,11 +5,24 @@ import type { TelegramChat, TelegramRawMessage } from './types.js';
 const DEDUP_WINDOW_MS = 10_000;
 const DEDUP_MAX_SIZE = 5_000;
 
+export interface TelegramAccountInfo {
+  index: number;
+  accountId: string | null;
+  username: string | null;
+  firstName: string | null;
+  connected: boolean;
+  invalid: boolean;
+}
+
 export class TelegramClientManager extends EventEmitter {
   private clients: TelegramClientWrapper[] = [];
   private recentMessageIds = new Map<string, number>();
   private dedupeTimer: ReturnType<typeof setInterval> | null = null;
+  private started = false;
   private readyCount = 0;
+  // Sessions the manager was constructed with. waitUntilReady only waits for
+  // these - an account added later must not resolve it early or hold it open.
+  private initialCount: number;
   private readyResolve: (() => void) | null = null;
   private readyPromise: Promise<void>;
 
@@ -19,6 +32,7 @@ export class TelegramClientManager extends EventEmitter {
     sessions: string[],
   ) {
     super();
+    this.initialCount = sessions.length;
     this.readyPromise = new Promise<void>((resolve) => {
       this.readyResolve = resolve;
     });
@@ -47,10 +61,10 @@ export class TelegramClientManager extends EventEmitter {
 
     client.on('ready', (user: { id: string; username: string | null; firstName: string }) => {
       this.readyCount++;
-      if (this.readyCount >= this.clients.length) {
+      if (this.readyCount >= this.initialCount) {
         this.readyResolve?.();
       }
-      this.emit('ready', user);
+      this.emit('ready', { ...user, index: this.clients.indexOf(client) });
     });
 
     // A client dropping out doesn't take the manager down - it reconnects on
@@ -62,7 +76,19 @@ export class TelegramClientManager extends EventEmitter {
 
     client.on('reconnected', () => this.emit('reconnected'));
 
-    client.on('fatal', (err: Error) => this.emit('fatal', err));
+    // One dead session must not report every account as broken, so the fatal is
+    // reported per account. The manager-wide 'fatal' - which the UI reads as
+    // "Telegram is down" - is only raised once no account is left standing.
+    client.on('fatal', (err: Error) => {
+      this.emit('account_fatal', {
+        index: this.clients.indexOf(client),
+        accountId: client.getAccount()?.id ?? null,
+        error: err.message,
+      });
+      if (this.clients.every((c) => c.isFatal())) {
+        this.emit('fatal', err);
+      }
+    });
   }
 
   waitUntilReady(timeoutMs = 30_000): Promise<void> {
@@ -73,6 +99,7 @@ export class TelegramClientManager extends EventEmitter {
   }
 
   async connect(): Promise<void> {
+    this.started = true;
     this.dedupeTimer = setInterval(() => this.pruneDedup(), DEDUP_WINDOW_MS);
     for (const client of this.clients) {
       await client.connect();
@@ -87,6 +114,53 @@ export class TelegramClientManager extends EventEmitter {
     for (const client of this.clients) {
       client.disconnect();
     }
+    this.started = false;
+  }
+
+  /** Immediate health probe on every account — see TelegramClientWrapper.probeNow. */
+  probeNow(): void {
+    for (const client of this.clients) {
+      client.probeNow();
+    }
+  }
+
+  // Connecting an extra account leaves the accounts already running untouched -
+  // rebuilding the manager would make every one of them redo its login and
+  // dialog warm-up, and drop messages while it did.
+  async addSession(session: string): Promise<void> {
+    const client = new TelegramClientWrapper(this.apiId, this.apiHash, session);
+    this.clients.push(client);
+    this.wireEvents(client);
+    if (this.started) {
+      await client.connect();
+    }
+  }
+
+  async removeSessionAt(index: number, opts: { logOut?: boolean } = {}): Promise<void> {
+    const client = this.clients[index];
+    if (!client) return;
+    if (opts.logOut) {
+      await client.logOut();
+    } else {
+      client.disconnect();
+    }
+    client.removeAllListeners();
+    this.clients.splice(index, 1);
+    if (this.initialCount > 0) this.initialCount--;
+  }
+
+  getAccounts(): TelegramAccountInfo[] {
+    return this.clients.map((client, index) => {
+      const account = client.getAccount();
+      return {
+        index,
+        accountId: account?.id ?? null,
+        username: account?.username ?? null,
+        firstName: account?.firstName ?? null,
+        connected: client.isConnected(),
+        invalid: client.isFatal(),
+      };
+    });
   }
 
   private pruneDedup(): void {
